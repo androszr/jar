@@ -1,0 +1,4 @@
+# Offered on top of the pack's base gitignore.txt for the static-page profile.
+.vercel
+test-output/
+renders/

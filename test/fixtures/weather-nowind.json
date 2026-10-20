@@ -1,0 +1,12 @@
+{
+  "latitude": 52.22,
+  "longitude": 21.0,
+  "current": {
+    "time": "2026-10-18T12:00",
+    "interval": 900,
+    "temperature_2m": 12.3,
+    "weather_code": 61,
+    "cloud_cover": 80,
+    "is_day": 1
+  }
+}

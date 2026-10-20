@@ -1,0 +1,19 @@
+{
+  "name": "jar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A garden shed at night: glass jars on a potting table, each holding a tiny city lit for its real time and weather.",
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "lint": "node tools/lint.mjs",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "node tools/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}

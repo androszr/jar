@@ -1,0 +1,48 @@
+name: CI
+
+# The page's own gates, the rows of docs/context.md's Identity table: lint,
+# the unit tests and the smoke check in headless Chromium. This file never
+# starts on its own: deploy.yml calls it (workflow_call) as its `gates` job on
+# every pull request and push to main, so the gates run once per push, before
+# any deploy. There is no concurrency rule here; inside a called workflow it
+# would key on the caller's name, so the only one lives in deploy.yml.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint · Test · Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install headless Chromium
+        run: npx playwright-core install --with-deps chromium
+
+      - run: npm run lint
+
+      - run: npm test
+
+      # A shared runner cannot be held to a phone's frame budget, so the seven
+      # timing checks log `skip`; every other smoke check still runs.
+      - run: npm run smoke
+        env:
+          SMOKE_TIMING: 'off'
+
+      - name: Keep the screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output/
+          if-no-files-found: ignore

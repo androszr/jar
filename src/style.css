@@ -1,0 +1,68 @@
+/* The page chrome only: the look's colours arrive as custom properties set by
+   main.js from the active look (--page, --tag, --tag-ink, --tag-edge). */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--page);
+  overscroll-behavior: none;
+}
+
+#frame {
+  position: fixed;
+  inset: 0;
+}
+
+#view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#view:focus-visible {
+  outline: 2px solid var(--tag-edge, currentColor);
+  outline-offset: -4px;
+}
+
+#back,
+#shelfnav button {
+  position: fixed;
+  min-height: 32px;
+  padding: 6px 14px;
+  border: 1px solid var(--tag-edge, currentColor);
+  border-radius: 6px;
+  background: var(--tag, transparent);
+  color: var(--tag-ink, inherit);
+  font: 500 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  cursor: pointer;
+}
+
+#back {
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+#shelfnav button {
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  font-size: 20px;
+}
+
+#prev { left: calc(14px + env(safe-area-inset-left, 0px)); }
+#next { right: calc(14px + env(safe-area-inset-right, 0px)); }
+
+[hidden] { display: none !important; }
+
+@media (pointer: coarse) {
+  #back,
+  #shelfnav button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto; }
+}

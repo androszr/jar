@@ -1,0 +1,104 @@
+name: Deploy
+
+# A static page, published by the Vercel CLI: a same-repo pull request gets a
+# preview (its link is commented on the PR), a push to main goes live. Both
+# wait on the gates: ci.yml runs only when called from here, once per push, so
+# this is the one run a push or a pull request starts. The Vercel project is
+# never connected to GitHub, and vercel.json turns its own Git deploys off, so
+# nothing is published twice. The Vercel CLI runs with the deploy token in its
+# environment, so it is installed from .github/vercel-cli's lockfile (every
+# package under it pinned by version and hash, npm ci) in a step of its own
+# that never sees the token: a new release, or a hijacked package deep in its
+# tree, never gets the token unreviewed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  # A newer push to a pull request cancels the older run (its gates and its
+  # disposable preview); a push to main is never cancelled, so a
+  # half-finished production deploy is never cut short.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    uses: ./.github/workflows/ci.yml
+
+  # A fork's pull request has no access to the secrets, so only same-repo PRs
+  # get a preview.
+  preview:
+    needs: gates
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # Only this job writes: the one preview comment on the pull request.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the pinned Vercel CLI
+        run: |
+          npm ci --prefix .github/vercel-cli --no-audit --no-fund
+          echo "$GITHUB_WORKSPACE/.github/vercel-cli/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Deploy preview
+        id: vercel
+        run: |
+          vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          vercel build --token="$VERCEL_TOKEN"
+          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # One comment per PR, updated on every push: it carries a hidden marker,
+      # so a later run finds and rewrites it instead of piling up another.
+      - name: Comment preview URL
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.vercel.outputs.url }}
+        with:
+          script: |
+            const marker = '<!-- {{PROJECT}}-preview -->';
+            const body = `${marker}\nPreview: ${process.env.PREVIEW_URL}`;
+            const where = { owner: context.repo.owner, repo: context.repo.repo };
+            const comments = await github.paginate(github.rest.issues.listComments,
+              { ...where, issue_number: context.issue.number, per_page: 100 });
+            const mine = comments.find((c) => c.user && c.user.type === 'Bot'
+              && c.user.login === 'github-actions[bot]' && (c.body || '').includes(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...where, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...where, issue_number: context.issue.number, body });
+            }
+
+  production:
+    needs: gates
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the pinned Vercel CLI
+        run: |
+          npm ci --prefix .github/vercel-cli --no-audit --no-fund
+          echo "$GITHUB_WORKSPACE/.github/vercel-cli/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Deploy to production
+        run: |
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

@@ -1,0 +1,44 @@
+{
+  "name": "web-static-vercel",
+  "label": "Static page + one function",
+  "summary": "Static page plus one Vercel function, npm, node --test, no database.",
+  "src_dir": "src/",
+  "gates": [
+    ["lint_gate", "npm run lint"],
+    ["test_gate", "npm test"],
+    ["build_gate", "npm run smoke"]
+  ],
+  "reviewers": [
+    ["{{P}}-security-reviewer", "^api/|tools/serve\\.mjs|index\\.html|package\\.json|package-lock\\.json|vercel\\.json|\\.env|fetch\\(|XMLHttpRequest|WebSocket|localStorage|postMessage"],
+    ["{{P}}-integration-reviewer", "^api/|package\\.json|package-lock\\.json|\\.github/workflows/|^tools/|vercel\\.json|index\\.html"]
+  ],
+  "areas": ["backbone", "gate", "play", "universal"],
+  "primary_reviewer": "{{P}}-security-reviewer",
+  "skill_rows": [
+    "| `/security-pass [url]` | dependency audit, secret scan, off-origin calls, headers on a live URL, then the security reviewer | a verdict |",
+    "| `/deploy-web` | runbook for CI, preview and production deploys of the static page plus its functions (push to main = deploy) | confirmation the deploy landed |"
+  ],
+  "after_steps": [
+    ["lint", "Lint", "run npm run lint and report its result"],
+    ["test", "Test", "run npm test and report its result"],
+    ["smoke", "Smoke check", "run SMOKE_TIMING=off npm run smoke and report its result"],
+    ["commit", "Commit", "make one commit of the working tree in the repository's whole-sentence style"],
+    ["push", "Push to the remote", "git push to the upstream branch; a push to main deploys"]
+  ],
+  "settings_allow": [
+    "Bash(npm run lint)",
+    "Bash(npm test:*)",
+    "Bash(npm run smoke:*)",
+    "Bash(npm audit:*)",
+    "Bash(node --test:*)",
+    "Bash(npx playwright-core install:*)",
+    "Bash(curl -sSI:*)",
+    "Bash(gh run list:*)",
+    "Bash(gh run view:*)"
+  ],
+  "one_time_steps": [
+    "Vercel: create the project with framework Other, no build command and output directory src, and do not connect it to GitHub; note its org id and project id.",
+    "GitHub: set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID as repository secrets.",
+    "Git: the folder is a git repository with a main branch on GitHub, and .github/vercel-cli/package-lock.json is committed before the first push to main, which is the first deploy."
+  ]
+}

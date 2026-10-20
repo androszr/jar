@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Web"
+  short_description: "Runbook for shipping the jar web app — what CI checks, what a pull request preview does, what a push to main sets in mot"
+  default_prompt: "Use $deploy-web for this task."
