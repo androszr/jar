@@ -13,6 +13,7 @@ import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
 import { WeatherFeed } from './weatherfeed.js';
 import { buildShedArt, drawShed, tintBucket } from './shed.js';
 import { paintJar, labelLines, bodyRect, QUALITY } from './jar.js';
+import { JAR } from './jar-geometry.js';
 
 const opts = readOptions(location.search);
 const canvas = document.getElementById('view');
@@ -397,6 +398,13 @@ window.__jar = {
   toCanvas(sx, sy) {
     const p = sceneToCss(sx, sy);
     return { x: p.x * dpr, y: p.y * dpr };
+  },
+  // Canvas-pixel position of a body-share point (bx of the width, by of the
+  // body height) of jar `id`.
+  bodyPx(id, bx, by) {
+    const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));
+    const body = bodyRect();
+    return this.toCanvas(r.x + r.w * bx, r.y + r.h * ((body.y + by * body.h) / JAR.h));
   },
   foot(id) {
     const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));

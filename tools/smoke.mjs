@@ -125,6 +125,19 @@ const strip = (page, x, y, w, h) => page.evaluate(([sx, sy, sw, sh]) => {
   return sum / (d.length / 4);
 }, [x, y, w, h]);
 
+// The (2r+1)^2 canvas px around a body-share point of a jar, as [r, g, b] rows.
+const patch = (page, id, bx, by, r) => page.evaluate(([jar, x, y, rad]) => {
+  const c = document.getElementById('view');
+  const p = window.__jar.bodyPx(jar, x, y);
+  const d = c.getContext('2d').getImageData(Math.round(p.x) - rad, Math.round(p.y) - rad, rad * 2 + 1, rad * 2 + 1).data;
+  const rows = [];
+  for (let i = 0; i < d.length; i += 4) rows.push([d[i], d[i + 1], d[i + 2]]);
+  return rows;
+}, [id, bx, by, r]);
+const some = (rows, f) => rows.some(([r, g, b]) => f(r, g, b));
+const all = (rows, f) => rows.every(([r, g, b]) => f(r, g, b));
+const luma = (rows) => rows.reduce((s, [r, g, b]) => s + 0.2126 * r + 0.7152 * g + 0.0722 * b, 0) / rows.length;
+
 const medianFrameMs = (page) => page.evaluate(() => {
   const t = [];
   for (let i = 0; i < 9; i++) { window.__jar.pin(Date.now() + i * 60000); t.push(window.__jar.lastFrameMs); }
@@ -211,6 +224,46 @@ try {
   await labelIs(deep, 1, '21°');
   await settled(deep);
   await deep.screenshot({ path: join(OUT, 'warsaw-lifted.png') });
+  // ---- Warsaw floodlit nocturne: pinned night and morning, pixels sampled ----
+  const noct = await desk.newPage();
+  const noctSeen = watch(noct, origin);
+  await routeWeather(noct, 'clear');
+  await noct.goto(`${origin}/?jar=warsaw`);
+  await ready(noct);
+  await settled(noct);
+  const T_NIGHT = Date.UTC(2026, 5, 15, 23, 30); // 01:30 in Warsaw: deep night
+  const T_DAY = Date.UTC(2026, 5, 15, 8, 30); // 10:30 in Warsaw: morning, the sun on the left
+  await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
+  const gold = (r, g, b) => r >= 140 && r >= g + 20 && r >= b + 60;
+  const blue = (r, g, b) => b >= 180 && b >= r + 40;
+  const red = (r, g, b) => r >= 180 && r >= g + 60 && r >= b + 60;
+  const warm = (r, g, b) => r >= b + 30 && r >= 90;
+  const bluish = (r, g, b) => b >= r + 30 && b >= 90;
+  const rim = (r, g, b) => r >= 200 && g >= 140 && g <= 210 && b <= 130;
+  check(all(await patch(noct, 'warsaw', 0.5, 0.47, 2), gold), 'Palace glows gold at night');
+  check(some(await patch(noct, 'warsaw', 0.271, 0.19, 2), blue), 'Varso crown glows blue');
+  check(some(await patch(noct, 'warsaw', 0.271, 0.07, 4), red), 'red aviation light at the needle tip');
+  check(some(await patch(noct, 'warsaw', 0.5, 0.66, 3), warm), 'the Palace reflects in the river above the label');
+  check(some(await patch(noct, 'warsaw', 0.271, 0.66, 3), bluish), 'Varso reflects in the river');
+  check(some(await patch(noct, 'warsaw', 0.147, 0.56, 8), rim), 'the Mermaid stands rim-lit left of the label');
+  check(some(await patch(noct, 'warsaw', 0.112, 0.56, 6), rim), 'the Mermaid is outlined on her left too, against the tower behind her');
+  const edge = luma(await patch(noct, 'warsaw', 0.0425, 0.4, 1));
+  const oldSpot = luma(await patch(noct, 'warsaw', 0.15, 0.4, 1)); // where the left streak used to sit
+  check(edge > oldSpot + 10, 'the streaks hug the glass edges');
+  const hashA = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NIGHT);
+  const hashB = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NIGHT);
+  check(hashA === hashB, 'the nocturne draws the same pixels at the same moment');
+  await noct.screenshot({ path: join(OUT, 'warsaw-night.png') });
+  await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
+  check(all(await patch(noct, 'warsaw', 0.5, 0.47, 2), (r, g, b) => b >= r), 'Palace is a cool silhouette by day');
+  check(!some(await patch(noct, 'warsaw', 0.271, 0.07, 4), red), 'no aviation light by day');
+  const rimEdge = luma(await patch(noct, 'warsaw', 0.5 - 0.188 + 0.003, 0.57, 1));
+  const rimBody = luma(await patch(noct, 'warsaw', 0.5, 0.57, 1));
+  check(rimEdge - rimBody >= 40, 'rim light on the sun side in the morning');
+  check(all(await patch(noct, 'warsaw', 0.5, 0.66, 3), (r, g, b) => b >= r + 20), 'river shows blue above the label by day');
+  await noct.screenshot({ path: join(OUT, 'warsaw-morning.png') });
+  check(noctSeen.errors.length === 0, `no console errors on the nocturne page${noctSeen.errors.length ? `: ${noctSeen.errors.join(' | ')}` : ''}`);
+
   check(deepSeen.errors.length === 0 && seen.errors.length === 0, `no console errors on the desktop pages${[...seen.errors, ...deepSeen.errors].length ? `: ${[...seen.errors, ...deepSeen.errors].join(' | ')}` : ''}`);
   check(seen.off.length === 0 && deepSeen.off.length === 0, `no off-origin request${seen.off.length ? `: ${seen.off.join(', ')}` : ''}`);
   check(seen.all.some((u) => u.endsWith('/api/weather')), 'the page asked its own /api/weather');

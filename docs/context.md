@@ -80,6 +80,7 @@ registry (lint fails an unlisted folder). The contract is the comment at the
 top of `src/cities/index.js`. Warsaw (the downtown cluster — Varso, the
 Palace of Culture and Science, Warsaw Spire, Złota 44 — with the Mermaid in
 front) is the first, and one jar is one city.
+Warsaw's scene is the *Floodlit Nocturne* (plan `plans/2026-10-19-warsaw-floodlit-nocturne.md`): silhouettes rim-lit by day, floodlit by night, the river above the label plate, the Mermaid on the left bank; the glass streaks of every jar sit at the glass edges (`STREAKS` in `src/look/lantern/draw.js`).
 
 **Weather path.** browser -> `/api/weather` (own origin) -> `api/weather.js`
 -> Open-Meteo `api.open-meteo.com`, one request for every city, tidied to

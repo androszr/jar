@@ -1,5 +1,6 @@
-// Warsaw: the downtown cluster (Varso, the Palace of Culture and Science, Warsaw
-// Spire, Zlota 44) with the Mermaid on her plinth in front.
+// Warsaw: the downtown cluster as a floodlit poster (Varso, the Palace of Culture
+// and Science, Warsaw Spire, Zlota 44), the river above the label plate, and the
+// Mermaid on her plinth on the left bank.
 import { PLACES } from '../places.js';
 import { buildPlates, drawSkyline, drawRiver, drawMermaid } from './scene.js';
 

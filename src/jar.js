@@ -1,7 +1,7 @@
 // The glass jar: one shape for every city. Its inside is the light source: the
 // diorama is painted into a scratch canvas, measured for brightness, and the
 // jar spills that light onto the table and into the bloom.
-import { JAR } from './jar-geometry.js';
+import { JAR, LABEL } from './jar-geometry.js';
 import { localTimeText } from './placeclock.js';
 import { formatTemp } from './weather.js';
 import { drawJarSky, drawFog } from './skyweather.js';
@@ -73,7 +73,7 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
   glassHighlights(ctx, { x: body.x, y: body.y, w: body.w, h: body.h }, JAR.neck);
   const lw = JAR.w * (1 - 2 * JAR.neck) + 12;
   lid(ctx, { x: (JAR.w - lw) / 2, y: 0, w: lw, h: JAR.lid }, city.lid);
-  label(ctx, { x: JAR.w * 0.2, y: JAR.h - 104, w: JAR.w * 0.6, h: 80 }, labelLines(city, weather, nowMs));
+  label(ctx, LABEL, labelLines(city, weather, nowMs));
   ctx.restore();
 
   // feed the bloom source (the caller has set its transform to match ctx's)

@@ -48,6 +48,9 @@ export function glassBody(ctx, rect, neck = 0.22) {
   ctx.closePath();
 }
 
+// The glass streaks: x and w are shares of the body width, a the peak alpha.
+export const STREAKS = [{ x: 0.02, w: 0.045, a: 0.26 }, { x: 0.945, w: 0.03, a: 0.16 }];
+
 export function glassHighlights(ctx, rect, neck = 0.22) {
   const { x, y, w, h } = rect;
   ctx.save();
@@ -61,7 +64,7 @@ export function glassHighlights(ctx, rect, neck = 0.22) {
   ctx.stroke();
   glassBody(ctx, rect, neck);
   ctx.clip();
-  // two soft vertical streaks
+  // two soft vertical streaks, at the glass edges so no city's skyline sits under one
   const streak = (sx, sw, a) => {
     const g = ctx.createLinearGradient(sx, 0, sx + sw, 0);
     g.addColorStop(0, css(PALETTE.glass, 0));
@@ -70,8 +73,7 @@ export function glassHighlights(ctx, rect, neck = 0.22) {
     ctx.fillStyle = g;
     ctx.fillRect(sx, y + h * 0.16, sw, h * 0.62);
   };
-  streak(x + w * 0.1, w * 0.1, 0.34);
-  streak(x + w * 0.8, w * 0.05, 0.2);
+  for (const s of STREAKS) streak(x + w * s.x, w * s.w, s.a);
   // a rim ellipse at the neck
   ctx.strokeStyle = css(PALETTE.glass, 0.4);
   ctx.beginPath();

@@ -55,3 +55,11 @@ test('a city label ink names a colour the look has', async () => {
   const { CITIES } = await import('../src/cities/index.js');
   for (const c of CITIES) for (const name of Object.values(c.label.inks)) assert.ok(name in look.PALETTE, `${c.id}: ${name}`);
 });
+
+test('the glass streaks hug the glass edges', () => {
+  assert.equal(look.STREAKS.length, 2);
+  const [left, right] = look.STREAKS;
+  assert.ok(left.x + left.w <= 0.07);
+  assert.ok(right.x >= 0.93);
+  for (const s of look.STREAKS) assert.ok(s.a > 0 && s.a <= 0.5);
+});
