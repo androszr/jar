@@ -3,8 +3,9 @@
 // (portrait -> a row of five below the jar, otherwise a column to its right).
 
 export const CARD = {
-  column: { w: 170, h: 330 },
-  row: { w: 340, h: 110 },
+  column: { w: 170, h: 360 },
+  row: { w: 340, h: 134 },
+  strip: { column: 30, row: 24 },
   gap: 14,
   drop: 36,
 };

@@ -84,8 +84,8 @@ Warsaw's scene is the *Floodlit Nocturne* (plan `plans/2026-10-19-warsaw-floodli
 
 **Weather path.** browser -> `/api/weather` (own origin) -> `api/weather.js`
 -> Open-Meteo `api.open-meteo.com`, one request for every city, tidied to
-`{ v: 1, fetchedAt, ok, cities: { id: { temperature, code, cloudCover, isDay, windSpeed, windDir, daily: [{ date, code, high, low }] } } }`
-(`daily` is five days in the city's own zone and feeds the forecast card shown when a jar is lifted;
+`{ v: 1, fetchedAt, ok, cities: { id: { temperature, code, cloudCover, isDay, windSpeed, windDir, daily: [{ date, code, high, low, sunrise, sunset }] } } }`
+(`daily` is five days in the city's own zone and feeds the forecast card shown when a jar is lifted, which marks today's cell and prints today's sunrise and sunset as `HH:MM` in the city's zone (`sunrise`/`sunset` are `null` and the strip is omitted when the vendor leaves them out);
 `windSpeed` km/h and `windDir` degrees the wind comes from are `null` when the vendor leaves them out,
 and lean the rain and snow through `windSlant`). Storms flash on `flashIntensity`'s code-keyed schedule
 (`src/weather.js`, softened under reduced motion). `WeatherFeed` holds a session-only `fogClearedAt` map,

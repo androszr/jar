@@ -7,7 +7,7 @@
 // degraded page (weather failing), and a phone held upright and sideways and
 // a tablet, and the five-day forecast card of the lifted jar (beside the jar on
 // a laptop, below it on a phone, absent on the table, dashes without a daily
-// block). Writes screenshots to test-output/.
+// block), with today marked and the sunrise and sunset. Writes screenshots to test-output/.
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
@@ -62,6 +62,7 @@ const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (r
   if (mode === 'clear') payload = { ...dated, current: { ...fixture.current, temperature_2m: 21.4, weather_code: 0, cloud_cover: 5 } };
   if (mode === 'cloudwind') payload = cloudyWind;
   if (mode === 'cloudcalm') payload = { ...cloudyWind, current: { ...cloudyWind.current, wind_speed_10m: 0 } };
+  if (mode === 'nosun') payload = { ...dated, daily: { ...dated.daily, sunrise: undefined, sunset: undefined } };
   if (mode === 'nodaily') payload = { ...dated, daily: undefined };
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES)) });
 });
@@ -202,6 +203,11 @@ try {
   const want = days.map((d, i) => [dayName(d), ...rows[i]]).filter((_, i) => days[i] >= todayThere);
   while (want.length < 5) want.push(['—', '—°', '—°', 'cloud']);
   check(!!fc && JSON.stringify(fc.cells.map((k) => [k.day, k.high, k.low, k.kind])) === JSON.stringify(want), 'forecast card shows five fixture days when lifted');
+  check(!!fc && fc.cells[0].today === days.includes(todayThere) && fc.cells.slice(1).every((k) => !k.today), 'forecast card marks today and only today');
+  const sunRow = Math.max(0, days.findIndex((d) => d >= todayThere));
+  const hm = (s) => s.slice(11, 16);
+  const wantSun = { sunrise: hm(fixture.daily.sunrise[sunRow]), sunset: hm(fixture.daily.sunset[sunRow]) };
+  check(!!fc && !!fc.sun && /^\d\d:\d\d$/.test(fc.sun.sunrise) && /^\d\d:\d\d$/.test(fc.sun.sunset) && JSON.stringify(fc.sun) === JSON.stringify(wantSun), 'forecast card shows sunrise and sunset');
   const dfoot = await page.evaluate(() => window.__jar.foot('warsaw'));
   const dcanvas = await page.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!fc && fc.rect.x > dfoot.x && inside(fc.rect, dcanvas[0], dcanvas[1]), 'desktop forecast card sits beside the jar and fits');
@@ -299,8 +305,23 @@ try {
   await viewIs(np, 'jar');
   await settled(np);
   const nf = await np.evaluate(() => window.__jar.forecast);
-  check(!!nf && DASHES(nf.cells) && nSeen.errors.length === 0, 'forecast card shows dashes without a daily block');
+  check(!!nf && DASHES(nf.cells) && nf.sun === null && nSeen.errors.length === 0, 'forecast card shows dashes without a daily block');
   await nod.close();
+
+  // ---- a daily block without sun times: five days, no strip -------------------
+  const nos = await browser.newContext({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 });
+  const xp = await nos.newPage();
+  const xSeen = watch(xp, origin);
+  await routeWeather(xp, 'nosun');
+  await xp.goto(`${origin}/`);
+  await ready(xp);
+  await labelIs(xp, 1, '12°');
+  await xp.evaluate(() => window.__jar.lift('warsaw'));
+  await viewIs(xp, 'jar');
+  await settled(xp);
+  const xf = await xp.evaluate(() => window.__jar.forecast);
+  check(!!xf && xf.sun === null && xf.cells.length === 5 && xf.cells[0].high !== '—°' && xSeen.errors.length === 0, 'forecast card omits the sun strip without sun times');
+  await nos.close();
 
   // ---- phone held upright ---------------------------------------------------
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
@@ -337,6 +358,7 @@ try {
   const pfoot = await pp.evaluate(() => window.__jar.foot('warsaw'));
   const pcanvas = await pp.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!pf && pf.rect.y > pfoot.y && inside(pf.rect, pcanvas[0], pcanvas[1]), 'phone forecast card sits below the jar and fits');
+  check(!!pf && pf.cells.slice(1).every((k) => !k.today) && pf.sun !== null && pf.sun.sunrise === wantSun.sunrise, 'phone forecast card marks today and shows the sun strip');
   const box = await pp.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return { w: r.width, h: r.height, vis: !document.getElementById('back').hidden }; });
   check(box.vis && box.w >= 44 && box.h >= 44, `phone targets are 44px (back ${box.w}x${box.h})`);
   await pp.touchscreen.tap(30, 30);

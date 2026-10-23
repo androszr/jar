@@ -90,11 +90,13 @@ test('stop silences tick', async () => {
 });
 
 test('daily rows reach get(id).daily, default to [], and a change bumps revision', async () => {
-  const daily = (high) => [{ date: '2026-10-18', code: 61, high, low: 5 }];
+  const daily = (high) => [{ date: '2026-10-18', code: 61, high, low: 5, sunrise: '07:05' }];
   const withDaily = (high) => ({ v: 1, cities: { warsaw: { temperature: 1, code: 61, cloudCover: 1, isDay: 1, daily: daily(high) } } });
   const f = new WeatherFeed({ fetchImpl: okFetch(withDaily(14)) });
   await f.start();
   assert.equal(f.get('warsaw').daily[0].kind, 'rain');
+  assert.equal(f.get('warsaw').daily[0].sunrise, '07:05');
+  assert.equal(f.get('warsaw').daily[0].sunset, null);
   const rev = f.revision;
   f.applyResponse(withDaily(15));
   assert.ok(f.revision > rev, 'only daily changed');

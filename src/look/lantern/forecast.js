@@ -3,6 +3,7 @@
 // Colours only from PALETTE, text only through text().
 import { PALETTE, css } from './palette.js';
 import { text } from './draw.js';
+import { CARD } from '../../forecast.js';
 
 function cloudShape(ctx, x, y, s, colour) {
   ctx.fillStyle = css(colour, 0.95);
@@ -83,13 +84,17 @@ export function weatherIcon(ctx, kind, x, y, size) {
 }
 
 // The card on `rect`: `cells` is five { day, kind, high, low }; `layout` is
-// 'column' (five rows) or 'row' (five columns).
-export function forecastCard(ctx, rect, cells, layout) {
-  const { x, y, w, h } = rect;
+// 'column' (five rows) or 'row' (five columns). A cell with `today` gets a
+// brass band and a brighter day name; `sun` ({ sunrise, sunset } or null) adds
+// one strip along the bottom edge.
+export function forecastCard(ctx, rect, cells, layout, sun = null) {
+  const { x, y, w } = rect;
+  const strip = sun ? CARD.strip[layout === 'row' ? 'row' : 'column'] : 0;
+  const h = rect.h - strip;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 5);
+  ctx.roundRect(x, y, w, rect.h, 5);
   ctx.fill();
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = css(PALETTE.brass, 0.85);
@@ -99,7 +104,11 @@ export function forecastCard(ctx, rect, cells, layout) {
     const cw = w / n;
     cells.forEach((c, i) => {
       const cx = x + cw * (i + 0.5);
-      text(ctx, c.day, cx, y + h * 0.14, h * 0.13, PALETTE.labelDim);
+      if (c.today) {
+        ctx.fillStyle = css(PALETTE.brass, 0.12);
+        ctx.fillRect(x + cw * i, y, cw, h);
+      }
+      text(ctx, c.day, cx, y + h * 0.14, h * 0.13, c.today ? PALETTE.labelInk : PALETTE.labelDim);
       weatherIcon(ctx, c.kind, cx, y + h * 0.43, Math.min(cw * 0.7, h * 0.34));
       text(ctx, c.high, cx, y + h * 0.69, h * 0.15, PALETTE.labelInk);
       text(ctx, c.low, cx, y + h * 0.88, h * 0.13, PALETTE.labelDim);
@@ -108,11 +117,24 @@ export function forecastCard(ctx, rect, cells, layout) {
     const rh = h / n;
     cells.forEach((c, i) => {
       const cy = y + rh * (i + 0.5);
-      text(ctx, c.day, x + w * 0.1, cy, rh * 0.26, PALETTE.labelDim, 'left');
+      if (c.today) {
+        ctx.fillStyle = css(PALETTE.brass, 0.12);
+        ctx.fillRect(x, y + rh * i, w, rh);
+      }
+      text(ctx, c.day, x + w * 0.1, cy, rh * 0.26, c.today ? PALETTE.labelInk : PALETTE.labelDim, 'left');
       weatherIcon(ctx, c.kind, x + w * 0.45, cy, rh * 0.44);
       text(ctx, c.high, x + w * 0.73, cy, rh * 0.26, PALETTE.labelInk, 'right');
       text(ctx, c.low, x + w * 0.95, cy, rh * 0.22, PALETTE.labelDim, 'right');
     });
+  }
+  if (sun) {
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = css(PALETTE.brass, 0.35);
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.08, y + h);
+    ctx.lineTo(x + w * 0.92, y + h);
+    ctx.stroke();
+    text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + strip * 0.5, strip * 0.48, PALETTE.labelDim);
   }
   ctx.restore();
 }

@@ -5,7 +5,7 @@ lantern, and inside it a tiny Warsaw: the downtown cluster (Varso, the Palace of
 Culture and Science, Warsaw Spire, Złota 44) with the Mermaid in front, lit
 for the real time of day in Warsaw right now, under the weather Warsaw is
 really having, with a small label on the glass giving the city, the
-temperature and the local time. Click or tap the jar and it lifts closer, and a small card shows the next five days. Escape or the
+temperature and the local time. Click or tap the jar and it lifts closer, and a small card shows the next five days, with today marked and the sunrise and sunset. Escape or the
 back button sets it down. The shed's window follows your own clock.
 
 One static page, Canvas 2D and ES modules, no build step, no runtime

@@ -15,20 +15,26 @@ export function openMeteoUrl(places) {
   // Each location's own zone, so daily.time is that city's local date. (current.time
   // is therefore local too; it is not read.)
   const zones = places.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
+  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
 }
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-// The vendor's daily block (parallel arrays) -> at most five { date, code, high, low }.
+// The vendor's daily block (parallel arrays) -> at most five { date, code, high, low, sunrise, sunset }.
 function dailyRows(d) {
   if (!d || typeof d !== 'object' || !Array.isArray(d.time)) return [];
   const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
+  // 'HH:MM' from the vendor's local ISO string ("2026-10-18T07:05"), else null.
+  const hhmm = (a, i) => {
+    const s = Array.isArray(a) ? a[i] : null;
+    const m = typeof s === 'string' && /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(s);
+    return m ? m[1] : null;
+  };
   const rows = [];
   for (let i = 0; i < d.time.length && rows.length < FORECAST_DAYS; i++) {
     const date = d.time[i];
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    rows.push({ date, code: at(d.weather_code, i), high: at(d.temperature_2m_max, i), low: at(d.temperature_2m_min, i) });
+    rows.push({ date, code: at(d.weather_code, i), high: at(d.temperature_2m_max, i), low: at(d.temperature_2m_min, i), sunrise: hhmm(d.sunrise, i), sunset: hhmm(d.sunset, i) });
   }
   return rows;
 }

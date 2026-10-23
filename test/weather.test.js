@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, sunTimesFor } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -79,7 +79,7 @@ test('dayName works from the date string alone', () => {
 });
 
 test('forecastCells: EMPTY is five dash cells, short lists pad, -0.4 prints 0°', () => {
-  const dash = { day: '—', kind: 'cloud', high: '—°', low: '—°' };
+  const dash = { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false };
   assert.deepEqual(forecastCells(EMPTY), [dash, dash, dash, dash, dash]);
   assert.deepEqual(forecastCells(null), [dash, dash, dash, dash, dash]);
   const w = fromEntry({ temperature: 1, code: 0, daily: [
@@ -89,7 +89,7 @@ test('forecastCells: EMPTY is five dash cells, short lists pad, -0.4 prints 0°'
   ] });
   const cells = forecastCells(w);
   assert.equal(cells.length, 5);
-  assert.deepEqual(cells[0], { day: 'SUN', kind: 'rain', high: '14°', low: '0°' });
+  assert.deepEqual(cells[0], { day: 'SUN', kind: 'rain', high: '14°', low: '0°', today: false });
   assert.equal(cells[1].kind, 'snow');
   assert.equal(cells[2].kind, 'storm');
   assert.deepEqual(cells[3], dash);
@@ -98,7 +98,7 @@ test('forecastCells: EMPTY is five dash cells, short lists pad, -0.4 prints 0°'
 test('normaliseDaily and fromEntry tolerate junk; EMPTY.daily is frozen and empty', () => {
   assert.deepEqual(normaliseDaily('junk'), []);
   assert.deepEqual(normaliseDaily([null, { date: 'x' }, { date: '2026-10-18', code: 0, high: '3', low: 1 }]),
-    [{ date: '2026-10-18', code: 0, high: null, low: 1, kind: 'clear' }]);
+    [{ date: '2026-10-18', code: 0, high: null, low: 1, sunrise: null, sunset: null, kind: 'clear' }]);
   assert.deepEqual(fromEntry({ temperature: 1, daily: 'junk' }).daily, []);
   assert.deepEqual(fromEntry({ temperature: 1 }).daily, []);
   assert.equal(Object.isFrozen(EMPTY.daily), true);
@@ -125,4 +125,39 @@ test('fromEntry carries wind and defaults it to null', () => {
   assert.deepEqual([w.windSpeed, w.windDir], [12, 270]);
   const n = fromEntry({ temperature: 1, windSpeed: '12' });
   assert.deepEqual([n.windSpeed, n.windDir], [null, null]);
+});
+
+const sunW = () => fromEntry({ temperature: 1, code: 0, daily: [
+  { date: '2026-10-18', code: 61, high: 14, low: 8, sunrise: '07:05', sunset: '17:32' },
+  { date: '2026-10-19', code: 3, high: 12, low: 5, sunrise: '07:07', sunset: '17:30' },
+  { date: '2026-10-20', code: 0, high: 9, low: 2, sunrise: '07:09', sunset: null },
+] });
+
+test('forecastCells marks only the first cell, only when it is today', () => {
+  const w = sunW();
+  assert.deepEqual(forecastCells(w, '2026-10-18').map((c) => c.today), [true, false, false, false, false]);
+  const c = forecastCells(w, '2026-10-19');
+  assert.equal(c[0].today, true);
+  assert.equal(c[0].day, 'MON');
+  assert.ok(forecastCells(w).every((k) => !k.today));
+  assert.ok(forecastCells(EMPTY, '2026-10-18').every((k) => !k.today));
+  assert.ok(forecastCells(w, '2026-10-17').every((k) => !k.today));
+});
+
+test('sunTimesFor picks today\'s row and needs both times', () => {
+  const w = sunW();
+  assert.deepEqual(sunTimesFor(w, '2026-10-18'), { sunrise: '07:05', sunset: '17:32' });
+  assert.deepEqual(sunTimesFor(w, '2026-10-19'), { sunrise: '07:07', sunset: '17:30' });
+  assert.equal(sunTimesFor(w, '2026-10-20'), null);
+  assert.equal(sunTimesFor(EMPTY, '2026-10-18'), null);
+  assert.equal(sunTimesFor(null), null);
+});
+
+test('normaliseDaily keeps HH:MM sun times and nulls junk', () => {
+  const row = (v) => normaliseDaily([{ date: '2026-10-18', code: 0, high: 1, low: 0, sunrise: v, sunset: v }])[0];
+  assert.equal(row('07:05').sunrise, '07:05');
+  for (const v of ['7:05', '2026-10-18T07:05', 705, undefined]) {
+    assert.equal(row(v).sunrise, null, String(v));
+    assert.equal(row(v).sunset, null, String(v));
+  }
 });

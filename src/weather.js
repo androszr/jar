@@ -58,7 +58,8 @@ export function normaliseDaily(list) {
     if (rows.length >= 5) break;
     if (!r || typeof r !== 'object' || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) continue;
     const code = num(r.code);
-    rows.push({ date: r.date, code, high: num(r.high), low: num(r.low), kind: weatherKind(code) });
+    const hm = (v) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
+    rows.push({ date: r.date, code, high: num(r.high), low: num(r.low), sunrise: hm(r.sunrise), sunset: hm(r.sunset), kind: weatherKind(code) });
   }
   return rows;
 }
@@ -76,15 +77,28 @@ export function dayName(date) {
 // Exactly five { day, kind, high, low } cells, dashes where missing. `today`
 // (the city's local "YYYY-MM-DD" at the drawn moment, optional) drops rows
 // that are already past, so a stale answer never opens on yesterday.
-export function forecastCells(weather, today = null) {
+export function upcomingRows(weather, today = null) {
   let rows = weather && Array.isArray(weather.daily) ? weather.daily : [];
   if (typeof today === 'string') rows = rows.filter((r) => r.date >= today);
+  return rows;
+}
+
+// Today's { sunrise, sunset } ('HH:MM') off the first surviving row, or null
+// unless both are present.
+export function sunTimesFor(weather, today = null) {
+  const r = upcomingRows(weather, today)[0];
+  if (!r || typeof r.sunrise !== 'string' || typeof r.sunset !== 'string') return null;
+  return { sunrise: r.sunrise, sunset: r.sunset };
+}
+
+export function forecastCells(weather, today = null) {
+  const rows = upcomingRows(weather, today);
   const cells = [];
   for (let i = 0; i < 5; i++) {
     const r = rows[i];
     cells.push(r
-      ? { day: dayName(r.date), kind: r.kind || weatherKind(r.code), high: formatTemp(r.high), low: formatTemp(r.low) }
-      : { day: '—', kind: 'cloud', high: '—°', low: '—°' });
+      ? { day: dayName(r.date), kind: r.kind || weatherKind(r.code), high: formatTemp(r.high), low: formatTemp(r.low), today: typeof today === 'string' && i === 0 && r.date === today }
+      : { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false });
   }
   return cells;
 }

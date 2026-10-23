@@ -17,7 +17,7 @@ test('openMeteoUrl builds one request for one place', () => {
   assert.equal(u.searchParams.get('longitude'), '21.01');
   assert.equal(u.searchParams.get('current'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m');
   assert.equal(u.searchParams.get('timezone'), 'Europe/Warsaw');
-  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min');
+  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset');
   assert.equal(u.searchParams.get('forecast_days'), '5');
 });
 
@@ -130,7 +130,7 @@ const cur = { temperature_2m: 1, weather_code: 0, cloud_cover: 0, is_day: 0 };
 test('normalise: five daily rows from the fixture', () => {
   const r = normalise(fixture('weather.json'), [warsaw], NOW);
   assert.equal(r.cities.warsaw.daily.length, 5);
-  assert.deepEqual(r.cities.warsaw.daily[0], { date: '2026-10-18', code: 61, high: 14.2, low: 8.7 });
+  assert.deepEqual(r.cities.warsaw.daily[0], { date: '2026-10-18', code: 61, high: 14.2, low: 8.7, sunrise: '07:05', sunset: '17:32' });
   assert.equal(r.cities.warsaw.daily[3].low, -2.4);
 });
 
@@ -150,8 +150,8 @@ test('normalise: arrays of unequal length give nulls, not a crash', () => {
   const daily = { time: ['2026-10-18', '2026-10-19'], weather_code: [1], temperature_2m_max: [5, 6], temperature_2m_min: null };
   const rows = normalise({ current: cur, daily }, [warsaw], NOW).cities.warsaw.daily;
   assert.deepEqual(rows, [
-    { date: '2026-10-18', code: 1, high: 5, low: null },
-    { date: '2026-10-19', code: null, high: 6, low: null },
+    { date: '2026-10-18', code: 1, high: 5, low: null, sunrise: null, sunset: null },
+    { date: '2026-10-19', code: null, high: 6, low: null, sunrise: null, sunset: null },
   ]);
 });
 
@@ -196,4 +196,28 @@ test('normalise: a string wind direction is null', () => {
 test('normalise: a non-finite wind speed is null', () => {
   const r = normalise({ current: { temperature_2m: 1, wind_speed_10m: Infinity } }, [warsaw], NOW);
   assert.equal(r.cities.warsaw.windSpeed, null);
+});
+
+test('openMeteoUrl asks for sunrise and sunset in the one daily list', () => {
+  const u = new URL(openMeteoUrl([warsaw]));
+  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset');
+  assert.equal(openMeteoUrl([warsaw]).split('sunrise,sunset').length - 1, 1);
+});
+
+test('normalise: sunrise and sunset come through as HH:MM', () => {
+  const r = normalise(fixture('weather.json'), [warsaw], NOW).cities.warsaw.daily;
+  assert.equal(r[0].sunrise, '07:05');
+  assert.equal(r[4].sunset, '17:24');
+  const p = normalise(fixture('weather-two.json'), two, NOW).cities;
+  assert.equal(p.paris.daily[0].sunrise, '08:12');
+  assert.equal(p.warsaw.daily[0].sunrise, '07:05');
+});
+
+test('normalise: a missing, short or malformed sunrise array gives null', () => {
+  for (const sunrise of [undefined, [], ['x'], [42], ['2026-10-18'], [null], 'x']) {
+    const daily = { time: ['2026-10-18'], weather_code: [1], temperature_2m_max: [5], temperature_2m_min: [1], sunrise, sunset: sunrise };
+    const rows = normalise({ current: cur, daily }, [warsaw], NOW).cities.warsaw.daily;
+    assert.equal(rows[0].sunrise, null, JSON.stringify(sunrise));
+    assert.equal(rows[0].sunset, null, JSON.stringify(sunrise));
+  }
 });
