@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { openMeteoUrl, normalise, fetchWeather, resetMemo } from '../api/weather.js';
+import handler, { openMeteoUrl, marineUrl, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
 import { PLACES } from '../src/cities/places.js';
 import { readFileSync } from 'node:fs';
 
@@ -8,6 +8,8 @@ const fixture = (n) => JSON.parse(readFileSync(new URL(`./fixtures/${n}`, import
 const warsaw = PLACES[0];
 const two = [warsaw, { id: 'paris', title: 'Paris', lat: 48.85, lon: 2.35, zone: 'Europe/Paris' }];
 const NOW = Date.UTC(2026, 9, 18, 12);
+const nazare = PLACES.find((p) => p.id === 'nazare');
+const bothPlaces = [warsaw, nazare];
 
 test('openMeteoUrl builds one request for one place', () => {
   const u = new URL(openMeteoUrl([warsaw]));
@@ -34,7 +36,7 @@ test('normalise: the one-city object body', () => {
   assert.equal(r.v, 1);
   assert.equal(r.ok, true);
   assert.equal(r.fetchedAt, new Date(NOW).toISOString());
-  assert.deepEqual({ ...r.cities.warsaw, daily: undefined }, { temperature: 12.3, code: 61, cloudCover: 80, isDay: 1, windSpeed: 18.4, windDir: 250, daily: undefined });
+  assert.deepEqual({ ...r.cities.warsaw, daily: undefined }, { temperature: 12.3, code: 61, cloudCover: 80, isDay: 1, windSpeed: 18.4, windDir: 250, daily: undefined, sea: null });
   assert.equal(r.cities.warsaw.daily.length, 5);
 });
 
@@ -55,12 +57,12 @@ test('normalise: a body without current gives no city and ok false', () => {
 
 test('normalise: missing fields are null, non-numeric fields are null', () => {
   const r = normalise({ current: { temperature_2m: '12', weather_code: 3, cloud_cover: NaN } }, [warsaw], NOW);
-  assert.deepEqual(r.cities.warsaw, { temperature: null, code: 3, cloudCover: null, isDay: null, windSpeed: null, windDir: null, daily: [] });
+  assert.deepEqual(r.cities.warsaw, { temperature: null, code: 3, cloudCover: null, isDay: null, windSpeed: null, windDir: null, daily: [], sea: null });
 });
 
 test('normalise: extra keys are ignored', () => {
   const r = normalise({ current: { temperature_2m: 1, weather_code: 0, cloud_cover: 0, is_day: 0, wind: 9 }, hourly: {} }, [warsaw], NOW);
-  assert.deepEqual(Object.keys(r.cities.warsaw).sort(), ['cloudCover', 'code', 'daily', 'isDay', 'temperature', 'windDir', 'windSpeed']);
+  assert.deepEqual(Object.keys(r.cities.warsaw).sort(), ['cloudCover', 'code', 'daily', 'isDay', 'sea', 'temperature', 'windDir', 'windSpeed']);
 });
 
 test('a partly short array still answers the cities it has', () => {
@@ -100,7 +102,7 @@ const fakeRes = () => {
 test('two handler calls inside the window make one vendor call; after it, a second', async () => {
   resetMemo();
   let n = 0;
-  const fetchImpl = async () => { n += 1; return { ok: true, json: async () => fixture('weather.json') }; };
+  const fetchImpl = async (url) => { if (!url.includes('marine-api')) n += 1; return { ok: true, json: async () => fixture('weather.json') }; };
   const a = fakeRes();
   const b = fakeRes();
   await handler({ method: 'GET' }, a, { fetchImpl, nowMs: NOW });
@@ -117,7 +119,7 @@ test('two handler calls inside the window make one vendor call; after it, a seco
 test('a failed vendor call is never memoised', async () => {
   resetMemo();
   let n = 0;
-  const fetchImpl = async () => { n += 1; throw new Error('down'); };
+  const fetchImpl = async (url) => { if (!url.includes('marine-api')) n += 1; throw new Error('down'); };
   const r = fakeRes();
   await handler({ method: 'GET' }, r, { fetchImpl, nowMs: NOW });
   await handler({ method: 'GET' }, fakeRes(), { fetchImpl, nowMs: NOW + 1000 });
@@ -220,4 +222,98 @@ test('normalise: a missing, short or malformed sunrise array gives null', () => 
     assert.equal(rows[0].sunrise, null, JSON.stringify(sunrise));
     assert.equal(rows[0].sunset, null, JSON.stringify(sunrise));
   }
+});
+
+test('marineUrl: host, path, cell_selection=sea and the sea coordinates', () => {
+  const u = new URL(marineUrl([nazare]));
+  assert.equal(u.host, 'marine-api.open-meteo.com');
+  assert.equal(u.pathname, '/v1/marine');
+  assert.equal(u.searchParams.get('cell_selection'), 'sea');
+  assert.equal(u.searchParams.get('latitude'), '39.62');
+  assert.equal(u.searchParams.get('longitude'), '-9.12');
+  assert.equal(u.searchParams.get('current'), 'wave_height,wave_period,wave_direction');
+  const second = { id: 'b', title: 'B', lat: 1, lon: 2, zone: 'UTC', sea: { lat: 3, lon: 4 } };
+  const u2 = new URL(marineUrl([warsaw, nazare, second]));
+  assert.equal(u2.searchParams.get('latitude'), '39.62,3');
+  assert.equal(u2.searchParams.get('longitude'), '-9.12,4');
+});
+
+test('seaPlaces skips places without a sea point', () => {
+  assert.deepEqual(seaPlaces(bothPlaces).map((p) => p.id), ['nazare']);
+  assert.deepEqual(seaPlaces([warsaw, { ...nazare, sea: { lat: 'x', lon: 1 } }]), []);
+});
+
+test('normaliseMarine reads the fixture, junk and a short array', () => {
+  assert.deepEqual(normaliseMarine(fixture('marine.json'), [nazare]), { nazare: { waveHeight: 4.2, wavePeriod: 13.5, waveDir: 300 } });
+  assert.deepEqual(normaliseMarine(null, [nazare]), { nazare: null });
+  assert.deepEqual(normaliseMarine('junk', [nazare]), { nazare: null });
+  const second = { id: 'b', sea: { lat: 3, lon: 4 } };
+  assert.deepEqual(normaliseMarine([fixture('marine.json')], [nazare, second]).b, null);
+  assert.deepEqual(normaliseMarine({ current: { wave_height: 'x' } }, [nazare]).nazare, { waveHeight: null, wavePeriod: null, waveDir: null });
+});
+
+test('normalise with a marine body puts sea on the matching id and null on the rest', () => {
+  const r = normalise(fixture('weather-two-cities.json'), bothPlaces, NOW, fixture('marine.json'));
+  assert.equal(r.cities.nazare.sea.waveHeight, 4.2);
+  assert.equal(r.cities.warsaw.sea, null);
+  assert.equal(r.cities.nazare.temperature, 17.6);
+  assert.equal(normalise(fixture('weather-two-cities.json'), bothPlaces, NOW).cities.nazare.sea, null);
+});
+
+test('fetchWeather without a sea place makes one call; with one, two calls to two hosts', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => { calls.push(url); return { ok: true, json: async () => fixture('weather-two.json') }; };
+  await fetchWeather(two, { fetchImpl, nowMs: NOW });
+  assert.equal(calls.length, 1);
+  const calls2 = [];
+  const f2 = async (url) => {
+    calls2.push(url);
+    const marine = new URL(url).host === 'marine-api.open-meteo.com';
+    return { ok: true, json: async () => fixture(marine ? 'marine.json' : 'weather-two-cities.json') };
+  };
+  const r = await fetchWeather(bothPlaces, { fetchImpl: f2, nowMs: NOW });
+  assert.equal(calls2.length, 2);
+  assert.deepEqual(calls2.map((u) => new URL(u).host).sort(), ['api.open-meteo.com', 'marine-api.open-meteo.com']);
+  assert.equal(r.cities.nazare.sea.waveHeight, 4.2);
+});
+
+test('a failing marine call still answers ok with sea: null', async () => {
+  for (const marineAnswer of [async () => { throw new Error('sea down'); }, async () => ({ ok: false, status: 500 }), async () => ({ ok: true, json: async () => { throw new SyntaxError('x'); } })]) {
+    const fetchImpl = async (url) => (new URL(url).host === 'marine-api.open-meteo.com'
+      ? marineAnswer()
+      : { ok: true, json: async () => fixture('weather-two-cities.json') });
+    const r = await fetchWeather(bothPlaces, { fetchImpl, nowMs: NOW });
+    assert.equal(r.ok, true);
+    assert.equal(r.cities.nazare.sea, null);
+    assert.equal(r.cities.nazare.temperature, 17.6);
+  }
+});
+
+test('a failing weather call is the empty shape whatever the marine call says', async () => {
+  const fetchImpl = async (url) => {
+    if (new URL(url).host === 'marine-api.open-meteo.com') return { ok: true, json: async () => fixture('marine.json') };
+    throw new Error('down');
+  };
+  const r = await fetchWeather([nazare], { fetchImpl, nowMs: NOW });
+  assert.deepEqual([r.v, r.ok, r.cities], [1, false, {}]);
+});
+
+test('a marine call that waits out its timeout never fails the weather body', async () => {
+  const fetchImpl = (url, init) => {
+    if (new URL(url).host === 'marine-api.open-meteo.com') {
+      // answers only once the weather call's own timeout has fired
+      return new Promise((ok) => setTimeout(() => ok({ ok: false, status: 504 }), 4300));
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => new Promise((res, rej) => {
+        const done = () => rej(new Error('aborted'));
+        if (init.signal.aborted) done(); else init.signal.addEventListener('abort', done);
+        setTimeout(() => res(fixture('weather-two-cities.json')), 0);
+      }),
+    });
+  };
+  const r = await fetchWeather(bothPlaces, { fetchImpl, nowMs: NOW });
+  assert.equal(r.ok, true);
+  assert.equal(r.cities.nazare.sea, null);
 });

@@ -161,3 +161,11 @@ test('normaliseDaily keeps HH:MM sun times and nulls junk', () => {
     assert.equal(row(v).sunset, null, String(v));
   }
 });
+
+test('the sea reading: EMPTY has none, fromEntry folds it and tolerates junk', () => {
+  assert.equal(EMPTY.sea, null);
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null });
+  assert.equal(fromEntry({}).sea, null);
+  assert.equal(fromEntry({ sea: 'junk' }).sea, null);
+  assert.equal(fromEntry({ sea: { waveHeight: 'x' } }).sea.waveHeight, null);
+});

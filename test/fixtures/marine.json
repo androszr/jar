@@ -1,0 +1,11 @@
+{
+  "latitude": 39.62,
+  "longitude": -9.12,
+  "current": {
+    "time": "2026-10-18T11:00",
+    "interval": 3600,
+    "wave_height": 4.2,
+    "wave_period": 13.5,
+    "wave_direction": 300
+  }
+}

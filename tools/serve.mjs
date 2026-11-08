@@ -102,11 +102,24 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   // Dev only: WEATHER_FIXTURE=<path> answers the vendor call from that file, so a
   // storm or a fog can be seen on demand. Read once here from this process's
   // own environment; no request ever reaches it.
+  // MARINE_FIXTURE=<path> likewise answers the sea call (the marine host), the
+  // weather fixture everything else. WEATHER_FIXTURE should be a two-element
+  // array to give Nazare a body too.
   let fetchImpl;
-  if (process.env.WEATHER_FIXTURE) {
-    const text = readFileSync(resolve(process.env.WEATHER_FIXTURE), 'utf8');
-    fetchImpl = async () => new Response(text, { status: 200, headers: { 'content-type': 'application/json' } });
-    console.log(`Weather is answered from ${process.env.WEATHER_FIXTURE}`);
+  if (process.env.WEATHER_FIXTURE || process.env.MARINE_FIXTURE) {
+    const read = (p) => (p ? readFileSync(resolve(p), 'utf8') : null);
+    const weatherText = read(process.env.WEATHER_FIXTURE);
+    const marineText = read(process.env.MARINE_FIXTURE);
+    const answer = (text) => (text === null
+      ? new Response('unavailable', { status: 503 })
+      : new Response(text, { status: 200, headers: { 'content-type': 'application/json' } }));
+    fetchImpl = async (url, init) => {
+      const marine = new URL(String(url)).host === 'marine-api.open-meteo.com';
+      if (marine) return marineText !== null ? answer(marineText) : (weatherText === null ? globalThis.fetch(url, init) : answer(null));
+      return weatherText !== null ? answer(weatherText) : globalThis.fetch(url, init);
+    };
+    if (process.env.WEATHER_FIXTURE) console.log(`Weather is answered from ${process.env.WEATHER_FIXTURE}`);
+    if (process.env.MARINE_FIXTURE) console.log(`The sea is answered from ${process.env.MARINE_FIXTURE}`);
   }
   startServer({ port, ...(fetchImpl ? { fetchImpl } : {}) }).then(({ port: p }) => {
     console.log(`Jar is being served at http://localhost:${p}  (Ctrl+C to stop)`);

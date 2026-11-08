@@ -7,7 +7,7 @@ import { clamp, smoothstep } from './clock.js';
 export const KINDS = ['clear', 'cloud', 'fog', 'drizzle', 'rain', 'snow', 'storm'];
 
 // What a jar draws from before any answer has arrived, or after a bad one.
-export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]) });
+export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]), sea: null });
 
 // WMO code -> kind. Unknown and null fall back to 'cloud'.
 export function weatherKind(code) {
@@ -103,6 +103,12 @@ export function forecastCells(weather, today = null) {
   return cells;
 }
 
+// The sea reading of an entry, or null when it is not an object.
+function fromSea(s) {
+  if (!s || typeof s !== 'object') return null;
+  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir) };
+}
+
 // One city's entry from the function's body, as the page draws from it.
 export function fromEntry(e) {
   if (!e || typeof e !== 'object') return EMPTY;
@@ -117,6 +123,7 @@ export function fromEntry(e) {
     kind: weatherKind(code),
     known: code !== null,
     daily: normaliseDaily(e.daily),
+    sea: fromSea(e.sea),
   };
 }
 

@@ -50,7 +50,10 @@ let artKey = '';
 let art = null;
 let lastFrameMs = 0;
 let labels = {};
-let cadenceMs = 0; // the redraw tick the last render keyed on: 50 animated, 250 windy cloud, 0 otherwise
+let cadenceMs = 0; // the redraw tick the last render keyed on: the smallest positive of the weather's and each city's
+let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
+let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
+let scenes = {}; // city id -> what the scene reported painting
 let drawn = {}; // city id -> { flash, dew, drift } the last frame painted with
 let lastForecast = null; // { cells, rect, sun } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
@@ -132,12 +135,16 @@ function render(force = false) {
   const dews = CITIES.map((c) => dewAmount(feed.dewSince(c.id, ms)));
   const animated = weathers.some((w) => ANIMATED.has(w.kind) && w.known);
   const windy = weathers.some((w) => w.known && cloudAmount(w.cloudCover, w.kind) > 0.05 && cloudDrift(w.windSpeed, w.windDir, CLOUD_TICK_MS) !== 0);
-  cadenceMs = animated ? 50 : windy ? CLOUD_TICK_MS : 0;
+  weatherCadence = animated ? 50 : windy ? CLOUD_TICK_MS : 0;
+  // a scene may ask for a tick of its own (a rolling sea); the page ticks at the smallest
+  cityCadences = Object.fromEntries(CITIES.map((c, i) => [c.id, typeof c.cadenceMs === 'function' ? c.cadenceMs(weathers[i], { reduced: reduceMotion }) : 0]));
+  const positive = [weatherCadence, ...Object.values(cityCadences)].filter((v) => v > 0);
+  cadenceMs = positive.length ? Math.min(...positive) : 0;
   const minute = Math.floor(ms / 60000);
   cam = currentCam(t);
   const key = [view, lift.state, Math.round(lift.progress(t) * 1000), Math.round(shelf.pos * 1000), minute,
     feed.revision, W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
-    cam.scale.toFixed(3), animated ? Math.floor(ms / 50) : windy ? Math.floor(ms / CLOUD_TICK_MS) : 0,
+    cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0,
     flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(',')].join('|');
   if (!force && key === lastKey) return false;
   lastKey = key;
@@ -159,15 +166,18 @@ function render(force = false) {
   let bloomStrength = 0;
   const nextLabels = {};
   const nextDrawn = {};
+  const nextScenes = {};
   CITIES.forEach((city, i) => {
     const tn = lookTint(sample(phases[i]));
     const painted = paintJar(ctx, shelf.jarRect(i), city, phases[i], tn, weathers[i], ms, plates[i], scratch, { reduced: reduceMotion, dew: dews[i] });
+    nextScenes[city.id] = painted.scene;
     nextDrawn[city.id] = { flash: flashes[i], dew: dews[i], drift: painted.drift };
     nextLabels[city.id] = labelLines(city, weathers[i], ms);
     bloomStrength = Math.max(bloomStrength, tn.bloom);
   });
   labels = nextLabels;
   drawn = nextDrawn;
+  scenes = nextScenes;
   // the forecast card of the lifted jar, riding the lift's own progress
   const pose = forecastPose(shelf.jarRect(focus), fitScreen(W, H, shelf.centreX).portrait, lift.progress(t));
   if (pose) {
@@ -389,6 +399,8 @@ window.__jar = {
     return changed;
   },
   get cadenceMs() { return cadenceMs; },
+  get cadence() { return { weather: weatherCadence, cities: cityCadences }; },
+  scene: (id) => scenes[id] || null,
   drift: (id) => (drawn[id] ? drawn[id].drift : 0),
   dew: (id) => (drawn[id] ? drawn[id].dew : 0),
   flash: (id) => (drawn[id] ? drawn[id].flash : 0),

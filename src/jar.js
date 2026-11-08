@@ -53,7 +53,7 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
   ictx.clip();
   skyGradient(ictx, local, tint);
   const sky = drawJarSky(ictx, local, phase, tint, weather, nowMs, opts);
-  city.paint(ictx, local, phase, tint, weather, plates, nowMs);
+  const scene = city.paint(ictx, local, phase, tint, weather, plates, nowMs) ?? null;
   drawFog(ictx, local, weather, nowMs);
   // the lantern: a warm glow from inside the jar, always on
   glow(ictx, local.w * 0.5, local.h * 0.78, local.w * 0.55, tint.lantern, 0.04 + 0.1 * (1 - tint.light));
@@ -86,6 +86,6 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
     b.drawImage(scratch.interior, body.x, body.y, body.w, body.h);
     b.restore();
   }
-  return { lum, foot: { x: rect.x + rect.w / 2, y: rect.y + rect.h }, drift: sky.wind };
+  return { lum, foot: { x: rect.x + rect.w / 2, y: rect.y + rect.h }, drift: sky.wind, scene };
 }
 

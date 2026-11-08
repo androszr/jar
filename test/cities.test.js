@@ -4,12 +4,13 @@ import { readdirSync, statSync } from 'node:fs';
 import { CITIES, findCity } from '../src/cities/index.js';
 import { PLACES } from '../src/cities/places.js';
 import { PALETTE } from '../src/look/index.js';
+import { EMPTY } from '../src/weather.js';
 
 const DIR = new URL('../src/cities/', import.meta.url).pathname;
 
 test('every city meets the contract', () => {
   assert.ok(CITIES.length >= 1);
-  assert.equal(CITIES.length, 1, 'one jar is one city (plans/2026-10-18-warsaw-forecast-and-skyline.md): a second view of a city is a scene change, not a second jar');
+  assert.equal(CITIES.length, 2, 'Warsaw and Nazare; one jar is one city, so a second view of a city is a scene change, not a third jar');
   for (const c of CITIES) {
     assert.equal(typeof c.id, 'string');
     assert.equal(typeof c.title, 'string');
@@ -50,4 +51,22 @@ test('Warsaw sits in its own zone', () => {
 test('buildPlates is deterministic', () => {
   const w = findCity('warsaw');
   assert.deepEqual(w.buildPlates(340, 390), w.buildPlates(340, 390));
+});
+
+test('Nazare is the second jar, in Lisbon time, with a tin lid unlike Warsaw\'s cork', () => {
+  const n = findCity('nazare');
+  assert.equal(n.title, 'Nazaré');
+  assert.equal(n.location.zone, 'Europe/Lisbon');
+  assert.equal(CITIES[1], n);
+  assert.equal(CITIES[1].id, 'nazare', 'nazare is registered right after warsaw');
+  assert.notEqual(findCity('warsaw').lid, n.lid);
+  assert.deepEqual(n.buildPlates(340, 396), n.buildPlates(340, 396));
+});
+
+test('Nazare asks the page for a tick of its own; Warsaw asks for none', () => {
+  const n = findCity('nazare');
+  assert.equal(typeof n.cadenceMs, 'function');
+  assert.equal(n.cadenceMs(EMPTY, {}), 100);
+  assert.equal(n.cadenceMs(EMPTY, { reduced: true }), 250);
+  assert.equal(findCity('warsaw').cadenceMs, undefined);
 });

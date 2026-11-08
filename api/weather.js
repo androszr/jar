@@ -6,6 +6,10 @@ import { PLACES } from '../src/cities/places.js';
 
 const ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
 const FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m';
+// The sea: the wave height, period and direction off each city that has an
+// offshore point (`sea` in places.js), from Open-Meteo's marine service.
+const MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
+const MARINE_FIELDS = 'wave_height,wave_period,wave_direction';
 const FORECAST_DAYS = 5;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
@@ -19,6 +23,32 @@ export function openMeteoUrl(places) {
 }
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+// The places that carry a finite offshore point.
+export function seaPlaces(places) {
+  return places.filter((p) => p && p.sea && Number.isFinite(p.sea.lat) && Number.isFinite(p.sea.lon));
+}
+
+export function marineUrl(places) {
+  const sea = seaPlaces(places);
+  const lat = sea.map((p) => p.sea.lat).join(',');
+  const lon = sea.map((p) => p.sea.lon).join(',');
+  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&cell_selection=sea`;
+}
+
+// The marine body (an object for one point, an array for several) ->
+// { [id]: { waveHeight, wavePeriod, waveDir } }. Junk gives nulls, never a throw.
+export function normaliseMarine(payload, sea) {
+  const list = Array.isArray(payload) ? payload : [payload];
+  const out = {};
+  sea.forEach((p, i) => {
+    const cur = list[i] && typeof list[i] === 'object' ? list[i].current : null;
+    out[p.id] = cur && typeof cur === 'object'
+      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction) }
+      : null;
+  });
+  return out;
+}
 
 // The vendor's daily block (parallel arrays) -> at most five { date, code, high, low, sunrise, sunset }.
 function dailyRows(d) {
@@ -41,9 +71,11 @@ function dailyRows(d) {
 
 // The vendor body (an object for one place, an array for several) ->
 // { v, fetchedAt, ok, cities }. Six numeric fields (wind in km/h and degrees
-// the wind comes from) and the daily rows are kept.
-export function normalise(payload, places, nowMs = Date.now()) {
+// the wind comes from) and the daily rows are kept, plus `sea` (the wave
+// reading, or null) from the optional marine body.
+export function normalise(payload, places, nowMs = Date.now(), marinePayload = null) {
   const list = Array.isArray(payload) ? payload : [payload];
+  const seas = marinePayload ? normaliseMarine(marinePayload, seaPlaces(places)) : {};
   const cities = {};
   places.forEach((p, i) => {
     const cur = list[i] && typeof list[i] === 'object' ? list[i].current : null;
@@ -56,6 +88,7 @@ export function normalise(payload, places, nowMs = Date.now()) {
       windSpeed: num(cur.wind_speed_10m),
       windDir: num(cur.wind_direction_10m),
       daily: dailyRows(list[i].daily),
+      sea: seas[p.id] || null,
     };
   });
   return { v: 1, fetchedAt: new Date(nowMs).toISOString(), ok: Object.keys(cities).length > 0, cities };
@@ -65,9 +98,24 @@ const empty = (nowMs) => ({ v: 1, fetchedAt: new Date(nowMs).toISOString(), ok: 
 
 export async function fetchWeather(places, { fetchImpl = globalThis.fetch, nowMs = Date.now() } = {}) {
   try {
-    const res = await fetchImpl(openMeteoUrl(places), { signal: AbortSignal.timeout(4000) });
-    if (!res || !res.ok) return empty(nowMs);
-    return normalise(await res.json(), places, nowMs);
+    // The marine call runs beside the weather call, only for places with a sea
+    // point, and never decides `ok`: any failure of it is null seas.
+    const marine = async () => {
+      if (seaPlaces(places).length === 0) return null;
+      try {
+        const r = await fetchImpl(marineUrl(places), { signal: AbortSignal.timeout(4000) });
+        return r && r.ok ? await r.json() : null;
+      } catch {
+        return null;
+      }
+    };
+    // The weather body is read inside its own chain, so the marine call's wait
+    // can never leave it unread past its own timeout.
+    const weatherP = Promise.resolve(fetchImpl(openMeteoUrl(places), { signal: AbortSignal.timeout(4000) }))
+      .then((r) => (r && r.ok ? r.json() : null));
+    const [payload, marinePayload] = await Promise.all([weatherP, marine()]);
+    if (payload === null) return empty(nowMs);
+    return normalise(payload, places, nowMs, marinePayload);
   } catch {
     // A down or malformed vendor answers the empty shape; the page degrades.
     return empty(nowMs);

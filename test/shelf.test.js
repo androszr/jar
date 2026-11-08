@@ -104,3 +104,29 @@ test('the glide steps by frame time, so skipped redraws never speed it up', () =
   assert.equal(frameDt(1000, null), 0.016); // first frame
   assert.equal(frameDt(1000, 1000), 0); // same timestamp twice
 });
+
+test('two jars: rects at both widths, next and prev clamp, a flick settles on the second', () => {
+  for (const vw of [1600, 390]) {
+    const m = shelfMetrics(vw);
+    const s = new Shelf(2, m);
+    const a = s.jarRect(0);
+    const b = s.jarRect(1);
+    assert.ok(Math.abs(b.x - a.x - m.pitch) < 1e-9, `pitch at ${vw}`);
+    assert.ok(b.x > a.x + a.w);
+  }
+  const s = new Shelf(2, shelfMetrics(1600));
+  s.next();
+  assert.equal(s.target, 1);
+  s.next();
+  assert.equal(s.target, 1, 'clamps at the last jar');
+  s.prev();
+  assert.equal(s.target, 0);
+  const m = shelfMetrics(390);
+  const t = new Shelf(2, m);
+  t.dragStart(300, 0);
+  t.dragMove(300 - m.pitch * 0.2, 50);
+  t.dragEnd(-800);
+  assert.equal(t.target, 1);
+  for (let i = 0; i < 200 && t.step(0.05); i++);
+  assert.equal(t.index, 1);
+});

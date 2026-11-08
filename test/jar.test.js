@@ -6,6 +6,7 @@ import { TABLE_FOOT } from '../src/shelf.js';
 import { SCENE } from '../src/framing.js';
 import { findCity } from '../src/cities/index.js';
 import { EMPTY } from '../src/weather.js';
+import { localTimeText } from '../src/placeclock.js';
 
 const warsaw = findCity('warsaw');
 const NOW = Date.UTC(2026, 5, 15, 12, 5);
@@ -28,4 +29,11 @@ test('the jar fits above the table line and inside the scene', () => {
   const body = bodyRect();
   assert.ok(body.y + body.h === JAR.h && body.y < JAR.lid);
   assert.ok(Number.isInteger(QUALITY) && QUALITY >= 1);
+});
+
+test('Nazare\'s label reads NAZARÉ and the time in Lisbon', () => {
+  const nazare = findCity('nazare');
+  const lines = labelLines(nazare, { temperature: 17.6 }, NOW);
+  assert.deepEqual(lines, ['NAZARÉ', '18°', localTimeText(NOW, 'Europe/Lisbon')]);
+  assert.notEqual(lines[2], labelLines(warsaw, EMPTY, NOW)[2]);
 });

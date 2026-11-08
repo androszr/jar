@@ -7,7 +7,11 @@
 // degraded page (weather failing), and a phone held upright and sideways and
 // a tablet, and the five-day forecast card of the lifted jar (beside the jar on
 // a laptop, below it on a phone, absent on the table, dashes without a daily
-// block), with today marked and the sunrise and sunset. Writes screenshots to test-output/.
+// block), with today marked and the sunrise and sunset. Two jars stand on the
+// table, Warsaw and Nazare (Lisbon time, its wave sized by a stub sea reading):
+// both labels, both lifts, the arrow and a phone swipe reaching the second, the
+// four swell bands and their surfers, the lighthouse beam at night.
+// Writes screenshots to test-output/.
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
@@ -55,6 +59,16 @@ const fixture = JSON.parse(fixtureText);
 const [y0, m0, d0] = localDate(Date.now(), 'Europe/Warsaw').split('-').map(Number);
 const days = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(y0, m0 - 1, d0 + i)).toISOString().slice(0, 10));
 const dated = { ...fixture, daily: { ...fixture.daily, time: days } };
+// Nazare's stand-in answer and the sea reading (4.2 m: a big day), re-dated to Lisbon's today.
+const nazareFixture = JSON.parse(await readFile(new URL('../test/fixtures/weather-nazare.json', import.meta.url), 'utf8'));
+const marineFixture = JSON.parse(await readFile(new URL('../test/fixtures/marine.json', import.meta.url), 'utf8'));
+const [yl, ml, dl] = localDate(Date.now(), 'Europe/Lisbon').split('-').map(Number);
+const lisbonDays = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(yl, ml - 1, dl + i)).toISOString().slice(0, 10));
+const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays } };
+const nazareCalm = { ...nazareDated, current: { ...nazareFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
+// The vendor's two-city answer through the real normaliser, as the function would send it.
+const twoCity = (payload, nazare = nazareDated) => [payload, nazare];
+const bodyOf = (payload, { nazare = nazareDated, marine = marineFixture } = {}) => JSON.stringify(normalise(twoCity(payload, nazare), PLACES, Date.now(), marine));
 const cloudyWind = JSON.parse(await readFile(new URL('../test/fixtures/weather-cloudy-wind.json', import.meta.url), 'utf8'));
 const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (route) => {
   if (mode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
@@ -62,9 +76,11 @@ const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (r
   if (mode === 'clear') payload = { ...dated, current: { ...fixture.current, temperature_2m: 21.4, weather_code: 0, cloud_cover: 5 } };
   if (mode === 'cloudwind') payload = cloudyWind;
   if (mode === 'cloudcalm') payload = { ...cloudyWind, current: { ...cloudyWind.current, wind_speed_10m: 0 } };
+  // the page's calm modes keep Nazare calm too, so a still page is still
+  const calm = mode === 'cloudcalm';
   if (mode === 'nosun') payload = { ...dated, daily: { ...dated.daily, sunrise: undefined, sunset: undefined } };
   if (mode === 'nodaily') payload = { ...dated, daily: undefined };
-  return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES)) });
+  return route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload, { nazare: calm ? nazareCalm : nazareDated, marine: mode === 'nosea' ? null : marineFixture }) });
 });
 
 // A weather fixture file (vendor shape) served through the real normaliser.
@@ -72,18 +88,20 @@ const fixtureFile = async (name) => JSON.parse(await readFile(new URL(`../test/f
 const routeFile = async (page, name) => {
   const payload = await fixtureFile(name);
   return page.route('**/api/weather', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES)) }));
+    route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload) }));
 };
-// A tidy body for one Warsaw answer, as __jar.applyWeather takes it.
-const tidy = (code, cover, temperature = 9) => ({ v: 1, cities: { warsaw: { temperature, code, cloudCover: cover, isDay: 1, windSpeed: 3, windDir: 180 } } });
+// A tidy body for one Warsaw answer (and optionally Nazare's), as __jar.applyWeather takes it.
+const tidy = (code, cover, temperature = 9, more = {}) => ({ v: 1, cities: { warsaw: { temperature, code, cloudCover: cover, isDay: 1, windSpeed: 3, windDir: 180 }, ...more } });
+// Nazare, clear and light of wind, with a wave `h` metres high off the coast.
+const seaBody = (h) => tidy(0, 5, 9, { nazare: { temperature: 18, code: 0, cloudCover: 5, isDay: 1, windSpeed: 5, windDir: 300, sea: { waveHeight: h, wavePeriod: 12, waveDir: 300 } } });
 // Mean luminance of the jar's body on the table, and of the strip under its foot.
 const jarLum = async (page) => {
   const d = await page.evaluate(() => window.__jar.dpr);
   const c = await jarCentre(page);
   return strip(page, (c.x - 20) * d, (c.y - 30) * d, 40 * d, 60 * d);
 };
-const footLum = async (page) => {
-  const f = await page.evaluate(() => window.__jar.foot('warsaw'));
+const footLum = async (page, id = 'warsaw') => {
+  const f = await page.evaluate((c) => window.__jar.foot(c), id);
   return strip(page, f.x - 20, f.y + 4, 40, 12);
 };
 
@@ -108,14 +126,14 @@ const viewIs = (page, view, timeout = 3000) =>
   page.waitForFunction((v) => window.__jar.view === v && !window.__jar.lifting, view, { timeout }).then(() => true, () => false);
 const settled = (page, timeout = 3000) =>
   page.waitForFunction(() => !window.__jar.lifting, null, { timeout }).then(() => true, () => false);
-const labelIs = (page, i, value, timeout = 5000) =>
-  page.waitForFunction(([k, v]) => window.__jar.labels.warsaw && window.__jar.labels.warsaw[k] === v, [i, value], { timeout }).then(() => true, () => false);
+const labelIs = (page, i, value, id = 'warsaw', timeout = 5000) =>
+  page.waitForFunction(([k, v, c]) => window.__jar.labels[c] && window.__jar.labels[c][k] === v, [i, value, id], { timeout }).then(() => true, () => false);
 
 // CSS-px centre of the jar's body, from its foot.
-const jarCentre = (page) => page.evaluate(() => {
-  const f = window.__jar.foot('warsaw');
+const jarCentre = (page, id = 'warsaw') => page.evaluate((c) => {
+  const f = window.__jar.foot(c);
   return { x: f.x / window.__jar.dpr, y: f.y / window.__jar.dpr - 150 };
-});
+}, id);
 
 // Mean luminance of a w x h strip with its top-left at canvas px (x, y).
 const strip = (page, x, y, w, h) => page.evaluate(([sx, sy, sw, sh]) => {
@@ -139,6 +157,8 @@ const some = (rows, f) => rows.some(([r, g, b]) => f(r, g, b));
 const all = (rows, f) => rows.every(([r, g, b]) => f(r, g, b));
 const luma = (rows) => rows.reduce((s, [r, g, b]) => s + 0.2126 * r + 0.7152 * g + 0.0722 * b, 0) / rows.length;
 
+const pinAt = (pg, ms) => pg.evaluate((t) => window.__jar.pin(t), ms);
+const jarHash = (pg) => pg.evaluate(() => window.__jar.hash());
 const medianFrameMs = (page) => page.evaluate(() => {
   const t = [];
   for (let i = 0; i < 9; i++) { window.__jar.pin(Date.now() + i * 60000); t.push(window.__jar.lastFrameMs); }
@@ -169,6 +189,13 @@ try {
   const okTimes = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Warsaw'), localTimeText(Date.now() + m * 60000, 'Europe/Warsaw')]));
   check(/^\d\d:\d\d$/.test(time) && okTimes.has(time), `warsaw label shows a Warsaw time (${time})`);
   check(await page.evaluate(() => window.__jar.labels.warsaw[0] === 'WARSAW'), 'warsaw label carries the city name');
+  // the second jar: Nazare, in Lisbon time
+  check(await page.evaluate(() => Object.keys(window.__jar.labels).length === 2), 'table shows two jars');
+  check(await labelIs(page, 1, '18°', 'nazare'), 'nazare label shows fixture temperature');
+  const lisbonTime = await page.evaluate(() => window.__jar.labels.nazare[2]);
+  const okLisbon = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Lisbon'), localTimeText(Date.now() + m * 60000, 'Europe/Lisbon')]));
+  check(/^\d\d:\d\d$/.test(lisbonTime) && okLisbon.has(lisbonTime) && (await page.evaluate(() => window.__jar.labels.nazare[0] === 'NAZARÉ')), `nazare label shows a Lisbon time (${lisbonTime})`);
+  check(await page.evaluate(() => { const l = window.__jar.labels; return l.warsaw[0] !== l.nazare[0] && l.warsaw[1] !== l.nazare[1]; }), 'two labels differ');
   await page.screenshot({ path: join(OUT, 'table.png') });
 
   // light on the table: the strip just below the jar's foot is brighter than one far from any jar
@@ -219,6 +246,18 @@ try {
   await page.goBack();
   check(await viewIs(page, 'table'), 'browser back lowers the jar');
   await settled(page);
+  // the second jar lifts and lowers like the first; the arrow reaches it
+  const nc = await jarCentre(page, 'nazare');
+  await page.mouse.click(nc.x, nc.y);
+  check((await viewIs(page, 'jar')) && page.url().includes('?jar=nazare'), 'nazare jar lifts on click');
+  await settled(page);
+  await page.keyboard.press('Escape');
+  check((await viewIs(page, 'table')) && !page.url().includes('jar='), 'escape lowers the nazare jar');
+  await settled(page);
+  await page.click('#prev');
+  await page.waitForFunction(() => window.__jar.index === 0, null, { timeout: 3000 }).catch(() => {});
+  await page.click('#next');
+  check(await page.waitForFunction(() => window.__jar.index === 1, null, { timeout: 3000 }).then(() => true, () => false), 'next arrow focuses the second jar');
   timed(await medianFrameMs(page) < 33, 'desktop frame time under 33 ms');
 
   const deep = await desk.newPage();
@@ -230,6 +269,85 @@ try {
   await labelIs(deep, 1, '21°');
   await settled(deep);
   await deep.screenshot({ path: join(OUT, 'warsaw-lifted.png') });
+  // ---- Nazare opened by its link: lifted, with its own five-day card -----------
+  const deepN = await desk.newPage();
+  const deepNSeen = watch(deepN, origin);
+  await routeWeather(deepN);
+  await deepN.goto(`${origin}/?jar=nazare`);
+  await ready(deepN);
+  await labelIs(deepN, 1, '18°', 'nazare');
+  await settled(deepN);
+  const nf0 = await deepN.evaluate(() => ({ view: window.__jar.view, title: document.title, forecast: window.__jar.forecast }));
+  check(nf0.view === 'jar' && nf0.title === 'Nazaré, in a jar' && !!nf0.forecast && nf0.forecast.cells.length === 5 && nf0.forecast.cells[0].day !== '—' && nf0.forecast.cells[0].high === '20°', '?jar=nazare opens lifted');
+  await deepN.screenshot({ path: join(OUT, 'nazare-lifted.png') });
+  check(deepNSeen.errors.length === 0 && deepNSeen.off.length === 0, `no console errors or off-origin requests on the nazare link${deepNSeen.errors.length ? `: ${deepNSeen.errors.join(' | ')}` : ''}`);
+
+  // ---- Nazare's sea: the four bands, the surfers, the beam ----------------------
+  const T_NOON = Date.UTC(2026, 5, 15, 13, 0); // 14:00 in Lisbon, full day
+  const T_DARK = Date.UTC(2026, 5, 15, 23, 30); // 00:30 in Lisbon, deep night
+  const sea = await desk.newPage();
+  const seaSeen = watch(sea, origin);
+  await routeWeather(sea);
+  await sea.goto(`${origin}/`);
+  await ready(sea);
+  await labelIs(sea, 1, '18°', 'nazare');
+  await sea.evaluate(() => window.__jar.lift('nazare'));
+  await viewIs(sea, 'jar');
+  await settled(sea);
+  await pinAt(sea, T_NOON);
+  const sceneOf = (pg) => pg.evaluate(() => window.__jar.scene('nazare'));
+  const atSea = async (h) => {
+    await sea.evaluate((b) => window.__jar.applyWeather(b), seaBody(h));
+    return sceneOf(sea);
+  };
+  const flat = await atSea(0.5);
+  check(!!flat && flat.band === 'calm' && flat.surfers === 0, 'calm sea, no surfers');
+  await pinAt(sea, T_NOON);
+  await sea.screenshot({ path: join(OUT, 'nazare-calm.png') });
+  const mod = await atSea(2);
+  check(!!mod && mod.band === 'moderate', 'moderate swell draws a moderate wave');
+  check(!!mod && mod.band === 'moderate' && mod.surfers === 3, 'moderate sea carries three surfers');
+  const big = await atSea(4);
+  check(!!big && big.band === 'big' && big.surfers === 3, 'big sea carries three surfers');
+  const giant = await atSea(8);
+  check(!!giant && giant.band === 'giant' && giant.surfers === 2, 'giant sea carries the tow-in pair');
+  check(!!giant && !!flat && giant.waveSize > flat.waveSize, 'giant swell draws a taller wave than calm');
+  await sea.screenshot({ path: join(OUT, 'nazare-giant.png') });
+  // the sea rolls with the clock, and the same moment is the same picture
+  await pinAt(sea, T_NOON);
+  const rollA = await jarHash(sea);
+  await pinAt(sea, T_NOON + 3000);
+  const rollB = await jarHash(sea);
+  await pinAt(sea, T_NOON);
+  const rollC = await jarHash(sea);
+  check(rollA !== rollB, 'the sea rolls');
+  check(rollA === rollC, 'nazare draws the same pixels at the same moment');
+  // the lighthouse: dark glass by day, a lit lantern by night
+  const sky = [0.7, 0.12];
+  const lanternBy = async () => luma(await patch(sea, 'nazare', 0.78, 0.165, 2)) - luma(await patch(sea, 'nazare', sky[0], sky[1], 2));
+  check((await lanternBy()) <= 0, 'the lantern is dark by day');
+  await sea.evaluate((b) => window.__jar.applyWeather(b), seaBody(4.2));
+  await pinAt(sea, T_DARK);
+  check((await lanternBy()) > 10, 'the lighthouse lantern glows at night');
+  const dark = await sceneOf(sea);
+  await pinAt(sea, T_NOON);
+  const noonScene = await sceneOf(sea);
+  check(!!dark && !!noonScene && dark.surfers === 0 && noonScene.surfers === 3, 'surfers go home at night');
+  await pinAt(sea, T_DARK);
+  await sea.screenshot({ path: join(OUT, 'nazare-night.png') });
+  check(seaSeen.errors.length === 0 && seaSeen.off.length === 0, `no console errors or off-origin requests in the sea run${seaSeen.errors.length ? `: ${seaSeen.errors.join(' | ')}` : ''}`);
+
+  // no sea reading at all: the 2 m default, and nothing errors
+  const nos2 = await desk.newPage();
+  const nos2Seen = watch(nos2, origin);
+  await routeWeather(nos2, 'nosea');
+  await nos2.goto(`${origin}/`);
+  await ready(nos2);
+  await labelIs(nos2, 1, '18°', 'nazare');
+  await pinAt(nos2, T_NOON);
+  const dflt = await sceneOf(nos2);
+  check(!!dflt && dflt.band === 'moderate' && nos2Seen.errors.length === 0, 'missing sea draws the default swell');
+
   // ---- Warsaw floodlit nocturne: pinned night and morning, pixels sampled ----
   const noct = await desk.newPage();
   const noctSeen = watch(noct, origin);
@@ -283,7 +401,7 @@ try {
   await bp.goto(`${origin}/`);
   await ready(bp);
   await bp.waitForTimeout(600);
-  check(await labelIs(bp, 1, '—°', 2000), 'label degrades to a dash');
+  check(await labelIs(bp, 1, '—°', 'warsaw', 2000), 'label degrades to a dash');
   const hashes = await bp.evaluate(() => [window.__jar.hash(), window.__jar.blankHash()]);
   check(hashes[0] !== hashes[1], 'jar still draws');
   await bp.screenshot({ path: join(OUT, 'warsaw-no-weather.png') });
@@ -346,9 +464,16 @@ try {
   for (let i = 1; i <= 6; i++) await touch('touchMove', 300 - i * 20, 500);
   const mid = await pp.evaluate(() => window.__jar.pos);
   await touch('touchEnd', 180, 500);
-  const back = await pp.waitForFunction(() => Math.abs(window.__jar.pos) < 0.001 && window.__jar.index === 0, null, { timeout: 3000 }).then(() => true, () => false);
-  check(mid > 0.02 && back && (await pp.evaluate(() => window.__jar.view)) === 'table', `phone swipe settles (followed to ${mid.toFixed(2)}, then back)`);
+  const back = await pp.waitForFunction(() => Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).then(() => true, () => false);
+  check(mid > 0.02 && back && (await pp.evaluate(() => window.__jar.view)) === 'table', `phone swipe settles (followed to ${mid.toFixed(2)}, then on a whole jar)`);
 
+  // a flick may carry the row on to Nazare; a swipe back brings Warsaw to the middle again
+  if ((await pp.evaluate(() => window.__jar.index)) !== 0) {
+    await touch('touchStart', 50, 500);
+    for (let i = 1; i <= 6; i++) await touch('touchMove', 50 + i * 50, 500);
+    await touch('touchEnd', 350, 500);
+    await pp.waitForFunction(() => window.__jar.index === 0 && Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).catch(() => {});
+  }
   const pc = await jarCentre(pp);
   await pp.touchscreen.tap(pc.x, pc.y);
   check(await viewIs(pp, 'jar'), 'phone tap lifts');
@@ -363,6 +488,18 @@ try {
   check(box.vis && box.w >= 44 && box.h >= 44, `phone targets are 44px (back ${box.w}x${box.h})`);
   await pp.touchscreen.tap(30, 30);
   check(await viewIs(pp, 'table'), 'phone back button lowers the jar');
+  // a real swipe slides from Warsaw to Nazare and settles there; a tap lifts it
+  await pp.waitForFunction(() => Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).catch(() => {});
+  await pp.evaluate(() => window.__jar.pin(Date.now()));
+  await touch('touchStart', 350, 500);
+  for (let i = 1; i <= 6; i++) await touch('touchMove', 350 - i * 50, 500);
+  await touch('touchEnd', 50, 500);
+  check(await pp.waitForFunction(() => window.__jar.index === 1 && Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).then(() => true, () => false), 'phone swipe reaches the second jar');
+  const pn = await jarCentre(pp, 'nazare');
+  await pp.touchscreen.tap(pn.x, pn.y);
+  check(await viewIs(pp, 'jar'), 'phone tap lifts the second jar');
+  await pp.touchscreen.tap(30, 30);
+  await viewIs(pp, 'table');
   timed(await medianFrameMs(pp) < 25, 'phone frame time under 25 ms');
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   timed(await medianFrameMs(pp) < 66, 'phone frame time under 66 ms at 4x throttle');
@@ -393,8 +530,7 @@ try {
   // ---- weather nuances: lightning, wind lean, dew ------------------------------
   const T0 = Date.UTC(2026, 5, 15, 22, 30);
   const PEAK = nextFlashPeak(95, T0);
-  const pin = (pg, ms) => pg.evaluate((t) => window.__jar.pin(t), ms);
-  const jarHash = (pg) => pg.evaluate(() => window.__jar.hash());
+  const pin = pinAt;
 
   const stormCtx = await browser.newContext({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 });
   const sp = await stormCtx.newPage();
@@ -542,10 +678,12 @@ try {
   await pin(cc.pg, CT + CD);
   const calmHash = await jarHash(cc.pg);
   check(Math.abs(windDelta - wantDelta) < 1e-9 && windHash !== calmHash, `wind moves the clouds (${windDelta.toFixed(4)} jar widths in ${CD} ms)`);
-  check((await cw.pg.evaluate(() => window.__jar.cadenceMs)) === 250, 'windy clouds redraw four times a second at most');
+  check((await cw.pg.evaluate(() => window.__jar.cadence.weather)) === 250, 'windy clouds redraw four times a second at most');
   await cw.pg.screenshot({ path: join(OUT, 'warsaw-clouds-wind.png') });
   const calmDelta = await driftDelta(cc.pg);
-  check(calmDelta === 0 && (await cc.pg.evaluate(() => window.__jar.drift('warsaw'))) === 0 && (await cc.pg.evaluate(() => window.__jar.cadenceMs)) === 0, "calm clouds keep today's pace");
+  check(calmDelta === 0 && (await cc.pg.evaluate(() => window.__jar.drift('warsaw'))) === 0 && (await cc.pg.evaluate(() => window.__jar.cadence.weather)) === 0, "calm clouds keep today's pace");
+  // ... while Nazare's rolling sea asks for ten redraws a second on its own
+  check(await cc.pg.evaluate(() => window.__jar.cadence.cities.nazare === 100 && window.__jar.cadenceMs === 100), 'the sea keeps a ten-a-second cadence');
   const rainCtx = await browser.newContext(deskOpts);
   const rainPg = await rainCtx.newPage();
   await routeWeather(rainPg);
@@ -560,6 +698,7 @@ try {
   const cr = await cloudPage(deskOpts, 'cloudwind', true);
   const redDelta = await driftDelta(cr.pg);
   check(redDelta > 0 && Math.abs(redDelta - 0.4 * wantDelta) < 1e-9, `reduced motion slows the drift (${redDelta.toFixed(4)})`);
+  check(await cr.pg.evaluate(() => window.__jar.cadence.cities.nazare === 250), 'reduced motion slows the sea');
   await cr.cx.close();
 
   const cpn = await cloudPage(phoneOpts, 'cloudwind');

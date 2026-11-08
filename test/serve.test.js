@@ -79,9 +79,48 @@ test('GET /api/weather answers the tidy body from one stubbed vendor call', asyn
     const body = JSON.parse(r.body);
     assert.equal(body.v, 1);
     assert.equal(body.cities.warsaw.temperature, 12.3);
-    assert.equal(calls.length, 1, 'one vendor call for every city');
-    assert.match(calls[0], /^https:\/\/api\.open-meteo\.com\//);
-    assert.match(calls[0], /latitude=52\.23&longitude=21\.01/);
+    // one weather call for every city, plus one marine call for the sea points
+    assert.equal(calls.length, 2);
+    const weatherCalls = calls.filter((u) => !u.includes('marine-api'));
+    assert.equal(weatherCalls.length, 1);
+    assert.match(weatherCalls[0], /^https:\/\/api\.open-meteo\.com\//);
+    assert.match(weatherCalls[0], /latitude=52\.23,39\.6&longitude=21\.01,-9\.07/);
+  } finally {
+    await new Promise((done) => server.close(done));
+  }
+});
+
+const MARINE_HOST = 'marine-api.open-meteo.com';
+const fx = (n) => JSON.parse(readFileSync(new URL(`./fixtures/${n}`, import.meta.url), 'utf8'));
+
+test('GET /api/weather asks the forecast and the marine host once each and folds the sea in', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    return { ok: true, json: async () => fx(new URL(url).host === MARINE_HOST ? 'marine.json' : 'weather-two-cities.json') };
+  };
+  const { server, port } = await startServer({ port: 0, fetchImpl });
+  try {
+    const body = JSON.parse((await ask(port, '/api/weather')).body);
+    assert.equal(calls.length, 2, 'one weather call and one marine call');
+    assert.equal(calls.filter((u) => u.includes(MARINE_HOST)).length, 1);
+    assert.equal(body.cities.nazare.sea.waveHeight, 4.2);
+    assert.equal(body.cities.warsaw.sea, null);
+  } finally {
+    await new Promise((done) => server.close(done));
+  }
+});
+
+test('a marine stub that throws leaves /api/weather a 200 with sea null', async () => {
+  const fetchImpl = async (url) => {
+    if (new URL(url).host === MARINE_HOST) throw new Error('marine down');
+    return { ok: true, json: async () => fx('weather-two-cities.json') };
+  };
+  const { server, port } = await startServer({ port: 0, fetchImpl });
+  try {
+    const r = await ask(port, '/api/weather');
+    assert.equal(r.status, 200);
+    assert.equal(JSON.parse(r.body).cities.nazare.sea, null);
   } finally {
     await new Promise((done) => server.close(done));
   }
@@ -128,7 +167,9 @@ test('the request is never read: a query string changes nothing the vendor sees'
   const { server, port } = await startServer({ port: 0, fetchImpl: stubFetch(calls) });
   try {
     await ask(port, '/api/weather?latitude=0&longitude=0');
-    assert.match(calls[0], /latitude=52\.23/);
+    assert.ok(calls.length > 0);
+    for (const c of calls) assert.doesNotMatch(c, /latitude=0&/);
+    assert.ok(calls.some((c) => /latitude=52\.23/.test(c)));
   } finally {
     await new Promise((done) => server.close(done));
   }

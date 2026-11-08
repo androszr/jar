@@ -79,12 +79,16 @@ in Node). A city is a folder `src/cities/<id>/` with `index.js`, its own
 registry (lint fails an unlisted folder). The contract is the comment at the
 top of `src/cities/index.js`. Warsaw (the downtown cluster — Varso, the
 Palace of Culture and Science, Warsaw Spire, Złota 44 — with the Mermaid in
-front) is the first, and one jar is one city.
+front) is the first, and one jar is one city. `CITIES = [warsaw, nazare]`: Nazaré
+(`Europe/Lisbon`, a `tin` lid) is the second, the Sítio headland with the São Miguel
+Arcanjo fort and lighthouse above the Praia do Norte wave, its size set by the real swell (`src/cities/nazare/sea.js`:
+calm under 1 m, moderate 1-3, big 3-6, giant 6+, 2 m with no reading), surfers by day and a beam by night.
 Warsaw's scene is the *Floodlit Nocturne* (plan `plans/2026-10-19-warsaw-floodlit-nocturne.md`): silhouettes rim-lit by day, floodlit by night, the river above the label plate, the Mermaid on the left bank; the glass streaks of every jar sit at the glass edges (`STREAKS` in `src/look/lantern/draw.js`).
 
 **Weather path.** browser -> `/api/weather` (own origin) -> `api/weather.js`
 -> Open-Meteo `api.open-meteo.com`, one request for every city, tidied to
-`{ v: 1, fetchedAt, ok, cities: { id: { temperature, code, cloudCover, isDay, windSpeed, windDir, daily: [{ date, code, high, low, sunrise, sunset }] } } }`
+`{ v: 1, fetchedAt, ok, cities: { id: { temperature, code, cloudCover, isDay, windSpeed, windDir, daily: [{ date, code, high, low, sunrise, sunset }], sea: { waveHeight, wavePeriod, waveDir } | null } } }`
+(`sea` is read from `marine-api.open-meteo.com` in the same function, in parallel, only for a place that carries an offshore `sea` point; a failed or missing marine answer is `sea: null` and never fails the weather, and the page draws a 2 m default sea)
 (`daily` is five days in the city's own zone and feeds the forecast card shown when a jar is lifted, which marks today's cell and prints today's sunrise and sunset as `HH:MM` in the city's zone (`sunrise`/`sunset` are `null` and the strip is omitted when the vendor leaves them out);
 `windSpeed` km/h and `windDir` degrees the wind comes from are `null` when the vendor leaves them out,
 and lean the rain and snow through `windSlant`). Storms flash on `flashIntensity`'s code-keyed schedule
@@ -104,7 +108,7 @@ phase (`realPhase`); each jar follows **its city's** phase (`therePhase`).
 Clouds drift by `cloudDrift` (`src/weather.js`): the wind's east-west push from `windPush`, the same
 one that leans the rain, a pure function of `nowMs` and the reading, slowed to 0.4 under reduced motion and
 wrapped through a margin of twice each cloud's radius. A windy cloudy jar redraws on a 250 ms tick, calm cloud
-keeps the once-a-minute key, precipitation its 50 ms one; `window.__jar.drift(id)` and `cadenceMs` are the test surface.
+keeps the once-a-minute key, precipitation its 50 ms one; a city may declare `cadenceMs(weather, { reduced })` (Nazaré's rolling sea: 100 ms, 250 reduced) and the page ticks at the smallest positive of the weather's and every city's (`window.__jar.cadence` is `{ weather, cities }`, `scene(id)` what a scene's `paint` returned); `window.__jar.drift(id)` and `cadenceMs` are the test surface.
 
 **Views.** `view` is `'table'` or `'jar'`. Click/tap lifts a jar
 (`src/lift.js`, 0.8 s glide), Escape / `#back` / browser Back sets it down;

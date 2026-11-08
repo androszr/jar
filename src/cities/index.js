@@ -9,13 +9,19 @@
 //   label     { inks: { plate, ink } } - names of colours in the look's PALETTE
 //   buildPlates(w, h)   precomputed, size-dependent drawing data
 //   paint(ctx, rect, phase, tint, weather, plates, nowMs)
-//             draws the diorama into rect (the jar's interior, local px)
+//             draws the diorama into rect (the jar's interior, local px); may
+//             return a small plain object, which the test surface exposes as
+//             window.__jar.scene(id)
+//   cadenceMs(weather, { reduced })
+//             optional: ms between redraws the scene needs (a rolling sea);
+//             absent or 0 for a still scene
 //   seed      optional number for the city's own randomness
 //
 // One jar is one city: a second view of a city (another square, another statue)
 // is a change to that city's scene, never a second jar.
 import warsaw from './warsaw/index.js';
+import nazare from './nazare/index.js';
 
-export const CITIES = [warsaw];
+export const CITIES = [warsaw, nazare];
 
 export const findCity = (id) => CITIES.find((c) => c.id === id) || null;
