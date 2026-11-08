@@ -390,7 +390,9 @@ try {
   check(!!fullMoon && fullMoon.name === 'full' && fullMoon.illumination > 0.98, 'a full moon night reports a full moon');
   const brightSky = luma(await patch(sea, 'nazare', fullMoon.x, fullMoon.y, 3));
   check(brightSky > dimSky + 15, `the full moon is brighter on the glass than the new moon (${brightSky.toFixed(0)} vs ${dimSky.toFixed(0)})`);
-  check(/A full moon\./.test(await sea.evaluate(() => document.getElementById('view').getAttribute('aria-label'))), 'the lifted sentence names the full moon');
+  // the accessible name is synced on the next frame after a pin, so wait for it
+  const namesFull = await sea.waitForFunction(() => /A full moon\./.test(document.getElementById('view').getAttribute('aria-label') || ''), null, { timeout: 3000 }).then(() => true, () => false);
+  check(namesFull, 'the lifted sentence names the full moon');
   await sea.screenshot({ path: join(OUT, 'nazare-full-moon.png') });
   await pinAt(sea, T_DARK);
   check(seaSeen.errors.length === 0 && seaSeen.off.length === 0, `no console errors or off-origin requests in the sea run${seaSeen.errors.length ? `: ${seaSeen.errors.join(' | ')}` : ''}`);
