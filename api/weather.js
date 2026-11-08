@@ -20,7 +20,7 @@ export function openMeteoUrl(places) {
   // Each location's own zone, so daily.time is that city's local date. (current.time
   // is therefore local too; it is not read.)
   const zones = places.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
+  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
 }
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -36,18 +36,53 @@ export function marineUrl(places) {
   const lon = sea.map((p) => p.sea.lon).join(',');
   // Each sea place's own zone, so daily.time is that city's local date.
   const zones = sea.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
+  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&hourly=sea_level_height_msl&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
 }
 
-// The marine daily block (parallel arrays) -> at most five { date, waveHeightMax, wavePeriodMax }.
-export function marineDailyRows(d) {
+// Hourly sea level (the city's local wall clock) -> { [date]: [{ time, kind, height }] },
+// the high and low tides found as local extremes of three finite neighbours, the
+// moment refined by the parabola through them. Minute arithmetic on the vendor's
+// own string, never through Date (the server's zone is not the city's). An extreme
+// at the very first or last hour of the series has no neighbour and is not found.
+export function tideExtremes(hourly) {
+  if (!hourly || typeof hourly !== 'object' || !Array.isArray(hourly.time) || !Array.isArray(hourly.sea_level_height_msl)) return {};
+  const t = hourly.time;
+  const h = hourly.sea_level_height_msl;
+  const n = Math.min(t.length, h.length);
+  const out = {};
+  for (let i = 1; i < n - 1; i++) {
+    const a = num(h[i - 1]);
+    const b = num(h[i]);
+    const c = num(h[i + 1]);
+    if (a === null || b === null || c === null) continue;
+    const kind = b > a && b >= c ? 'high' : b < a && b <= c ? 'low' : null;
+    if (!kind) continue;
+    const m = typeof t[i] === 'string' && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t[i]);
+    if (!m) continue;
+    const den = a - 2 * b + c;
+    const off = den === 0 ? 0 : Math.max(-0.5, Math.min(0.5, (0.5 * (a - c)) / den));
+    // Minutes since the start of the entry's own date, then rolled over midnight.
+    let day = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    let mins = Math.round(+m[4] * 60 + +m[5] + off * 60);
+    day += Math.floor(mins / 1440) * 86400000;
+    mins = ((mins % 1440) + 1440) % 1440;
+    const date = new Date(day).toISOString().slice(0, 10);
+    const time = `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+    (out[date] = out[date] || []).push({ time, kind, height: Math.round(b * 100) / 100 });
+  }
+  for (const k of Object.keys(out)) out[k].sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
+  return out;
+}
+
+// The marine daily block (parallel arrays) -> at most five { date, waveHeightMax, wavePeriodMax, tides }.
+export function marineDailyRows(d, tidesByDate = {}) {
   if (!d || typeof d !== 'object' || !Array.isArray(d.time)) return [];
   const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
   const rows = [];
   for (let i = 0; i < d.time.length && rows.length < FORECAST_DAYS; i++) {
     const date = d.time[i];
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    rows.push({ date, waveHeightMax: at(d.wave_height_max, i), wavePeriodMax: at(d.wave_period_max, i) });
+    rows.push({ date, waveHeightMax: at(d.wave_height_max, i), wavePeriodMax: at(d.wave_period_max, i), tides: (tidesByDate && tidesByDate[date]) || [] });
   }
   return rows;
 }
@@ -60,13 +95,14 @@ export function normaliseMarine(payload, sea) {
   sea.forEach((p, i) => {
     const cur = list[i] && typeof list[i] === 'object' ? list[i].current : null;
     out[p.id] = cur && typeof cur === 'object'
-      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily) }
+      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily, tideExtremes(list[i].hourly)) }
       : null;
   });
   return out;
 }
 
-// The vendor's daily block (parallel arrays) -> at most five { date, code, high, low, sunrise, sunset }.
+// The vendor's daily block (parallel arrays) -> at most five { date, code, high, low, sunrise, sunset,
+// rainChance, windMax, windMaxDir }.
 function dailyRows(d) {
   if (!d || typeof d !== 'object' || !Array.isArray(d.time)) return [];
   const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
@@ -80,7 +116,7 @@ function dailyRows(d) {
   for (let i = 0; i < d.time.length && rows.length < FORECAST_DAYS; i++) {
     const date = d.time[i];
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    rows.push({ date, code: at(d.weather_code, i), high: at(d.temperature_2m_max, i), low: at(d.temperature_2m_min, i), sunrise: hhmm(d.sunrise, i), sunset: hhmm(d.sunset, i) });
+    rows.push({ date, code: at(d.weather_code, i), high: at(d.temperature_2m_max, i), low: at(d.temperature_2m_min, i), sunrise: hhmm(d.sunrise, i), sunset: hhmm(d.sunset, i), rainChance: at(d.precipitation_probability_max, i), windMax: at(d.wind_speed_10m_max, i), windMaxDir: at(d.wind_direction_10m_dominant, i) });
   }
   return rows;
 }
