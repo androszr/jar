@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, sunTimesFor } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, sunTimesFor, formatSwell } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -79,7 +79,7 @@ test('dayName works from the date string alone', () => {
 });
 
 test('forecastCells: EMPTY is five dash cells, short lists pad, -0.4 prints 0°', () => {
-  const dash = { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false };
+  const dash = { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false, swell: null };
   assert.deepEqual(forecastCells(EMPTY), [dash, dash, dash, dash, dash]);
   assert.deepEqual(forecastCells(null), [dash, dash, dash, dash, dash]);
   const w = fromEntry({ temperature: 1, code: 0, daily: [
@@ -89,7 +89,7 @@ test('forecastCells: EMPTY is five dash cells, short lists pad, -0.4 prints 0°'
   ] });
   const cells = forecastCells(w);
   assert.equal(cells.length, 5);
-  assert.deepEqual(cells[0], { day: 'SUN', kind: 'rain', high: '14°', low: '0°', today: false });
+  assert.deepEqual(cells[0], { day: 'SUN', kind: 'rain', high: '14°', low: '0°', today: false, swell: null });
   assert.equal(cells[1].kind, 'snow');
   assert.equal(cells[2].kind, 'storm');
   assert.deepEqual(cells[3], dash);
@@ -162,10 +162,32 @@ test('normaliseDaily keeps HH:MM sun times and nulls junk', () => {
   }
 });
 
-test('the sea reading: EMPTY has none, fromEntry folds it and tolerates junk', () => {
+test('the sea reading (swell): EMPTY has none, fromEntry folds it and tolerates junk', () => {
   assert.equal(EMPTY.sea, null);
-  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null });
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null, daily: [] });
   assert.equal(fromEntry({}).sea, null);
   assert.equal(fromEntry({ sea: 'junk' }).sea, null);
   assert.equal(fromEntry({ sea: { waveHeight: 'x' } }).sea.waveHeight, null);
+});
+
+test('swell: formatSwell gives height and period, height alone, nothing', () => {
+  assert.equal(formatSwell({ waveHeight: 2.37, wavePeriod: 12.4 }), '2.4 m · 12 s');
+  assert.equal(formatSwell({ waveHeight: 2.37, wavePeriod: null }), '2.4 m');
+  assert.equal(formatSwell({ waveHeight: null, wavePeriod: 12 }), null);
+  assert.equal(formatSwell(null), null);
+});
+
+test('the sea daily rows: folded by fromEntry, junk gives [], the swell joins forecast cells by date', () => {
+  const row = { date: '2026-11-08', waveHeightMax: 2.4, wavePeriodMax: 12 };
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 1, daily: [row] } }).sea.daily, [row]);
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 1, daily: 'junk' } }).sea.daily, []);
+  const w = fromEntry({
+    temperature: 10,
+    daily: [{ date: '2026-11-08', code: 0, high: 1, low: 0 }, { date: '2026-11-09', code: 0, high: 1, low: 0 }],
+    sea: { waveHeight: 1, daily: [row] },
+  });
+  const cells = forecastCells(w, '2026-11-08');
+  assert.deepEqual(cells[0].swell, { height: '2.4 m', period: '12 s' });
+  assert.equal(cells[1].swell, null, 'a date with no marine row');
+  assert.ok(forecastCells(EMPTY).every((c) => c.swell === null));
 });

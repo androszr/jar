@@ -15,7 +15,7 @@ const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced
 export default {
   id: 'nazare',
   title: place.title,
-  location: { lat: place.lat, lon: place.lon, zone: place.zone },
+  location: { lat: place.lat, lon: place.lon, zone: place.zone, sea: place.sea },
   lid: 'tin',
   label: { inks: { plate: 'plate', ink: 'labelInk' } },
   seed: 0x5ea,

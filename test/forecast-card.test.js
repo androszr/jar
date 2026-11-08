@@ -79,3 +79,26 @@ test('today on cell 2 only: one band at the third cell', () => {
   const rr = RECT('row');
   assert.equal(bands(row)[0].a[0], rr.x + (rr.w / 5) * 2);
 });
+
+const swellCells = () => cells().map((c, i) => ({ ...c, swell: i === 2 ? null : { height: '2.4 m', period: '12 s' } }));
+
+for (const layout of ['row', 'column']) {
+  test(`${layout} card with swell prints a height per cell, a dash for a gap, above the strip`, () => {
+    const ctx = paint(layout, swellCells(), SUN);
+    const r = RECT(layout);
+    const stripTop = r.y + r.h - CARD.strip[layout];
+    const heights = ctx.texts.filter((t) => t.s === '2.4 m');
+    assert.equal(heights.length, 4);
+    assert.ok(heights.every((t) => t.y < stripTop));
+    assert.equal(ctx.texts.filter((t) => t.s === '—').length, 1);
+  });
+
+  test(`${layout} card without swell prints no wave figure`, () => {
+    const ctx = paint(layout, cells(), SUN);
+    assert.ok(!ctx.texts.some((t) => / m$/.test(t.s)));
+    const r = RECT(layout);
+    const h = r.h - CARD.strip[layout];
+    const day = ctx.texts.find((t) => t.s === 'SUN');
+    assert.equal(day.y, layout === 'row' ? r.y + h * 0.14 : r.y + (h / 5) * 0.5);
+  });
+}

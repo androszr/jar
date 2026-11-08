@@ -100,6 +100,8 @@ export function forecastCard(ctx, rect, cells, layout, sun = null) {
   ctx.strokeStyle = css(PALETTE.brass, 0.85);
   ctx.stroke();
   const n = cells.length || 1;
+  const swell = cells.some((c) => c && c.swell);
+  const swellText = (c) => (c.swell ? c.swell.height : '—');
   if (layout === 'row') {
     const cw = w / n;
     cells.forEach((c, i) => {
@@ -108,10 +110,19 @@ export function forecastCard(ctx, rect, cells, layout, sun = null) {
         ctx.fillStyle = css(PALETTE.brass, 0.12);
         ctx.fillRect(x + cw * i, y, cw, h);
       }
-      text(ctx, c.day, cx, y + h * 0.14, h * 0.13, c.today ? PALETTE.labelInk : PALETTE.labelDim);
-      weatherIcon(ctx, c.kind, cx, y + h * 0.43, Math.min(cw * 0.7, h * 0.34));
-      text(ctx, c.high, cx, y + h * 0.69, h * 0.15, PALETTE.labelInk);
-      text(ctx, c.low, cx, y + h * 0.88, h * 0.13, PALETTE.labelDim);
+      const dayInk = c.today ? PALETTE.labelInk : PALETTE.labelDim;
+      if (swell) {
+        text(ctx, c.day, cx, y + h * 0.12, h * 0.12, dayInk);
+        weatherIcon(ctx, c.kind, cx, y + h * 0.36, Math.min(cw * 0.7, h * 0.3));
+        text(ctx, c.high, cx, y + h * 0.6, h * 0.14, PALETTE.labelInk);
+        text(ctx, c.low, cx, y + h * 0.75, h * 0.12, PALETTE.labelDim);
+        text(ctx, swellText(c), cx, y + h * 0.91, h * 0.12, PALETTE.labelDim);
+      } else {
+        text(ctx, c.day, cx, y + h * 0.14, h * 0.13, dayInk);
+        weatherIcon(ctx, c.kind, cx, y + h * 0.43, Math.min(cw * 0.7, h * 0.34));
+        text(ctx, c.high, cx, y + h * 0.69, h * 0.15, PALETTE.labelInk);
+        text(ctx, c.low, cx, y + h * 0.88, h * 0.13, PALETTE.labelDim);
+      }
     });
   } else {
     const rh = h / n;
@@ -121,7 +132,13 @@ export function forecastCard(ctx, rect, cells, layout, sun = null) {
         ctx.fillStyle = css(PALETTE.brass, 0.12);
         ctx.fillRect(x, y + rh * i, w, rh);
       }
-      text(ctx, c.day, x + w * 0.1, cy, rh * 0.26, c.today ? PALETTE.labelInk : PALETTE.labelDim, 'left');
+      const dayInk = c.today ? PALETTE.labelInk : PALETTE.labelDim;
+      if (swell) {
+        text(ctx, c.day, x + w * 0.1, cy - rh * 0.14, rh * 0.24, dayInk, 'left');
+        text(ctx, swellText(c), x + w * 0.1, cy + rh * 0.2, rh * 0.2, PALETTE.labelDim, 'left');
+      } else {
+        text(ctx, c.day, x + w * 0.1, cy, rh * 0.26, dayInk, 'left');
+      }
       weatherIcon(ctx, c.kind, x + w * 0.45, cy, rh * 0.44);
       text(ctx, c.high, x + w * 0.73, cy, rh * 0.26, PALETTE.labelInk, 'right');
       text(ctx, c.low, x + w * 0.95, cy, rh * 0.22, PALETTE.labelDim, 'right');

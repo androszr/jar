@@ -243,13 +243,33 @@ test('seaPlaces skips places without a sea point', () => {
   assert.deepEqual(seaPlaces([warsaw, { ...nazare, sea: { lat: 'x', lon: 1 } }]), []);
 });
 
+test('marineUrl asks daily=wave_height_max,wave_period_max in the sea place zones', () => {
+  const u = new URL(marineUrl([nazare]));
+  assert.equal(u.searchParams.get('daily'), 'wave_height_max,wave_period_max');
+  assert.equal(u.searchParams.get('forecast_days'), '5');
+  assert.equal(u.searchParams.get('timezone'), 'Europe/Lisbon');
+  assert.ok(marineUrl([nazare]).includes('timezone=Europe%2FLisbon'));
+});
+
+test('normaliseMarine daily: five rows from the fixture, [] without daily or on junk', () => {
+  const d = normaliseMarine(fixture('marine.json'), [nazare]).nazare.daily;
+  assert.equal(d.length, 5);
+  assert.equal(d[1].waveHeightMax, 4.2);
+  assert.equal(d[1].wavePeriodMax, 13.5);
+  const { daily, ...noDaily } = fixture('marine.json');
+  assert.deepEqual(normaliseMarine(noDaily, [nazare]).nazare.daily, []);
+  assert.deepEqual(normaliseMarine({ ...noDaily, daily: 'junk' }, [nazare]).nazare.daily, []);
+  const short = normaliseMarine({ ...noDaily, daily: { time: ['2026-10-18', 'x'], wave_height_max: [1], wave_period_max: 'junk' } }, [nazare]).nazare.daily;
+  assert.deepEqual(short, [{ date: '2026-10-18', waveHeightMax: 1, wavePeriodMax: null }]);
+});
+
 test('normaliseMarine reads the fixture, junk and a short array', () => {
-  assert.deepEqual(normaliseMarine(fixture('marine.json'), [nazare]), { nazare: { waveHeight: 4.2, wavePeriod: 13.5, waveDir: 300 } });
+  assert.deepEqual(normaliseMarine(fixture('marine.json'), [nazare]), { nazare: { waveHeight: 4.2, wavePeriod: 13.5, waveDir: 300, daily: normaliseMarine(fixture('marine.json'), [nazare]).nazare.daily } });
   assert.deepEqual(normaliseMarine(null, [nazare]), { nazare: null });
   assert.deepEqual(normaliseMarine('junk', [nazare]), { nazare: null });
   const second = { id: 'b', sea: { lat: 3, lon: 4 } };
   assert.deepEqual(normaliseMarine([fixture('marine.json')], [nazare, second]).b, null);
-  assert.deepEqual(normaliseMarine({ current: { wave_height: 'x' } }, [nazare]).nazare, { waveHeight: null, wavePeriod: null, waveDir: null });
+  assert.deepEqual(normaliseMarine({ current: { wave_height: 'x' } }, [nazare]).nazare, { waveHeight: null, wavePeriod: null, waveDir: null, daily: [] });
 });
 
 test('normalise with a marine body puts sea on the matching id and null on the rest', () => {

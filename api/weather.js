@@ -10,6 +10,7 @@ const FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wi
 // offshore point (`sea` in places.js), from Open-Meteo's marine service.
 const MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
 const MARINE_FIELDS = 'wave_height,wave_period,wave_direction';
+const MARINE_DAILY = 'wave_height_max,wave_period_max';
 const FORECAST_DAYS = 5;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
@@ -33,18 +34,33 @@ export function marineUrl(places) {
   const sea = seaPlaces(places);
   const lat = sea.map((p) => p.sea.lat).join(',');
   const lon = sea.map((p) => p.sea.lon).join(',');
-  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&cell_selection=sea`;
+  // Each sea place's own zone, so daily.time is that city's local date.
+  const zones = sea.map((p) => encodeURIComponent(p.zone)).join(',');
+  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
+}
+
+// The marine daily block (parallel arrays) -> at most five { date, waveHeightMax, wavePeriodMax }.
+export function marineDailyRows(d) {
+  if (!d || typeof d !== 'object' || !Array.isArray(d.time)) return [];
+  const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
+  const rows = [];
+  for (let i = 0; i < d.time.length && rows.length < FORECAST_DAYS; i++) {
+    const date = d.time[i];
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    rows.push({ date, waveHeightMax: at(d.wave_height_max, i), wavePeriodMax: at(d.wave_period_max, i) });
+  }
+  return rows;
 }
 
 // The marine body (an object for one point, an array for several) ->
-// { [id]: { waveHeight, wavePeriod, waveDir } }. Junk gives nulls, never a throw.
+// { [id]: { waveHeight, wavePeriod, waveDir, daily } }. Junk gives nulls, never a throw.
 export function normaliseMarine(payload, sea) {
   const list = Array.isArray(payload) ? payload : [payload];
   const out = {};
   sea.forEach((p, i) => {
     const cur = list[i] && typeof list[i] === 'object' ? list[i].current : null;
     out[p.id] = cur && typeof cur === 'object'
-      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction) }
+      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily) }
       : null;
   });
   return out;

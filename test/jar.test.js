@@ -9,6 +9,7 @@ import { EMPTY } from '../src/weather.js';
 import { localTimeText } from '../src/placeclock.js';
 
 const warsaw = findCity('warsaw');
+const nazare = findCity('nazare');
 const NOW = Date.UTC(2026, 5, 15, 12, 5);
 
 test('labelLines with weather: [TITLE, temperature, HH:MM in the city zone]', () => {
@@ -36,4 +37,14 @@ test('Nazare\'s label reads NAZARÉ and the time in Lisbon', () => {
   const lines = labelLines(nazare, { temperature: 17.6 }, NOW);
   assert.deepEqual(lines, ['NAZARÉ', '18°', localTimeText(NOW, 'Europe/Lisbon')]);
   assert.notEqual(lines[2], labelLines(warsaw, EMPTY, NOW)[2]);
+});
+
+test('Nazare reads the swell (2.4 m · 12 s) as a fourth line; no reading, or no sea point, keeps three', () => {
+  const sea = { waveHeight: 2.4, wavePeriod: 12 };
+  const lines = labelLines(nazare, { temperature: 17, sea }, NOW);
+  assert.equal(lines.length, 4);
+  assert.equal(lines[3], '2.4 m · 12 s');
+  assert.equal(labelLines(nazare, { temperature: 17, sea: null }, NOW).length, 3);
+  assert.equal(labelLines(nazare, EMPTY, NOW).length, 3);
+  assert.equal(labelLines(warsaw, { temperature: 17, sea }, NOW).length, 3);
 });

@@ -119,7 +119,7 @@ export function text(ctx, str, x, y, size, colour, align = 'center') {
 }
 
 // A small dark plate with a brass edge and three monospace lines
-// ([title, temperature, time]).
+// ([title, temperature, time]), or four when a swell line follows.
 export function label(ctx, rect, lines) {
   const { x, y, w, h } = rect;
   ctx.save();
@@ -131,9 +131,17 @@ export function label(ctx, rect, lines) {
   ctx.strokeStyle = css(PALETTE.brass, 0.85);
   ctx.stroke();
   const cx = x + w / 2;
-  text(ctx, lines[0] ?? '', cx, y + h * 0.22, h * 0.17, PALETTE.labelDim);
-  text(ctx, lines[1] ?? '', cx, y + h * 0.52, h * 0.3, PALETTE.labelInk);
-  text(ctx, lines[2] ?? '', cx, y + h * 0.82, h * 0.17, PALETTE.labelDim);
+  if (lines.length >= 4) {
+    // Four lines sit a little tighter than three; the temperature stays the largest.
+    text(ctx, lines[0] ?? '', cx, y + h * 0.16, h * 0.15, PALETTE.labelDim);
+    text(ctx, lines[1] ?? '', cx, y + h * 0.44, h * 0.27, PALETTE.labelInk);
+    text(ctx, lines[2] ?? '', cx, y + h * 0.68, h * 0.15, PALETTE.labelDim);
+    text(ctx, lines[3] ?? '', cx, y + h * 0.87, h * 0.15, PALETTE.labelDim);
+  } else {
+    text(ctx, lines[0] ?? '', cx, y + h * 0.22, h * 0.17, PALETTE.labelDim);
+    text(ctx, lines[1] ?? '', cx, y + h * 0.52, h * 0.3, PALETTE.labelInk);
+    text(ctx, lines[2] ?? '', cx, y + h * 0.82, h * 0.17, PALETTE.labelDim);
+  }
   ctx.restore();
 }
 

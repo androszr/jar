@@ -234,11 +234,11 @@ function syncAria() {
   const cells = view === 'jar' ? forecastCells(here, todayHere) : null;
   const sun = view === 'jar' ? sunTimesFor(here, todayHere) : null;
   const days = (cells && cells[0].day !== '—'
-    ? ` Next five days: ${cells.map((c) => `${c.day} ${c.high} to ${c.low}`).join(', ')}.`
+    ? ` Next five days: ${cells.map((c) => `${c.day} ${c.high} to ${c.low}${c.swell ? ` swell ${c.swell.height}` : ''}`).join(', ')}.`
     : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
-  const facts = l ? `${c.title}, ${l[1]}, ${l[2]} local time` : c.title;
+  const facts = l ? `${c.title}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : c.title;
   const text = view === 'jar'
     ? `${facts}. The jar is lifted.${days} Press Escape to put it back on the table.`
     : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.`;

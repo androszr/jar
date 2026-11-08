@@ -91,14 +91,53 @@ export function sunTimesFor(weather, today = null) {
   return { sunrise: r.sunrise, sunset: r.sunset };
 }
 
+// "2.4 m" (one decimal), or null for no reading.
+export function formatWaveHeight(h) {
+  return typeof h === 'number' && Number.isFinite(h) ? `${h.toFixed(1)} m` : null;
+}
+
+// "12 s" (rounded), or null for no reading.
+export function formatPeriod(p) {
+  return typeof p === 'number' && Number.isFinite(p) ? `${Math.round(p)} s` : null;
+}
+
+// "2.4 m · 12 s", "2.4 m" without a period, null without a height.
+export function formatSwell(sea) {
+  if (!sea || typeof sea !== 'object') return null;
+  const h = formatWaveHeight(sea.waveHeight);
+  if (h === null) return null;
+  const p = formatPeriod(sea.wavePeriod);
+  return p === null ? h : `${h} · ${p}`;
+}
+
+// The sea's daily rows as the page draws from them; junk gives [].
+export function normaliseSeaDaily(list) {
+  if (!Array.isArray(list)) return [];
+  const rows = [];
+  for (const r of list) {
+    if (rows.length >= 5) break;
+    if (!r || typeof r !== 'object' || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) continue;
+    rows.push({ date: r.date, waveHeightMax: num(r.waveHeightMax), wavePeriodMax: num(r.wavePeriodMax) });
+  }
+  return rows;
+}
+
+// { height, period } formatted for a date, joined by date string; null when none.
+export function swellFor(weather, date) {
+  const rows = weather && weather.sea && Array.isArray(weather.sea.daily) ? weather.sea.daily : [];
+  const r = rows.find((x) => x && x.date === date);
+  const height = r ? formatWaveHeight(r.waveHeightMax) : null;
+  return height === null ? null : { height, period: formatPeriod(r.wavePeriodMax) };
+}
+
 export function forecastCells(weather, today = null) {
   const rows = upcomingRows(weather, today);
   const cells = [];
   for (let i = 0; i < 5; i++) {
     const r = rows[i];
     cells.push(r
-      ? { day: dayName(r.date), kind: r.kind || weatherKind(r.code), high: formatTemp(r.high), low: formatTemp(r.low), today: typeof today === 'string' && i === 0 && r.date === today }
-      : { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false });
+      ? { day: dayName(r.date), kind: r.kind || weatherKind(r.code), high: formatTemp(r.high), low: formatTemp(r.low), today: typeof today === 'string' && i === 0 && r.date === today, swell: swellFor(weather, r.date) }
+      : { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false, swell: null });
   }
   return cells;
 }
@@ -106,7 +145,7 @@ export function forecastCells(weather, today = null) {
 // The sea reading of an entry, or null when it is not an object.
 function fromSea(s) {
   if (!s || typeof s !== 'object') return null;
-  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir) };
+  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir), daily: normaliseSeaDaily(s.daily) };
 }
 
 // One city's entry from the function's body, as the page draws from it.

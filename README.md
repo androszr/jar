@@ -69,7 +69,9 @@ isometric, flat-shaded low-poly) and **Pixel** (cosy pixel-art diorama).
 1. Add `{ id, title, lat, lon, zone }` to `src/cities/places.js` (append, never
    insert: the order is the weather request's order). An optional
    `sea: { lat, lon }` is an offshore point the weather function also reads the
-   wave height at; a city without one makes no marine call.
+   wave height at; a city without one makes no marine call. A place with a `sea`
+   point also gets the swell as a fourth label line and a peak wave height per
+   day on its card.
 2. Copy `src/cities/warsaw/` to `src/cities/<id>/`, write its `palette.js` and
    scene, and fill in `index.js` (the contract is the comment at the top of
    `src/cities/index.js`). A scene that moves on the clock (a rolling sea) can

@@ -64,11 +64,12 @@ const nazareFixture = JSON.parse(await readFile(new URL('../test/fixtures/weathe
 const marineFixture = JSON.parse(await readFile(new URL('../test/fixtures/marine.json', import.meta.url), 'utf8'));
 const [yl, ml, dl] = localDate(Date.now(), 'Europe/Lisbon').split('-').map(Number);
 const lisbonDays = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(yl, ml - 1, dl + i)).toISOString().slice(0, 10));
+const marineDated = { ...marineFixture, daily: { ...marineFixture.daily, time: lisbonDays } };
 const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays } };
 const nazareCalm = { ...nazareDated, current: { ...nazareFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
 // The vendor's two-city answer through the real normaliser, as the function would send it.
 const twoCity = (payload, nazare = nazareDated) => [payload, nazare];
-const bodyOf = (payload, { nazare = nazareDated, marine = marineFixture } = {}) => JSON.stringify(normalise(twoCity(payload, nazare), PLACES, Date.now(), marine));
+const bodyOf = (payload, { nazare = nazareDated, marine = marineDated } = {}) => JSON.stringify(normalise(twoCity(payload, nazare), PLACES, Date.now(), marine));
 const cloudyWind = JSON.parse(await readFile(new URL('../test/fixtures/weather-cloudy-wind.json', import.meta.url), 'utf8'));
 const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (route) => {
   if (mode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
@@ -80,7 +81,7 @@ const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (r
   const calm = mode === 'cloudcalm';
   if (mode === 'nosun') payload = { ...dated, daily: { ...dated.daily, sunrise: undefined, sunset: undefined } };
   if (mode === 'nodaily') payload = { ...dated, daily: undefined };
-  return route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload, { nazare: calm ? nazareCalm : nazareDated, marine: mode === 'nosea' ? null : marineFixture }) });
+  return route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload, { nazare: calm ? nazareCalm : nazareDated, marine: mode === 'nosea' ? null : marineDated }) });
 });
 
 // A weather fixture file (vendor shape) served through the real normaliser.
@@ -195,6 +196,8 @@ try {
   const lisbonTime = await page.evaluate(() => window.__jar.labels.nazare[2]);
   const okLisbon = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Lisbon'), localTimeText(Date.now() + m * 60000, 'Europe/Lisbon')]));
   check(/^\d\d:\d\d$/.test(lisbonTime) && okLisbon.has(lisbonTime) && (await page.evaluate(() => window.__jar.labels.nazare[0] === 'NAZARÉ')), `nazare label shows a Lisbon time (${lisbonTime})`);
+  check(await page.evaluate(() => { const l = window.__jar.labels; return l.nazare.length === 4 && l.nazare[3] === '4.2 m · 14 s'; }), 'nazare label shows the swell');
+  check(await page.evaluate(() => window.__jar.labels.warsaw.length === 3), 'warsaw label keeps three lines');
   check(await page.evaluate(() => { const l = window.__jar.labels; return l.warsaw[0] !== l.nazare[0] && l.warsaw[1] !== l.nazare[1]; }), 'two labels differ');
   await page.screenshot({ path: join(OUT, 'table.png') });
 
@@ -280,6 +283,10 @@ try {
   const nf0 = await deepN.evaluate(() => ({ view: window.__jar.view, title: document.title, forecast: window.__jar.forecast }));
   check(nf0.view === 'jar' && nf0.title === 'Nazaré, in a jar' && !!nf0.forecast && nf0.forecast.cells.length === 5 && nf0.forecast.cells[0].day !== '—' && nf0.forecast.cells[0].high === '20°', '?jar=nazare opens lifted');
   await deepN.screenshot({ path: join(OUT, 'nazare-lifted.png') });
+  const wantSwell = ['2.1 m', '4.2 m', '3.8 m', '5.2 m', '1.6 m'];
+  check(JSON.stringify(nf0.forecast.cells.map((c) => c.swell && c.swell.height)) === JSON.stringify(wantSwell), 'nazare card shows a swell per day');
+  await deepN.screenshot({ path: join(OUT, 'nazare-swell-card.png') });
+  check(!!(await deepN.evaluate(() => window.__jar.forecast)), 'nazare swell card is lifted');
   check(deepNSeen.errors.length === 0 && deepNSeen.off.length === 0, `no console errors or off-origin requests on the nazare link${deepNSeen.errors.length ? `: ${deepNSeen.errors.join(' | ')}` : ''}`);
 
   // ---- Nazare's sea: the four bands, the surfers, the beam ----------------------
@@ -345,6 +352,11 @@ try {
   await ready(nos2);
   await labelIs(nos2, 1, '18°', 'nazare');
   await pinAt(nos2, T_NOON);
+  check(await nos2.evaluate(() => window.__jar.labels.nazare.length === 3), 'missing sea leaves the label plain');
+  await nos2.evaluate(() => window.__jar.lift('nazare'));
+  await viewIs(nos2, 'jar');
+  await settled(nos2);
+  check(await nos2.evaluate(() => window.__jar.forecast.cells.every((c) => c.swell === null)) && nos2Seen.errors.length === 0, 'missing sea leaves the label and card plain');
   const dflt = await sceneOf(nos2);
   check(!!dflt && dflt.band === 'moderate' && nos2Seen.errors.length === 0, 'missing sea draws the default swell');
 
@@ -439,6 +451,16 @@ try {
   await settled(xp);
   const xf = await xp.evaluate(() => window.__jar.forecast);
   check(!!xf && xf.sun === null && xf.cells.length === 5 && xf.cells[0].high !== '—°' && xSeen.errors.length === 0, 'forecast card omits the sun strip without sun times');
+  {
+    const wp0 = await nos.newPage();
+    await routeWeather(wp0);
+    await wp0.goto(`${origin}/?jar=warsaw`);
+    await ready(wp0);
+    await labelIs(wp0, 1, '12°');
+    await settled(wp0);
+    check(await wp0.evaluate(() => window.__jar.forecast.cells.every((c) => c.swell === null)), 'warsaw card has no swell');
+    await wp0.close();
+  }
   await nos.close();
 
   // ---- phone held upright ---------------------------------------------------
@@ -505,6 +527,20 @@ try {
   timed(await medianFrameMs(pp) < 66, 'phone frame time under 66 ms at 4x throttle');
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   check(pSeen.errors.length === 0 && pSeen.off.length === 0, `no console errors or off-origin requests on the phone${pSeen.errors.length ? `: ${pSeen.errors.join(' | ')}` : ''}`);
+  {
+    const pn2 = await phone.newPage();
+    const pn2Seen = watch(pn2, origin);
+    await routeWeather(pn2);
+    await pn2.goto(`${origin}/?jar=nazare`);
+    await ready(pn2);
+    await labelIs(pn2, 1, '18°', 'nazare');
+    await settled(pn2);
+    const f = await pn2.evaluate(() => ({ f: window.__jar.forecast, cv: [document.getElementById('view').width, document.getElementById('view').height] }));
+    check(!!f.f && JSON.stringify(f.f.cells.map((c) => c.swell && c.swell.height)) === JSON.stringify(['2.1 m', '4.2 m', '3.8 m', '5.2 m', '1.6 m']) && inside(f.f.rect, f.cv[0], f.cv[1]), 'phone nazare card shows the swell');
+    await pn2.screenshot({ path: join(OUT, 'nazare-swell-card-phone.png') });
+    check(pn2Seen.errors.length === 0 && pn2Seen.off.length === 0, 'no console errors on the phone nazare card');
+    await pn2.close();
+  }
   await phone.close();
 
   // ---- phone held sideways --------------------------------------------------

@@ -30,7 +30,7 @@ test('ids are unique, kebab-case, and match PLACES', () => {
   assert.deepEqual([...ids].sort(), PLACES.map((p) => p.id).sort());
   for (const c of CITIES) {
     const p = PLACES.find((x) => x.id === c.id);
-    assert.deepEqual(c.location, { lat: p.lat, lon: p.lon, zone: p.zone });
+    assert.deepEqual(c.location, { lat: p.lat, lon: p.lon, zone: p.zone, ...(p.sea ? { sea: p.sea } : {}) });
   }
 });
 

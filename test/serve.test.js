@@ -93,7 +93,7 @@ test('GET /api/weather answers the tidy body from one stubbed vendor call', asyn
 const MARINE_HOST = 'marine-api.open-meteo.com';
 const fx = (n) => JSON.parse(readFileSync(new URL(`./fixtures/${n}`, import.meta.url), 'utf8'));
 
-test('GET /api/weather asks the forecast and the marine host once each and folds the sea in', async () => {
+test('GET /api/weather asks the forecast and the marine host once each and folds the sea and its daily rows in', async () => {
   const calls = [];
   const fetchImpl = async (url) => {
     calls.push(String(url));
@@ -105,6 +105,8 @@ test('GET /api/weather asks the forecast and the marine host once each and folds
     assert.equal(calls.length, 2, 'one weather call and one marine call');
     assert.equal(calls.filter((u) => u.includes(MARINE_HOST)).length, 1);
     assert.equal(body.cities.nazare.sea.waveHeight, 4.2);
+    assert.equal(body.cities.nazare.sea.daily.length, 5);
+    assert.equal(body.cities.nazare.sea.daily[1].waveHeightMax, 4.2);
     assert.equal(body.cities.warsaw.sea, null);
   } finally {
     await new Promise((done) => server.close(done));

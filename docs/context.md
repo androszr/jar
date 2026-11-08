@@ -87,8 +87,8 @@ Warsaw's scene is the *Floodlit Nocturne* (plan `plans/2026-10-19-warsaw-floodli
 
 **Weather path.** browser -> `/api/weather` (own origin) -> `api/weather.js`
 -> Open-Meteo `api.open-meteo.com`, one request for every city, tidied to
-`{ v: 1, fetchedAt, ok, cities: { id: { temperature, code, cloudCover, isDay, windSpeed, windDir, daily: [{ date, code, high, low, sunrise, sunset }], sea: { waveHeight, wavePeriod, waveDir } | null } } }`
-(`sea` is read from `marine-api.open-meteo.com` in the same function, in parallel, only for a place that carries an offshore `sea` point; a failed or missing marine answer is `sea: null` and never fails the weather, and the page draws a 2 m default sea)
+`{ v: 1, fetchedAt, ok, cities: { id: { temperature, code, cloudCover, isDay, windSpeed, windDir, daily: [{ date, code, high, low, sunrise, sunset }], sea: { waveHeight, wavePeriod, waveDir, daily: [{ date, waveHeightMax, wavePeriodMax }] } | null } } }`
+(`sea` is read from `marine-api.open-meteo.com` in the same function, in parallel, only for a place that carries an offshore `sea` point; a failed or missing marine answer is `sea: null` and never fails the weather, and the page draws a 2 m default sea; the Nazaré label prints `formatSwell` as a fourth line and its card a peak wave height per day, both absent without a reading)
 (`daily` is five days in the city's own zone and feeds the forecast card shown when a jar is lifted, which marks today's cell and prints today's sunrise and sunset as `HH:MM` in the city's zone (`sunrise`/`sunset` are `null` and the strip is omitted when the vendor leaves them out);
 `windSpeed` km/h and `windDir` degrees the wind comes from are `null` when the vendor leaves them out,
 and lean the rain and snow through `windSlant`). Storms flash on `flashIntensity`'s code-keyed schedule
