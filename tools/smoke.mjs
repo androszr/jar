@@ -7,7 +7,8 @@
 // degraded page (weather failing), and a phone held upright and sideways and
 // a tablet, and the five-day forecast card of the lifted jar (beside the jar on
 // a laptop, below it on a phone, absent on the table, dashes without a daily
-// block), with today marked and the sunrise and sunset. Two jars stand on the
+// block), with today marked and the sunrise and sunset, with a sun arc under the sunrise
+// and sunset line. Two jars stand on the
 // table, Warsaw and Nazare (Lisbon time, its wave sized by a stub sea reading):
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
 // four swell bands and their surfers, the lighthouse beam at night.
@@ -16,7 +17,7 @@ import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { startServer } from './serve.mjs';
-import { localTimeText, localDate } from '../src/placeclock.js';
+import { localTimeText, localDate, sunFraction } from '../src/placeclock.js';
 import { normalise } from '../api/weather.js';
 import { dayName, nextFlashPeak, cloudDrift } from '../src/weather.js';
 import { PLACES } from '../src/cities/places.js';
@@ -370,6 +371,8 @@ try {
   const T_NIGHT = Date.UTC(2026, 5, 15, 23, 30); // 01:30 in Warsaw: deep night
   const T_DAY = Date.UTC(2026, 5, 15, 8, 30); // 10:30 in Warsaw: morning, the sun on the left
   await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
+  const fn = await noct.evaluate(() => window.__jar.forecast);
+  check(!!fn && !!fn.sun && fn.sunT < 0, 'forecast card sun arc has no dot at 01:30 in Warsaw');
   const gold = (r, g, b) => r >= 140 && r >= g + 20 && r >= b + 60;
   const blue = (r, g, b) => b >= 180 && b >= r + 40;
   const red = (r, g, b) => r >= 180 && r >= g + 60 && r >= b + 60;
@@ -391,6 +394,8 @@ try {
   check(hashA === hashB, 'the nocturne draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-night.png') });
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
+  const fd = await noct.evaluate(() => window.__jar.forecast);
+  check(!!fd && !!fd.sun && Math.abs(fd.sunT - 0.327) < 0.01, 'forecast card sun arc puts the dot a third of the way at 10:30 in Warsaw');
   check(all(await patch(noct, 'warsaw', 0.5, 0.47, 2), (r, g, b) => b >= r), 'Palace is a cool silhouette by day');
   check(!some(await patch(noct, 'warsaw', 0.271, 0.07, 4), red), 'no aviation light by day');
   const rimEdge = luma(await patch(noct, 'warsaw', 0.5 - 0.188 + 0.003, 0.57, 1));
@@ -435,7 +440,7 @@ try {
   await viewIs(np, 'jar');
   await settled(np);
   const nf = await np.evaluate(() => window.__jar.forecast);
-  check(!!nf && DASHES(nf.cells) && nf.sun === null && nSeen.errors.length === 0, 'forecast card shows dashes without a daily block');
+  check(!!nf && DASHES(nf.cells) && nf.sun === null && nf.sunT === null && nSeen.errors.length === 0, 'forecast card shows dashes without a daily block');
   await nod.close();
 
   // ---- a daily block without sun times: five days, no strip -------------------
@@ -450,7 +455,7 @@ try {
   await viewIs(xp, 'jar');
   await settled(xp);
   const xf = await xp.evaluate(() => window.__jar.forecast);
-  check(!!xf && xf.sun === null && xf.cells.length === 5 && xf.cells[0].high !== '—°' && xSeen.errors.length === 0, 'forecast card omits the sun strip without sun times');
+  check(!!xf && xf.sun === null && xf.sunT === null && xf.cells.length === 5 && xf.cells[0].high !== '—°' && xSeen.errors.length === 0, 'forecast card omits the sun strip without sun times');
   {
     const wp0 = await nos.newPage();
     await routeWeather(wp0);
@@ -501,11 +506,12 @@ try {
   check(await viewIs(pp, 'jar'), 'phone tap lifts');
   await settled(pp);
   await pp.screenshot({ path: join(OUT, 'phone', 'lifted.png') });
-  const pf = await pp.evaluate(() => window.__jar.forecast);
+  const [pf, pNow] = await pp.evaluate(() => [window.__jar.forecast, Date.now()]);
   const pfoot = await pp.evaluate(() => window.__jar.foot('warsaw'));
   const pcanvas = await pp.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!pf && pf.rect.y > pfoot.y && inside(pf.rect, pcanvas[0], pcanvas[1]), 'phone forecast card sits below the jar and fits');
   check(!!pf && pf.cells.slice(1).every((k) => !k.today) && pf.sun !== null && pf.sun.sunrise === wantSun.sunrise, 'phone forecast card marks today and shows the sun strip');
+  check(!!pf && pf.sun !== null && Number.isFinite(pf.sunT) && Math.abs(pf.sunT - sunFraction(pNow, 'Europe/Warsaw', pf.sun)) < 0.01, 'phone forecast card sun arc follows the Warsaw clock');
   const box = await pp.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return { w: r.width, h: r.height, vis: !document.getElementById('back').hidden }; });
   check(box.vis && box.w >= 44 && box.h >= 44, `phone targets are 44px (back ${box.w}x${box.h})`);
   await pp.touchscreen.tap(30, 30);

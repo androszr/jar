@@ -1,7 +1,7 @@
 // Boot, render loop and wiring: the potting table, the jars on it, the lift.
 import { readOptions, sample } from './clock.js';
 import { placeGuess, realPhase } from './realclock.js';
-import { therePhase, localDate } from './placeclock.js';
+import { therePhase, localDate, sunFraction } from './placeclock.js';
 import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
 import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
@@ -56,7 +56,7 @@ let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
 let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
 let scenes = {}; // city id -> what the scene reported painting
 let drawn = {}; // city id -> { flash, dew, drift } the last frame painted with
-let lastForecast = null; // { cells, rect, sun } of the card drawn last, or null
+let lastForecast = null; // { cells, rect, sun, sunT } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
 let plates = [];
@@ -185,6 +185,7 @@ function render(force = false) {
     const todayHere = localDate(ms, CITIES[focus].location.zone);
     const cells = forecastCells(weathers[focus], todayHere);
     const sun = sunTimesFor(weathers[focus], todayHere);
+    const sunT = sunFraction(ms, CITIES[focus].location.zone, sun);
     ctx.save();
     // emerge from behind the glass: nothing of the card is drawn over the jar
     const jr = shelf.jarRect(focus);
@@ -193,9 +194,9 @@ function render(force = false) {
     ctx.rect(jr.x, jr.y, jr.w, jr.h);
     ctx.clip('evenodd');
     ctx.globalAlpha = pose.alpha;
-    forecastCard(ctx, pose.rect, cells, pose.layout, sun);
+    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT);
     ctx.restore();
-    lastForecast = { cells, rect: pose.rect, sun };
+    lastForecast = { cells, rect: pose.rect, sun, sunT };
   } else {
     lastForecast = null;
   }
@@ -428,13 +429,13 @@ window.__jar = {
     const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));
     return this.toCanvas(r.x + r.w / 2, r.y + r.h);
   },
-  // The forecast card last drawn: null on the table, else { cells, rect, sun } in canvas px.
+  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT } in canvas px.
   get forecast() {
     if (!lastForecast) return null;
     const r = lastForecast.rect;
     const a = this.toCanvas(r.x, r.y);
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
-    return { cells: lastForecast.cells, sun: lastForecast.sun, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
+    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   get dpr() { return dpr; },
   get framing() { return fitScreen(W, H, shelf.centreX); },
