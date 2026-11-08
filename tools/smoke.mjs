@@ -261,6 +261,14 @@ try {
   await page.keyboard.press('Escape');
   check((await viewIs(page, 'table')) && !page.url().includes('jar='), 'escape lowers the nazare jar');
   await settled(page);
+  // a click beside the lifted jar, off the jar and its card, puts it back too
+  await page.mouse.click(nc.x, nc.y);
+  await viewIs(page, 'jar');
+  await settled(page);
+  const vp = page.viewportSize();
+  await page.mouse.click(8, Math.round(vp.height / 2));
+  check((await viewIs(page, 'table')) && !page.url().includes('jar='), 'a click outside the lifted jar lowers it');
+  await settled(page);
   await page.click('#prev');
   await page.waitForFunction(() => window.__jar.index === 0, null, { timeout: 3000 }).catch(() => {});
   await page.click('#next');

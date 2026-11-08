@@ -7,7 +7,7 @@ import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
 import { Shelf, shelfMetrics, frameDt } from './shelf.js';
 import { fitScreen, SCENE } from './framing.js';
-import { Lift, liftCamera } from './lift.js';
+import { Lift, liftCamera, pressLowers } from './lift.js';
 import { forecastPose, forecastExtent } from './forecast.js';
 import { forecastCells, forecastSentence, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
@@ -323,6 +323,13 @@ document.getElementById('next').addEventListener('click', () => shelf.next());
 // Pointer: a short press lifts the jar under it; a drag slides the row.
 let press = null;
 canvas.addEventListener('pointerdown', (e) => {
+  if (view === 'jar') {
+    // a press outside the lifted jar and its card puts the jar back, like Back
+    if (lift.moving) return;
+    const s = cssToScene(e.clientX, e.clientY);
+    if (pressLowers(s, shelf.jarRect(focus), lastForecast && lastForecast.rect)) lowerFromUser();
+    return;
+  }
   if (view !== 'table') return;
   canvas.setPointerCapture(e.pointerId);
   press = { x: e.clientX, y: e.clientY, travel: 0, id: e.pointerId };

@@ -66,3 +66,11 @@ export class Lift {
     return this.state === 'lifting' || this.state === 'lowering';
   }
 }
+
+// A press at scene point `p` while a jar is lifted: true when it lands on
+// neither the lifted jar nor its forecast card (`card` may be null), which
+// puts the jar back on the table.
+export function pressLowers(p, jar, card = null) {
+  const inside = (r) => !!r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  return !inside(jar) && !inside(card);
+}
