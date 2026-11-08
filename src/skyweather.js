@@ -2,7 +2,7 @@
 // cover, rain and snow leaning with the wind, a storm's flashes, dew after a fog, fog as condensation on the glass.
 // Every mover is a function of the phase or of the `nowMs` passed in.
 import { sunPos, sunAltitude, moonPos, isNight, wrap } from './clock.js';
-import { weatherKind, cloudAmount, windSlant, cloudDrift, flashIntensity } from './weather.js';
+import { weatherKind, cloudAmount, windSlant, cloudTravel, flashIntensity } from './weather.js';
 import { PALETTE, css, glow, droplet } from './look/index.js';
 
 // A tiny deterministic 0..1 from two numbers.
@@ -164,7 +164,7 @@ export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
 
   let wind = 0;
   if (amount > 0.05) {
-    wind = known ? cloudDrift(weather.windSpeed, weather.windDir, nowMs, { reduced: !!opts.reduced }) : 0;
+    wind = known ? cloudTravel(weather.windSpeed, weather.windDir, nowMs, { ...(opts.anchor || {}), reduced: !!opts.reduced }) : 0;
     clouds(ctx, rect, amount, phase, tint, nowMs, wind);
   }
 

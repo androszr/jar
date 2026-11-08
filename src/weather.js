@@ -206,6 +206,34 @@ export function cloudDrift(windSpeed, windDir, nowMs, { reduced = false } = {}) 
   return (push * (reduced ? REDUCED_DRIFT : 1) * nowMs) / CLOUD_DRIFT_MS;
 }
 
+// A cloud-travel anchor: when the current reading took effect and how far the
+// clouds had already travelled by then (unreduced, in jar widths).
+export const NO_ANCHOR = Object.freeze({ sinceMs: 0, carry: 0 });
+
+// Cloud travel carried across readings: the carry plus what this reading's wind
+// has pushed since `sinceMs`. `reduced` scales the whole sum, so the carry stays
+// unreduced and a swap is continuous under either setting.
+export function cloudTravel(windSpeed, windDir, nowMs, { sinceMs = 0, carry = 0, reduced = false } = {}) {
+  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return 0;
+  const since = Number.isFinite(sinceMs) ? sinceMs : 0;
+  const base = Number.isFinite(carry) ? carry : 0;
+  return (reduced ? REDUCED_DRIFT : 1) * (base + cloudDrift(windSpeed, windDir, nowMs - since));
+}
+
+// The anchor for a reading landing at `atMs`. A first reading starts from the
+// shared origin (NO_ANCHOR, whatever its fetchedAt: the answer is cached, so a
+// fetch time would differ between an old page and a fresh one); a later one re-anchors at the landing moment carrying the old travel, so the
+// position is the same just before and just after and only the pace changes.
+export function nextCloudAnchor(prev, prevAnchor, atMs) {
+  if (!prev || typeof prev !== 'object' || !prevAnchor || typeof prevAnchor !== 'object') {
+    return NO_ANCHOR;
+  }
+  return Object.freeze({
+    sinceMs: atMs,
+    carry: cloudTravel(prev.windSpeed, prev.windDir, atMs, { sinceMs: prevAnchor.sinceMs, carry: prevAnchor.carry }),
+  });
+}
+
 // Each burst is [atFraction of the period, length in ms, peak 0..1].
 const STORM = { periodMs: 14000, bursts: [[0.12, 90, 1.0], [0.145, 60, 0.55], [0.71, 70, 0.7]] };
 const HAIL = { periodMs: 8000, bursts: [[0.1, 90, 1.0], [0.13, 50, 0.6], [0.52, 80, 0.85], [0.86, 60, 0.5]] };

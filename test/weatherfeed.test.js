@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WeatherFeed, REFRESH_MS } from '../src/weatherfeed.js';
-import { EMPTY } from '../src/weather.js';
+import { EMPTY, NO_ANCHOR, cloudTravel } from '../src/weather.js';
 
 const body = (temp, code = 61) => ({ v: 1, cities: { warsaw: { temperature: temp, code, cloudCover: 50, isDay: 1 } } });
+const windy = (temp, speed, dir, fetchedAt) => ({ v: 1, ...(fetchedAt === undefined ? {} : { fetchedAt }), cities: { warsaw: { temperature: temp, code: 3, cloudCover: 85, isDay: 1, windSpeed: speed, windDir: dir } } });
 const okFetch = (b) => async () => ({ ok: true, json: async () => b });
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -174,4 +175,80 @@ test('dew: fog then a code-less answer records nothing, and a later real answer 
   clock = 200;
   f.applyResponse(body(8, 61));
   assert.equal(f.fogClearedAt.get('warsaw'), 200);
+});
+
+const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} is not ${b}`);
+
+test('cloudAnchor: NO_ANCHOR before any answer and for an unknown id', () => {
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 5 });
+  assert.equal(f.cloudAnchor('warsaw'), NO_ANCHOR);
+  f.applyResponse(windy(10, 30, 270, '2026-06-15T10:20:00.000Z'));
+  assert.equal(f.cloudAnchor('nowhere'), NO_ANCHOR);
+});
+
+test('cloudAnchor: a first answer starts from the shared origin whatever its fetchedAt', () => {
+  for (const fa of ['2026-06-15T10:20:00.000Z', undefined, 42, 'yesterday']) {
+    const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 999 });
+    f.applyResponse(windy(10, 30, 270, fa), 1234);
+    assert.equal(f.cloudAnchor('warsaw').sinceMs, 0);
+    assert.equal(f.cloudAnchor('warsaw').carry, 0);
+  }
+});
+
+test('cloudAnchor: two pages with the same wind agree across a refresh', () => {
+  const a = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 0 });
+  a.applyResponse(windy(10, 30, 270, '2026-06-15T10:00:00.000Z'), Date.parse('2026-06-15T10:00:00.000Z'));
+  a.applyResponse(windy(10, 30, 270, '2026-06-15T10:15:00.000Z'), Date.parse('2026-06-15T10:15:00.000Z'));
+  const b = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 0 });
+  b.applyResponse(windy(10, 30, 270, '2026-06-15T10:15:00.000Z'), Date.parse('2026-06-15T10:20:00.000Z'));
+  const t = Date.parse('2026-06-15T10:30:00.000Z');
+  assert.equal(cloudTravel(30, 270, t, a.cloudAnchor('warsaw')), cloudTravel(30, 270, t, b.cloudAnchor('warsaw')));
+});
+
+test('cloudAnchor: a changed wind re-anchors at the landing moment with the old travel as carry', () => {
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 0 });
+  f.applyResponse(windy(10, 30, 270, '2026-06-15T10:20:00.000Z'));
+  const first = f.cloudAnchor('warsaw');
+  f.applyResponse(windy(10, 12, 90), 100000);
+  const a = f.cloudAnchor('warsaw');
+  assert.equal(a.sinceMs, 100000);
+  const old = cloudTravel(30, 270, 100000, first);
+  near(a.carry, old);
+  near(cloudTravel(12, 90, 100000, a), old);
+});
+
+test('cloudAnchor: an unchanged wind keeps its anchor', () => {
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 0 });
+  f.applyResponse(windy(10, 30, 270, '2026-06-15T10:20:00.000Z'), 5);
+  const first = { ...f.cloudAnchor('warsaw') };
+  f.applyResponse(windy(14, 30, 270), 100000);
+  assert.deepEqual({ ...f.cloudAnchor('warsaw') }, first);
+  const rev = f.revision;
+  f.applyResponse(windy(14, 30, 270), 200000);
+  assert.deepEqual({ ...f.cloudAnchor('warsaw') }, first);
+  assert.equal(f.revision, rev);
+});
+
+test('cloudAnchor: a fresh feed forgets every anchor', () => {
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 0 });
+  f.applyResponse(windy(10, 30, 270, '2026-06-15T10:20:00.000Z'));
+  f.applyResponse(windy(10, 12, 90), 100000);
+  assert.notEqual(f.cloudAnchor('warsaw'), NO_ANCHOR);
+  assert.equal(new WeatherFeed({ fetchImpl: okFetch(body(1)) }).cloudAnchor('warsaw'), NO_ANCHOR);
+});
+
+test('a city left out of one answer keeps its cloud anchor when it comes back', () => {
+  let t = 1000;
+  const f = new WeatherFeed({ fetchImpl: null, now: () => t });
+  const two = (speed) => ({ v: 1, cities: { warsaw: windy(1, speed, 90).cities.warsaw, nazare: windy(2, speed, 180).cities.warsaw } });
+  f.applyResponse(two(6), t);
+  t = 61000;
+  f.applyResponse(two(9), t);
+  const anchor = f.cloudAnchor('nazare');
+  t = 121000;
+  f.applyResponse({ v: 1, cities: { warsaw: windy(1, 9, 90).cities.warsaw } }, t);
+  t = 181000;
+  f.applyResponse(two(9), t);
+  assert.deepEqual(f.cloudAnchor('nazare'), anchor);
+  assert.notDeepEqual(f.cloudAnchor('nazare'), NO_ANCHOR);
 });
