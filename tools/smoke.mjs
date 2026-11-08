@@ -14,7 +14,7 @@ import { chromium } from 'playwright-core';
 import { startServer } from './serve.mjs';
 import { localTimeText, localDate } from '../src/placeclock.js';
 import { normalise } from '../api/weather.js';
-import { dayName, nextFlashPeak, cloudDrift } from '../src/weather.js';
+import { dayName, nextFlashPeak, cloudDrift, cloudTravel } from '../src/weather.js';
 import { PLACES } from '../src/cities/places.js';
 
 const OUT = 'test-output';
@@ -56,6 +56,8 @@ const [y0, m0, d0] = localDate(Date.now(), 'Europe/Warsaw').split('-').map(Numbe
 const days = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(y0, m0 - 1, d0 + i)).toISOString().slice(0, 10));
 const dated = { ...fixture, daily: { ...fixture.daily, time: days } };
 const cloudyWind = JSON.parse(await readFile(new URL('../test/fixtures/weather-cloudy-wind.json', import.meta.url), 'utf8'));
+// Every stubbed answer carries this one fetch time, so the answer is the same on every run.
+const FETCHED = Date.UTC(2026, 5, 15, 10, 20);
 const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (route) => {
   if (mode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
   let payload = dated;
@@ -64,7 +66,7 @@ const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (r
   if (mode === 'cloudcalm') payload = { ...cloudyWind, current: { ...cloudyWind.current, wind_speed_10m: 0 } };
   if (mode === 'nosun') payload = { ...dated, daily: { ...dated.daily, sunrise: undefined, sunset: undefined } };
   if (mode === 'nodaily') payload = { ...dated, daily: undefined };
-  return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES)) });
+  return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES, FETCHED)) });
 });
 
 // A weather fixture file (vendor shape) served through the real normaliser.
@@ -72,7 +74,7 @@ const fixtureFile = async (name) => JSON.parse(await readFile(new URL(`../test/f
 const routeFile = async (page, name) => {
   const payload = await fixtureFile(name);
   return page.route('**/api/weather', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES)) }));
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(normalise(payload, PLACES, FETCHED)) }));
 };
 // A tidy body for one Warsaw answer, as __jar.applyWeather takes it.
 const tidy = (code, cover, temperature = 9) => ({ v: 1, cities: { warsaw: { temperature, code, cloudCover: cover, isDay: 1, windSpeed: 3, windDir: 180 } } });
@@ -535,8 +537,9 @@ try {
   await pin(cw.pg, CT + CD);
   check(cwA === (await jarHash(cw.pg)), 'windy clouds draw the same pixels at the same moment');
   const windDelta = await driftDelta(cw.pg);
-  // CT itself is a whole number of drift widths away from the origin, so the
-  // calm-versus-windy picture is compared nine seconds on, where the wind term is 0.075.
+  // The first reading starts from the shared origin, and CT is a whole number of drift widths
+  // from it, so nine seconds on the wind term's fractional part is 0.075 and calm and windy
+  // differ. FETCHED only makes the stubbed answer identical across runs.
   const windHash = await jarHash(cw.pg);
   const cc = await cloudPage(deskOpts, 'cloudcalm');
   await pin(cc.pg, CT + CD);
@@ -544,6 +547,24 @@ try {
   check(Math.abs(windDelta - wantDelta) < 1e-9 && windHash !== calmHash, `wind moves the clouds (${windDelta.toFixed(4)} jar widths in ${CD} ms)`);
   check((await cw.pg.evaluate(() => window.__jar.cadenceMs)) === 250, 'windy clouds redraw four times a second at most');
   await cw.pg.screenshot({ path: join(OUT, 'warsaw-clouds-wind.png') });
+  const readDrift = (pg) => pg.evaluate(() => window.__jar.drift('warsaw'));
+  const eastBody = (speed) => ({ current: { temperature_2m: 14, weather_code: 3, cloud_cover: 85, is_day: 1, wind_speed_10m: speed, wind_direction_10m: 90 } });
+  await pin(cw.pg, CT + CD);
+  const wh1 = await jarHash(cw.pg);
+  const wd1 = await readDrift(cw.pg);
+  check(Math.abs(wd1 - cloudTravel(30, 270, CT + CD)) < 1e-9, 'the first reading draws where every fresh page draws it');
+  await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(12));
+  const wd2 = await readDrift(cw.pg);
+  const wh2 = await jarHash(cw.pg);
+  check(Math.abs(wd2 - wd1) < 1e-9 && wh1 === wh2, 'a new wind reading keeps the clouds where they are');
+  await pin(cw.pg, CT + 2 * CD);
+  const wd3 = await readDrift(cw.pg);
+  check(Math.abs(wd3 - wd2 - cloudDrift(12, 90, CD)) < 1e-9 && wd3 < wd2, 'the new reading sets the pace from then on');
+  await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(0));
+  const wd4 = await readDrift(cw.pg);
+  await pin(cw.pg, CT + 3 * CD);
+  const wd5 = await readDrift(cw.pg);
+  check(Math.abs(wd4 - wd3) < 1e-9 && wd5 === wd4 && (await cw.pg.evaluate(() => window.__jar.cadenceMs)) === 0, 'a dropped wind leaves the clouds resting');
   const calmDelta = await driftDelta(cc.pg);
   check(calmDelta === 0 && (await cc.pg.evaluate(() => window.__jar.drift('warsaw'))) === 0 && (await cc.pg.evaluate(() => window.__jar.cadenceMs)) === 0, "calm clouds keep today's pace");
   const rainCtx = await browser.newContext(deskOpts);
@@ -565,6 +586,8 @@ try {
   const cpn = await cloudPage(phoneOpts, 'cloudwind');
   const phoneDelta = await driftDelta(cpn.pg);
   check(Math.abs(phoneDelta - wantDelta) < 1e-9, `phone clouds drift with the wind (${phoneDelta.toFixed(4)})`);
+  await pin(cpn.pg, CT + CD);
+  check(Math.abs((await readDrift(cpn.pg)) - wd1) < 1e-9, 'phone and desktop place the clouds alike from the same answer');
   await cpn.cx.close();
 
   check(vendorCalls.length === 0, 'the smoke never reached the vendor stub (the browser only asks its own route)');

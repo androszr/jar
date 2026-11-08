@@ -102,7 +102,7 @@ tests and the smoke check inject a stub, so nothing touches the network.
 Lane and credited in their headers. The shed window follows the **viewer's**
 phase (`realPhase`); each jar follows **its city's** phase (`therePhase`).
 Clouds drift by `cloudDrift` (`src/weather.js`): the wind's east-west push from `windPush`, the same
-one that leans the rain, a pure function of `nowMs` and the reading, slowed to 0.4 under reduced motion and
+one that leans the rain, carried by `cloudTravel` from a per-city anchor, `WeatherFeed.cloudAnchor(id)` (`nextCloudAnchor`): a page's first reading starts from the shared origin (`NO_ANCHOR`, whatever its `fetchedAt`, so every page holding the same answer agrees), a changed wind re-anchors at the moment it lands carrying the old travel, so a new reading changes the pace and never the position (anchors are session memory like `fogClearedAt`, nothing persisted); slowed to 0.4 under reduced motion and
 wrapped through a margin of twice each cloud's radius. A windy cloudy jar redraws on a 250 ms tick, calm cloud
 keeps the once-a-minute key, precipitation its 50 ms one; `window.__jar.drift(id)` and `cadenceMs` are the test surface.
 
