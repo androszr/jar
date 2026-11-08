@@ -3,6 +3,7 @@
 // jar spills that light onto the table and into the bloom.
 import { JAR, LABEL } from './jar-geometry.js';
 import { localTimeText } from './placeclock.js';
+import { offsetText } from './scrub.js';
 import { placeName } from './cities/places.js';
 import { formatTemp, formatSwell } from './weather.js';
 import { drawJarSky, drawFog } from './skyweather.js';
@@ -12,8 +13,12 @@ export { JAR };
 
 export const QUALITY = 2; // interior pixels per logical px
 
-export function labelLines(city, weather, nowMs) {
-  const lines = [placeName(city).toUpperCase(), formatTemp(weather && weather.temperature), localTimeText(nowMs, city.location.zone)];
+// `preview` ({ offsetMin }, optional): when the moment is a scrubbed one ahead of
+// now, the time line says so: "15:00 (+5 h)". `nowMs` is then the previewed moment.
+export function labelLines(city, weather, nowMs, preview = null) {
+  const time = localTimeText(nowMs, city.location.zone);
+  const ahead = preview && Number.isFinite(preview.offsetMin) && preview.offsetMin > 0;
+  const lines = [placeName(city).toUpperCase(), formatTemp(weather && weather.temperature), ahead ? `${time} (${offsetText(preview.offsetMin)})` : time];
   // A fourth line, the swell, only for a place with an offshore point and a reading.
   if (city.location.sea && typeof city.location.sea === 'object') {
     const swell = formatSwell(weather && weather.sea);
@@ -47,7 +52,7 @@ function measure(scratch) {
 
 // Paint jar `city` at scene rect `rect` (JAR proportions, any scale) onto
 // `ctx`. `scratch` = { interior, small, smallCtx, bloomCtx } canvases made by
-// the caller (the interior is bodyRect() x QUALITY). `opts` = { reduced, dew }.
+// the caller (the interior is bodyRect() x QUALITY). `opts` = { reduced, dew, preview }.
 export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, scratch, opts = {}) {
   const body = bodyRect();
   const ictx = scratch.interior.getContext('2d');
@@ -80,7 +85,7 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
   glassHighlights(ctx, { x: body.x, y: body.y, w: body.w, h: body.h }, JAR.neck);
   const lw = JAR.w * (1 - 2 * JAR.neck) + 12;
   lid(ctx, { x: (JAR.w - lw) / 2, y: 0, w: lw, h: JAR.lid }, city.lid);
-  label(ctx, LABEL, labelLines(city, weather, nowMs));
+  label(ctx, LABEL, labelLines(city, weather, nowMs, opts.preview ?? null));
   ctx.restore();
 
   // feed the bloom source (the caller has set its transform to match ctx's)

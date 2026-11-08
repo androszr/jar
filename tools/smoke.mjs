@@ -19,7 +19,7 @@ import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { startServer } from './serve.mjs';
-import { localTimeText, localDate, sunFraction } from '../src/placeclock.js';
+import { localTimeText, localDate, sunFraction, wallToMs } from '../src/placeclock.js';
 import { normalise } from '../api/weather.js';
 import { dayName, nextFlashPeak, cloudDrift, cloudTravel } from '../src/weather.js';
 import { PLACES } from '../src/cities/places.js';
@@ -61,14 +61,17 @@ const fixture = JSON.parse(fixtureText);
 // zone cannot repeat or skip a date.
 const [y0, m0, d0] = localDate(Date.now(), 'Europe/Warsaw').split('-').map(Number);
 const days = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(y0, m0 - 1, d0 + i)).toISOString().slice(0, 10));
-const dated = { ...fixture, daily: { ...fixture.daily, time: days } };
+// The hourly block re-dated the same way: 24 rows on today's local date at HH:00
+// and one at tomorrow 00:00, each keeping its own values.
+const hourlyOn = (h, day0, day1) => ({ ...h, time: [...Array.from({ length: 24 }, (_, i) => `${day0}T${String(i).padStart(2, '0')}:00`), `${day1}T00:00`] });
+const dated = { ...fixture, daily: { ...fixture.daily, time: days }, hourly: hourlyOn(fixture.hourly, days[0], days[1]) };
 // Nazare's stand-in answer and the sea reading (4.2 m: a big day), re-dated to Lisbon's today.
 const nazareFixture = JSON.parse(await readFile(new URL('../test/fixtures/weather-nazare.json', import.meta.url), 'utf8'));
 const marineFixture = JSON.parse(await readFile(new URL('../test/fixtures/marine.json', import.meta.url), 'utf8'));
 const [yl, ml, dl] = localDate(Date.now(), 'Europe/Lisbon').split('-').map(Number);
 const lisbonDays = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(yl, ml - 1, dl + i)).toISOString().slice(0, 10));
 const marineDated = { ...marineFixture, daily: { ...marineFixture.daily, time: lisbonDays } };
-const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays } };
+const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays }, hourly: hourlyOn(nazareFixture.hourly, lisbonDays[0], lisbonDays[1]) };
 const nazareCalm = { ...nazareDated, current: { ...nazareFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
 // The vendor's two-city answer through the real normaliser, as the function would send it.
 const twoCity = (payload, nazare = nazareDated) => [payload, nazare];
@@ -839,6 +842,137 @@ try {
   await pin(cpn.pg, CT + CD);
   check(Math.abs((await readDrift(cpn.pg)) - wd1) < 1e-9, 'phone and desktop place the clouds alike from the same answer');
   await cpn.cx.close();
+
+  // ---- the scrub: a lifted jar previewed up to a day ahead ----------------------
+  const T9 = wallToMs(`${days[0]}T09:00`, 'Europe/Warsaw'); // 09:00 in Warsaw today
+  const scrubPage = async (opts, label) => {
+    const cx = await browser.newContext(opts);
+    const pg = await cx.newPage();
+    const sSeen = watch(pg, origin);
+    await routeWeather(pg);
+    await pg.goto(`${origin}/`);
+    await ready(pg);
+    await labelIs(pg, 1, '12°');
+    return { cx, pg, sSeen, label };
+  };
+  const liftWarsaw = async (pg) => {
+    await pinAt(pg, T9);
+    await pg.evaluate(() => window.__jar.lift('warsaw'));
+    await viewIs(pg, 'jar');
+    await settled(pg);
+    await pg.waitForFunction(() => !document.getElementById('scrubrow').hidden, null, { timeout: 3000 }).catch(() => {});
+  };
+  const sc = await scrubPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 }, 'desktop');
+  const sp2 = sc.pg;
+  check(await sp2.evaluate(() => document.getElementById('scrubrow').hidden), 'scrub row hidden on the table');
+  await liftWarsaw(sp2);
+  check(await sp2.evaluate(() => !document.getElementById('scrubrow').hidden), 'scrub row shows when a jar is lifted');
+  const lab0 = await sp2.evaluate(() => window.__jar.labels.warsaw.slice());
+  const nazare0 = await sp2.evaluate(() => window.__jar.labels.nazare.slice());
+  const hNow = await jarHash(sp2);
+  const got5 = await sp2.evaluate(() => { window.__jar.scrub(300); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview, n: window.__jar.labels.nazare.slice() }; });
+  check(got5.l[1] === '18°' && got5.l[2] === '14:00 (+5 h)', `scrub +5 h shows the hourly temperature and the preview mark (${got5.l[1]} ${got5.l[2]})`);
+  check(JSON.stringify(got5.n) === JSON.stringify(nazare0), 'shed and the other jar stay on now while scrubbing');
+  await sp2.waitForFunction(() => document.getElementById('scrub').getAttribute('aria-valuetext') === '+5 h, 14:00, 18°' && document.getElementById('view').getAttribute('aria-label').startsWith('Previewing +5 h'), null, { timeout: 3000 }).catch(() => {});
+  const spoken = await sp2.evaluate(() => [document.getElementById('scrub').getAttribute('aria-valuetext'), document.getElementById('view').getAttribute('aria-label')]);
+  check(spoken[0].includes('+5 h') && spoken[0].includes('14:00') && spoken[1].startsWith('Previewing +5 h'), `scrub speaks its value (${spoken[0]})`);
+  const six = await sp2.evaluate(() => { window.__jar.scrub(360); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
+  check(six.p !== null && six.p.kind === 'rain' && six.l[1] === '16°' && six.l[2] === '15:00 (+6 h)', `scrub to 15:00 previews rain (${six.p && six.p.kind} ${six.l[1]} ${six.l[2]})`);
+  const hA = await jarHash(sp2);
+  await sp2.evaluate(() => window.__jar.scrub(360));
+  const hB = await jarHash(sp2);
+  check(hA === hB && hA !== hNow, 'scrub draws the same pixels at the same moment');
+  const snapped = await sp2.evaluate(() => { window.__jar.scrub(0); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
+  check(JSON.stringify(snapped.l) === JSON.stringify(lab0) && snapped.p === null, 'scrub snaps back to now');
+  check((await jarHash(sp2)) === hNow, 'scrub back at now draws the picture it started from');
+  await sp2.focus('#scrub');
+  await sp2.keyboard.press('ArrowRight');
+  const afterArrow = await sp2.evaluate(() => window.__jar.scrubMin);
+  await sp2.keyboard.press('Home');
+  const afterHome = await sp2.evaluate(() => window.__jar.scrubMin);
+  check(afterArrow === 30 && afterHome === 0, `scrub keyboard: arrow steps half an hour, Home returns (${afterArrow}, ${afterHome})`);
+  await sp2.keyboard.press('End');
+  check((await sp2.evaluate(() => window.__jar.scrubMin)) === 1440, 'scrub keyboard: End jumps a day ahead');
+  await sp2.click('#now');
+  check((await sp2.evaluate(() => window.__jar.scrubMin)) === 0, 'scrub now button returns to the present');
+  // the spoken value is right at once, straight after a programmatic input event
+  const vt = await sp2.evaluate(() => {
+    const el = document.getElementById('scrub');
+    el.value = '420';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return el.getAttribute('aria-valuetext');
+  });
+  check(vt === '+7 h, 16:00, 16°', `scrub value text is consistent straight after an input event (${vt})`);
+  await sp2.evaluate(() => window.__jar.scrub(0));
+  // a real drag and release: mouse down on the slider, move right, up outside it
+  const sbox = await sp2.evaluate(() => { const r = document.getElementById('scrub').getBoundingClientRect(); return { x: r.x, y: r.y + r.height / 2, w: r.width }; });
+  await sp2.mouse.move(sbox.x + 8, sbox.y);
+  await sp2.mouse.down();
+  await sp2.mouse.move(sbox.x + sbox.w * 0.6, sbox.y, { steps: 6 });
+  const midDrag = await sp2.evaluate(() => window.__jar.scrubMin);
+  await sp2.mouse.move(sbox.x + sbox.w * 0.6, sbox.y - 200, { steps: 3 });
+  await sp2.mouse.up();
+  const afterDrag = await sp2.evaluate(() => [window.__jar.scrubMin, window.__jar.preview]);
+  check(midDrag > 0 && afterDrag[0] === 0 && afterDrag[1] === null, `scrub drag previews, and letting go (even off the slider) snaps back (${midDrag} then ${afterDrag[0]})`);
+  await sp2.evaluate(() => window.__jar.scrub(300));
+  await sp2.focus('#scrub');
+  await sp2.keyboard.press('Escape');
+  const afterEsc1 = await sp2.evaluate(() => [window.__jar.scrubMin, window.__jar.view]);
+  await sp2.keyboard.press('Escape');
+  const afterEsc2 = await viewIs(sp2, 'table');
+  check(afterEsc1[0] === 0 && afterEsc1[1] === 'jar' && afterEsc2, 'escape first resets the scrub, then lowers');
+  check(await sp2.evaluate(() => document.activeElement === document.getElementById('view')), 'focus returns to the canvas when the jar is put down from the slider');
+  check(await sp2.evaluate(() => document.getElementById('scrubrow').hidden), 'scrub row hides when the jar is put down');
+  check(sc.sSeen.errors.length === 0 && sc.sSeen.off.length === 0, `no console errors or off-origin requests while scrubbing${sc.sSeen.errors.length ? `: ${sc.sSeen.errors.join(' | ')}` : ''}`);
+  await sc.cx.close();
+
+  // the phone, upright: the row sits below the card and inside the screen
+  const spp = await scrubPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, 'phone');
+  await liftWarsaw(spp.pg);
+  const pg5 = await spp.pg.evaluate(() => {
+    const r = document.getElementById('scrubrow').getBoundingClientRect();
+    const f = window.__jar.forecast;
+    const sb = document.getElementById('scrub').getBoundingClientRect();
+    const nb = document.getElementById('now').getBoundingClientRect();
+    return { row: { top: r.top, bottom: r.bottom, left: r.left, right: r.right }, cardBottom: f.rect.y + f.rect.h, dpr: window.__jar.dpr, vw: innerWidth, vh: innerHeight, sh: sb.height, nh: nb.height };
+  });
+  check(pg5.row.top >= pg5.cardBottom / pg5.dpr && pg5.row.bottom <= pg5.vh && pg5.row.left >= 0 && pg5.row.right <= pg5.vw, `phone scrub row sits below the card and inside the viewport (row top ${pg5.row.top.toFixed(0)}, card bottom ${(pg5.cardBottom / pg5.dpr).toFixed(0)})`);
+  check(pg5.sh >= 44 && pg5.nh >= 44, `phone scrub targets are 44px (${pg5.sh}, ${pg5.nh})`);
+  const p5 = await spp.pg.evaluate(() => { window.__jar.scrub(300); return window.__jar.labels.warsaw.slice(); });
+  check(p5[1] === '18°' && p5[2] === '14:00 (+5 h)', 'phone scrub +5 h shows the preview mark');
+  await spp.pg.evaluate(() => window.__jar.scrub(0));
+  // a tap on the canvas just beside the row (inside its band) does not lower the jar
+  const bandTap = await spp.pg.evaluate(() => { const r = document.getElementById('scrubrow').getBoundingClientRect(); return { x: Math.max(4, r.left - 12), y: r.top + r.height / 2 }; });
+  await spp.pg.touchscreen.tap(bandTap.x, bandTap.y);
+  await twoFrames(spp.pg);
+  check((await spp.pg.evaluate(() => window.__jar.view)) === 'jar', 'phone tap beside the scrub row leaves the jar lifted');
+  // a real touch drag on the slider, then release
+  const tb = await spp.pg.evaluate(() => { const r = document.getElementById('scrub').getBoundingClientRect(); return { x: r.x, y: r.y + r.height / 2, w: r.width }; });
+  const tcdp = await spp.cx.newCDPSession(spp.pg);
+  const tch = (type, x) => tcdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: tb.y }] });
+  await tch('touchStart', tb.x + 10);
+  for (let i = 1; i <= 6; i++) await tch('touchMove', tb.x + 10 + (tb.w * 0.5 * i) / 6);
+  const tMid = await spp.pg.evaluate(() => window.__jar.scrubMin);
+  await tch('touchEnd', 0);
+  await twoFrames(spp.pg);
+  const tEnd = await spp.pg.evaluate(() => [window.__jar.scrubMin, window.__jar.preview, window.__jar.view]);
+  check(tMid > 0 && tEnd[0] === 0 && tEnd[1] === null && tEnd[2] === 'jar', `phone scrub drag previews, and letting go snaps back (${tMid} then ${tEnd[0]})`);
+  check(spp.sSeen.errors.length === 0, 'no console errors while scrubbing on the phone');
+  await spp.cx.close();
+
+  // the phone, sideways: the row clears the foot of the jar
+  const sl = await scrubPage({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, 'landscape');
+  await liftWarsaw(sl.pg);
+  const lg = await sl.pg.evaluate(() => ({ top: document.getElementById('scrubrow').getBoundingClientRect().top, foot: window.__jar.foot('warsaw').y / window.__jar.dpr }));
+  check(lg.top >= lg.foot, `landscape scrub row clears the jar foot (row top ${lg.top.toFixed(0)}, foot ${lg.foot.toFixed(0)})`);
+  await sl.cx.close();
+
+  // reduced motion: the same preview, no animation to lean on
+  const sr = await scrubPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1, reducedMotion: 'reduce' }, 'reduced');
+  await liftWarsaw(sr.pg);
+  const r5 = await sr.pg.evaluate(() => { window.__jar.scrub(300); return window.__jar.labels.warsaw.slice(); });
+  check(r5[1] === '18°' && r5[2] === '14:00 (+5 h)', 'reduced motion: scrub previews the same label');
+  await sr.cx.close();
 
   check(vendorCalls.length === 0, 'the smoke never reached the vendor stub (the browser only asks its own route)');
 } finally {

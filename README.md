@@ -31,7 +31,9 @@ screen readers), and a strip along the bottom gives today's sunrise and sunset
 with a thin arc under it whose dot shows how far the sun has come across the
 sky. On a lifted jar the arrows, the arrow keys or a swipe move to the other
 jar. Press Escape or the back button to set it down. The shed's own window
-follows *your* clock, not either city's.
+follows *your* clock, not either city's. A slider under the lifted jar previews
+the next 24 hours (the light and the hourly weather, with the label marked
+"+5 h"); let go of it or press *now* and the jar snaps back to the present.
 
 <table>
   <tr>

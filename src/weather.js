@@ -7,7 +7,7 @@ import { clamp, smoothstep } from './clock.js';
 export const KINDS = ['clear', 'cloud', 'fog', 'drizzle', 'rain', 'snow', 'storm'];
 
 // What a jar draws from before any answer has arrived, or after a bad one.
-export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]), sea: null });
+export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]), hourly: Object.freeze([]), sea: null });
 
 // WMO code -> kind. Unknown and null fall back to 'cloud'.
 export function weatherKind(code) {
@@ -60,6 +60,21 @@ export function normaliseDaily(list) {
     const code = num(r.code);
     const hm = (v) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
     rows.push({ date: r.date, code, high: num(r.high), low: num(r.low), sunrise: hm(r.sunrise), sunset: hm(r.sunset), kind: weatherKind(code) });
+  }
+  return rows;
+}
+
+// The body's hourly rows (the next day, hour by hour) as the page draws from
+// them; junk gives []. `time` is the city's local wall clock "YYYY-MM-DDTHH:MM"
+// and is only ever read through wallToMs(time, zone).
+export function normaliseHourly(list) {
+  if (!Array.isArray(list)) return [];
+  const rows = [];
+  for (const r of list) {
+    if (rows.length >= 25) break;
+    if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
+    const code = num(r.code);
+    rows.push({ time: r.time, temperature: num(r.temperature), code, cloudCover: num(r.cloudCover), isDay: num(r.isDay), windSpeed: num(r.windSpeed), windDir: num(r.windDir), kind: weatherKind(code) });
   }
   return rows;
 }
@@ -169,6 +184,7 @@ export function fromEntry(e) {
     kind: weatherKind(code),
     known: code !== null,
     daily: normaliseDaily(e.daily),
+    hourly: normaliseHourly(e.hourly),
     sea: fromSea(e.sea),
   };
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, normaliseHourly, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -215,4 +215,28 @@ test('the sea daily rows: folded by fromEntry, junk gives [], the swell joins fo
 test('forecastSentence says the swell after a day that has one', () => {
   const cs = [{ day: 'MON', high: '18°', low: '12°', today: true, swell: { height: '4.2 m', period: '14 s' } }, { day: 'TUE', high: '17°', low: '11°', today: false, swell: null }];
   assert.equal(forecastSentence(cs), 'Next five days: today MON 18° to 12° swell 4.2 m, TUE 17° to 11°.');
+});
+
+test('fromEntry reads hourly rows, folds kind per row, and defaults to []', () => {
+  const w = fromEntry({ temperature: 1, hourly: [
+    { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200 },
+    { time: 'junk', temperature: 3 },
+    { time: '2026-10-18T16:00', temperature: '5', code: 0 },
+  ] });
+  assert.equal(w.hourly.length, 2);
+  assert.deepEqual(w.hourly[0], { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200, kind: 'rain' });
+  assert.equal(w.hourly[1].temperature, null);
+  assert.equal(w.hourly[1].kind, 'clear');
+  assert.deepEqual(fromEntry({ temperature: 1 }).hourly, []);
+});
+
+test('normaliseHourly: junk gives [], at most 25 rows', () => {
+  for (const j of [undefined, null, 'x', 5, {}, [null, 1, 'a', {}]]) assert.deepEqual(normaliseHourly(j), []);
+  const many = Array.from({ length: 40 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, code: 3 }));
+  assert.equal(normaliseHourly(many).length, 25);
+});
+
+test('EMPTY.hourly is an empty, frozen list', () => {
+  assert.deepEqual(EMPTY.hourly, []);
+  assert.ok(Object.isFrozen(EMPTY.hourly));
 });
