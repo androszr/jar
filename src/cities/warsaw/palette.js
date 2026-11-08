@@ -1,9 +1,10 @@
 // Warsaw's own colours: the only file in this city's folder allowed colour
-// literals. [r, g, b] arrays, mixed by the scene. The Floodlit Nocturne: flat
-// silhouettes rim-lit by day, floodlit and glowing by night.
+// literals. [r, g, b] arrays, mixed by the scene. The skyline seen from the
+// Praga bank: glass rim-lit by day around a sandstone Palace, everything
+// floodlit and glowing by night, the Swietokrzyski Bridge in front.
 export const WARSAW = {
   // silhouettes and their rim light: day, dusk, night
-  silhouetteDay: [92, 108, 136],
+  silhouetteDay: [104, 112, 124],
   silhouetteDusk: [40, 36, 62],
   silhouetteNight: [10, 13, 24],
   rimDay: [236, 244, 255],
@@ -28,10 +29,54 @@ export const WARSAW = {
   palaceJoint: [70, 30, 20],
   clockFace: [255, 244, 214],
   clockGlow: [255, 230, 170],
+  // the Palace by day: sandstone, its shade side and its ribs; the brass needle
+  stoneDay: [214, 190, 152],
+  stoneDusk: [150, 112, 112],
+  stoneShade: [150, 122, 92],
+  stoneRib: [140, 112, 84],
+  needleDay: [222, 180, 84],
+  needleNight: [196, 148, 78],
+  needleGlint: [255, 248, 220],
+  // the flag floodlight on 3 May and 11 November
+  flagWhite: [255, 250, 244],
+  flagRed: [226, 40, 50],
+  // the low city in front of the towers: plaster, brick, sandstone and concrete
+  // façades by day, each block picking one; its windows; the blocks behind
+  facades: [
+    [184, 168, 142], // pale plaster
+    [148, 100, 82], // brick
+    [136, 134, 128], // concrete
+    [200, 184, 150], // sandstone
+    [112, 108, 102], // dark concrete
+    [172, 138, 104], // ochre
+    [160, 150, 138], // grey plaster
+  ],
+  facadeWindow: [60, 62, 70],
+  backBlockDay: [128, 124, 118],
+  carpetDay: [74, 86, 108],
+  carpetDusk: [46, 40, 64],
+  carpetNight: [14, 16, 28],
+  // the far bank's boulevard and its lamps
+  boulevardDay: [188, 178, 158],
+  boulevardNight: [46, 42, 52],
+  quayLamp: [255, 214, 140],
+  // the near (Praga) bank: forest only
+  treeDay: [52, 84, 56],
+  treeDusk: [30, 40, 40],
+  treeNight: [8, 12, 14],
+  // the Swietokrzyski Bridge
+  pylonDay: [236, 236, 230],
+  pylonNight: [74, 76, 94],
+  cableDay: [240, 242, 240],
+  cableNight: [96, 98, 120],
+  deckDay: [92, 96, 104],
+  deckNight: [26, 24, 34],
+  deckLamp: [255, 214, 140],
+  pylonLight: [255, 50, 40],
   // the river and what it reflects
   riverDay: [70, 98, 132],
   riverNight: [30, 30, 60],
-  riverDeep: [4, 6, 16],
+  riverDeep: [12, 22, 50],
   reflectPalace: [255, 180, 96],
   reflectVarso: [120, 214, 255],
   reflectSpire: [235, 245, 255],

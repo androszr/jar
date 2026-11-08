@@ -1,17 +1,24 @@
-// Warsaw in a jar, as a floodlit poster: the downtown cluster (Varso Tower, the
-// Palace of Culture and Science, Warsaw Spire, Zlota 44, the InterContinental
-// and the Cosmopolitan) as flat silhouettes rim-lit on the sun's side by day and
-// lit from within by night, the Vistula in front of them above the label plate,
-// and the Mermaid on her plinth on the left bank. Every light is scaled by one
+// Warsaw in a jar, seen from the Praga bank: Varso and the Palace of Culture and
+// Science on the left, the tower cluster (Zlota 44, the InterContinental, Warsaw
+// Spire, the Cosmopolitan) to the right, a band of low lit city in front of them,
+// the far bank's boulevard with its lamps, the narrow Vistula, then the near bank,
+// only forest, with the Swietokrzyski Bridge (bridge.js) leaving the far quay and
+// landing in it, and a small Mermaid on the far quay by the bridgehead. The glass is rim-lit on the sun's side by day
+// and lit from within by night; the Palace is sandstone by day and floodlit by
+// night, white over red on 3 May and 11 November. Every light is scaled by one
 // continuous darkness measure (nightAmount), so dusk is a blend, never a switch.
 // Shapes were drawn in a 340 x 396 px box (the jar's body) and are shares of it.
 import { LAMP_THRESHOLD, osc, clamp, wrap } from '../../clock.js';
 import { css, mix, glow } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
+import { localDate } from '../../placeclock.js';
 import { WARSAW } from './palette.js';
 
-export const FAR_BANK = 0.6; // the skyline stands here; the river runs FAR_BANK..QUAY_TOP
-export const QUAY_TOP = 0.7; // the quay (and the Mermaid's plinth) from here down
+// The bands, top to bottom, as shares of the body height.
+export const FAR_BANK = 0.575; // the towers stand here
+export const RIVER_TOP = 0.64; // the low city runs down to the far quay, the river from here
+export const QUAY_TOP = 0.69; // the near bank: forest from here down behind the label plate
+export const BOULEVARD = 0.012; // the far bank's paved walk, this tall, just above the river
 
 // The reference box the shapes were drawn in, in px.
 const BW = 340;
@@ -20,36 +27,47 @@ const BH = 396;
 // The six landmarks, left to right: x and hw shares of the width, heights
 // shares of the body height above the far bank. `top` (or `mast`, or `h`) is the
 // highest point of each.
+// Varso keeps clear of the left shoulder of the glass; the cluster sits right of
+// the Palace, as it does from across the river.
 export const SKYLINE = [
-  { id: 'cosmopolitan', x: 0.141, hw: 0.0235, h: 0.303 },
-  { id: 'varso', x: 0.271, hw: 0.032, roof: 0.379, crown: 0.449, top: 0.53 },
-  { id: 'pkin', x: 0.5, hw: 0.188, base: 0.061, tiers: 0.394, top: 0.475 },
-  { id: 'spire', x: 0.694, hw: 0.038, h: 0.396, mast: 0.444 },
-  { id: 'zlota', x: 0.82, hw: 0.044, h: 0.359 },
-  { id: 'intercontinental', x: 0.9125, hw: 0.0275, h: 0.298 },
+  { id: 'varso', x: 0.235, hw: 0.032, roof: 0.379, crown: 0.449, top: 0.53 },
+  { id: 'pkin', x: 0.4, hw: 48 / 340, top: 0.48 },
+  { id: 'zlota', x: 0.555, hw: 0.044, h: 0.359 },
+  { id: 'intercontinental', x: 0.635, hw: 0.0275, h: 0.298 },
+  { id: 'spire', x: 0.72, hw: 0.038, h: 0.396, mast: 0.444 },
+  { id: 'cosmopolitan', x: 0.87, hw: 0.0235, h: 0.303 },
 ];
 const TOWER = Object.fromEntries(SKYLINE.map((t) => [t.id, t]));
 const summit = (t) => t.top ?? t.mast ?? t.h;
 
 // The low background blocks: centre x, half width (shares of the width), height
 // (share of the body height). None starts left of 0.17w: that edge belongs to the
-// Cosmopolitan and the Mermaid.
+// glass's shoulder and the Mermaid.
 export const BACK_ROW = [
   [68, 10, 100], [120, 9, 74], [134, 12, 94], [204, 10, 86], [214, 8, 110], [256, 11, 92], [300, 9, 82], [334, 12, 98],
 ].map(([x, hw, h]) => ({ x: x / BW, hw: hw / BW, h: h / BH }));
 
-// The Palace: its stepped tiers (half width, height), the wing ornaments, the
-// clock and where the floodlight gradient ends.
+// The low city in front of the towers, down to the far quay: centre x and half
+// width (shares of the width), top (share of the body height from the top).
+export const FRONT_ROW = Array.from({ length: 30 }, (_, i) => ({
+  x: (i + 0.5) / 30 + (hash2(i, 61) - 0.5) * 0.02,
+  hw: 0.014 + 0.016 * hash2(i, 62),
+  top: RIVER_TOP - 0.042 - 0.05 * hash2(i, 63),
+}));
+
+// The Palace, in px of the reference box above the far bank: [half width, top]
+// of each mass from the wings up, then the needle's tip. The combs are the rows
+// of pinnacles along a setback: [mass index, count, spike height px].
 export const PALACE = {
-  tiers: [[30, 92], [24, 108], [18, 122], [13, 134], [9, 146], [5, 156]].map(([hw, h]) => ({ hw: hw / BW, top: h / BH })),
-  ornaments: [0.118, 0.165],
-  clock: 0.247, // the clock face, a share of the body height from the top
-  floodTop: 0.394,
+  masses: [[48, 34], [27, 50], [21, 118], [16.5, 127], [11, 143], [6, 152]].map(([hw, top]) => ({ hw: hw / BW, top: top / BH })),
+  combs: [[0, 4, 6], [1, 6, 6], [2, 6, 7], [3, 5, 6]],
+  clock: 135 / BH, // the clock faces, a share of the body height above the far bank
+  needle: 0.48,
 };
 
 // The Mermaid: figure base (x of the width, base of the height), unit u (a share
-// of the height) and the plinth she stands on.
-export const MERMAID = { x: 0.13, base: 0.662, u: 0.17, plinth: { hw: 0.05, top: 0.664, h: 0.076 } };
+// of the height) and the plinth she stands on, on the far quay, standing on the water's edge.
+export const MERMAID = { x: 0.15, base: 0.626, u: 0.055, plinth: { hw: 0.016, top: 0.628, h: 0.012 } };
 
 // The x bands the glass streaks occupy (shares of the width); a copy of the
 // look's STREAKS, which test/look.test.js keeps in step.
@@ -62,13 +80,20 @@ export const nightAmount = (light) => clamp((LAMP_THRESHOLD + 0.1 - light) / 0.3
 export const sunSide = (phase) => (wrap(phase) < 0.4 ? -1 : 1);
 
 // day -> dusk -> night, blended by the darkness measure.
-const tone = (day, dusk, night, n) => mix(mix(day, dusk, Math.min(1, n * 2)), night, Math.max(0, n * 2 - 1));
+export const tone = (day, dusk, night, n) => mix(mix(day, dusk, Math.min(1, n * 2)), night, Math.max(0, n * 2 - 1));
+
+// 3 May and 11 November in Warsaw: the Palace is floodlit white over red.
+export function flagDay(nowMs) {
+  const d = localDate(nowMs, 'Europe/Warsaw');
+  return typeof d === 'string' && (d.endsWith('-05-03') || d.endsWith('-11-11'));
+}
 
 // Every pixel box derived from the shares above, for a body of w x h at (ox, oy).
 export function layout(w, h, ox = 0, oy = 0) {
   const sx = w / BW;
   const sy = h / BH;
   const gy = oy + h * FAR_BANK;
+  const ry = oy + h * RIVER_TOP;
   const qy = oy + h * QUAY_TOP;
   const landmarks = SKYLINE.map((t) => ({ id: t.id, x0: ox + (t.x - t.hw) * w, x1: ox + (t.x + t.hw) * w, top: gy - summit(t) * h }));
   const u = h * MERMAID.u;
@@ -77,8 +102,9 @@ export function layout(w, h, ox = 0, oy = 0) {
   const pl = MERMAID.plinth;
   return {
     w, h, ox, oy, sx, sy, gy, qy,
-    river: { top: gy, bottom: qy },
+    river: { top: ry, bottom: qy },
     quayTop: qy,
+    boulevard: ry - h * BOULEVARD,
     landmarks,
     mermaid: { x0: bx - 0.28 * u, x1: bx + 0.31 * u, top: by - 1.07 * u, bottom: by + 0.06 * u, bx, by, u },
     plinth: { x0: ox + w * (MERMAID.x - pl.hw), x1: ox + w * (MERMAID.x + pl.hw), top: oy + h * pl.top, bottom: oy + h * (pl.top + pl.h) },
@@ -109,25 +135,27 @@ const triPath = (ctx, x, base, hw, hh) => {
   ctx.closePath();
 };
 
+// The needle alone, from the cupola to the tip.
+function traceNeedle(ctx, L) {
+  const cx = L.X(TOWER.pkin.x);
+  const base = L.gy - PALACE.masses[PALACE.masses.length - 1].top * L.h;
+  ctx.beginPath();
+  triPath(ctx, cx, base, 2.4 * L.sx, base - (L.gy - PALACE.needle * L.h));
+}
+
+// Wings, front block, the tall shaft, crown, clock lantern and cupola, the
+// needle, and a comb of pinnacles along each setback.
 export function tracePalace(ctx, L) {
-  const t = TOWER.pkin;
-  const cx = L.X(t.x);
+  const cx = L.X(TOWER.pkin.x);
   const { sx, sy, gy } = L;
   ctx.beginPath();
-  rectPath(ctx, cx - t.hw * L.w, gy - t.base * L.h, cx + t.hw * L.w, gy);
-  PALACE.tiers.forEach((tier, i) => {
-    rectPath(ctx, cx - tier.hw * L.w, gy - tier.top * L.h, cx + tier.hw * L.w, gy);
-    if (i < 4) {
-      for (const s of [-1, 1]) triPath(ctx, cx + s * (tier.hw * L.w - 2 * sx), gy - tier.top * L.h, 2.5 * sx, 9 * sy);
-    }
-  });
-  triPath(ctx, cx, gy - t.tiers * L.h, 4 * sx, (t.top - t.tiers) * L.h);
-  for (const o of PALACE.ornaments) {
-    for (const s of [-1, 1]) {
-      const ox = cx + s * o * L.w;
-      rectPath(ctx, ox - 4 * sx, gy - 38 * sy, ox + 4 * sx, gy - 24 * sy);
-      triPath(ctx, ox, gy - 38 * sy, 5 * sx, 10 * sy);
-    }
+  for (const m of PALACE.masses) rectPath(ctx, cx - m.hw * L.w, gy - m.top * L.h, cx + m.hw * L.w, gy);
+  const tip = PALACE.masses[PALACE.masses.length - 1].top;
+  triPath(ctx, cx, gy - tip * L.h, 2.4 * sx, (PALACE.needle - tip) * L.h);
+  for (const [i, n, hh] of PALACE.combs) {
+    const m = PALACE.masses[i];
+    const hw = m.hw * L.w - 1.5 * sx;
+    for (let k = 0; k < n; k++) triPath(ctx, cx - hw + (2 * hw * k) / (n - 1), gy - m.top * L.h, 1.3 * sx, hh * sy);
   }
 }
 
@@ -273,7 +301,7 @@ function windowDots(ctx, trace, L, night) {
   ctx.restore();
 }
 
-export function drawSkyline(ctx, rect, phase, tint, plates, weather) {
+export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
   const L = layout(rect.w, rect.h, rect.x, rect.y);
   const night = nightAmount(tint.light);
   const side = sunSide(phase);
@@ -290,7 +318,8 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather) {
 
   // the background blocks, hazed toward the sky, with a few lit windows
   traceBackRow(ctx, L);
-  ctx.fillStyle = css(mix(bodyC, tint.skyLow, 0.42));
+  const backC = tone(WARSAW.backBlockDay, WARSAW.silhouetteDusk, WARSAW.silhouetteNight, night);
+  ctx.fillStyle = css(mix(backC, tint.skyLow, 0.25));
   ctx.fill();
   if (night > 0) windowDots(ctx, traceBackRow, L, night);
 
@@ -361,48 +390,104 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather) {
     floorBands(ctx, traceCosmopolitan, L, TOWER.cosmopolitan, 47, night);
   }
 
-  // the Palace: a rim-lit silhouette by day, floodlit gold by night
-  const pk = TOWER.pkin;
+  // the Palace: sandstone by day with its shade side away from the sun, ribs at
+  // every hour, floodlit by night (white over red on the flag days)
   const px = cx('pkin');
-  rimmed(ctx, tracePalace, L, side, bodyC, rimC, rimAlpha);
+  const day = 1 - night;
+  tracePalace(ctx, L);
+  ctx.fillStyle = css(tone(WARSAW.stoneDay, WARSAW.stoneDusk, WARSAW.silhouetteNight, night));
+  ctx.fill();
+  ctx.save();
+  tracePalace(ctx, L);
+  ctx.clip();
+  if (day > 0) {
+    ctx.fillStyle = css(WARSAW.stoneShade, 0.6 * day);
+    if (side < 0) ctx.fillRect(px + 2 * L.sx, L.oy, L.w, L.h);
+    else ctx.fillRect(L.ox, L.oy, px - 2 * L.sx - L.ox, L.h);
+  }
   if (night > 0) {
-    ctx.save();
-    tracePalace(ctx, L);
-    ctx.clip();
-    const g = ctx.createLinearGradient(0, L.gy, 0, L.Y(PALACE.floodTop));
-    g.addColorStop(0, css(WARSAW.floodTop, 0.98 * night));
-    g.addColorStop(0.55, css(WARSAW.floodMid, 0.72 * night));
-    g.addColorStop(1, css(WARSAW.floodFoot, 0.35 * night));
-    ctx.fillStyle = g;
-    ctx.fillRect(L.ox, L.oy, L.w, L.h);
-    ctx.strokeStyle = css(WARSAW.palaceJoint, 0.35 * night);
-    ctx.lineWidth = 1.1 * L.sx;
-    for (let x = px - 28 * L.sx; x < px + 30 * L.sx; x += 3.5 * L.sx) {
+    if (flagDay(nowMs)) {
+      const split = L.gy - 70 * L.sy;
+      ctx.fillStyle = css(WARSAW.flagWhite, 0.95 * night);
+      ctx.fillRect(L.ox, L.oy, L.w, split - L.oy);
+      ctx.fillStyle = css(WARSAW.flagRed, 0.95 * night);
+      ctx.fillRect(L.ox, split, L.w, L.gy - split);
+    } else {
+      const g = ctx.createLinearGradient(0, L.gy, 0, L.Y(PALACE.masses[4].top));
+      g.addColorStop(0, css(WARSAW.floodTop, 0.98 * night));
+      g.addColorStop(0.55, css(WARSAW.floodMid, 0.72 * night));
+      g.addColorStop(1, css(WARSAW.floodFoot, 0.35 * night));
+      ctx.fillStyle = g;
+      ctx.fillRect(L.ox, L.oy, L.w, L.h);
+    }
+  }
+  // the ribs: pilasters up the shaft and across the front block
+  ctx.strokeStyle = css(mix(WARSAW.stoneRib, WARSAW.palaceJoint, night), 0.55 * day + 0.35 * night);
+  ctx.lineWidth = 0.9 * L.sx;
+  const ribs = (hw, step, y0, y1) => {
+    for (let x = px - hw * L.sx; x <= px + hw * L.sx + 0.01; x += step * L.sx) {
       ctx.beginPath();
-      ctx.moveTo(x, L.gy - 130 * L.sy);
-      ctx.lineTo(x, L.gy - 26 * L.sy);
+      ctx.moveTo(x, L.gy - y1 * L.sy);
+      ctx.lineTo(x, L.gy - y0 * L.sy);
       ctx.stroke();
     }
-    ctx.restore();
-    glow(ctx, px, L.gy - L.h * 0.18, L.w * 0.2, WARSAW.floodGlow, 0.45 * night);
-  }
-  // the clock: a rim-coloured dot by day, a lit face by night
-  const clockY = L.oy + PALACE.clock * L.h;
-  if (night < 1) {
-    ctx.fillStyle = css(rimC, 1 - night);
+  };
+  ribs(19, 4.2, 52, 116);
+  ribs(25, 5, 3, 47);
+  ribs(9, 4.5, 129, 141);
+  ctx.restore();
+  // the brass needle, with a glint on the sun's side by day
+  traceNeedle(ctx, L);
+  ctx.fillStyle = css(tone(WARSAW.needleDay, WARSAW.needleDay, WARSAW.needleNight, night));
+  ctx.fill();
+  if (day > 0) {
+    ctx.fillStyle = css(WARSAW.needleGlint, 0.9 * day);
     ctx.beginPath();
-    ctx.arc(px, clockY, 3 * L.sx, 0, Math.PI * 2);
+    ctx.arc(px + side * 0.8 * L.sx, L.Y(PALACE.needle) + 14 * L.sy, 1.1 * L.sx, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (night > 0) glow(ctx, px, L.gy - L.h * 0.16, L.w * 0.2, flagDay(nowMs) ? WARSAW.flagWhite : WARSAW.floodGlow, 0.4 * night);
+  // two clock faces, either side of the lantern's corner
+  const clockY = L.Y(PALACE.clock);
+  for (const s of [-1, 1]) {
+    ctx.fillStyle = css(mix(mix(WARSAW.stoneDay, WARSAW.clockFace, 0.6), WARSAW.clockFace, night));
+    ctx.beginPath();
+    ctx.arc(px + s * 5 * L.sx, clockY, 2.2 * L.sx, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (night > 0) glow(ctx, px, clockY, 12 * L.sx, WARSAW.clockGlow, 0.6 * night);
+
+  // the low city in front: each block its own façade (plaster, brick, concrete),
+  // hazed a little toward the sky, a grid of windows by day, lit ones at night
+  FRONT_ROW.forEach((b, i) => {
+    const x0 = L.X(b.x - b.hw);
+    const x1 = L.X(b.x + b.hw);
+    const top = L.oy + b.top * L.h;
+    const day = WARSAW.facades[Math.floor(hash2(i, 64) * WARSAW.facades.length)];
+    const shade = mix(day, WARSAW.carpetDay, 0.35 * hash2(i, 65)); // some stand in shade
+    ctx.fillStyle = css(mix(tone(shade, WARSAW.carpetDusk, WARSAW.carpetNight, night), tint.skyLow, 0.1));
+    ctx.fillRect(x0, top, x1 - x0, L.river.top - top);
+    if (night < 1) {
+      ctx.fillStyle = css(WARSAW.facadeWindow, 0.35 * (1 - night));
+      for (let y = top + 2.5 * L.sy; y < L.river.top - 2 * L.sy; y += 3.4 * L.sy) {
+        for (let x = x0 + 1.5 * L.sx; x < x1 - 2 * L.sx; x += 3 * L.sx) ctx.fillRect(x, y, 1.4 * L.sx, 1.5 * L.sy);
+      }
+    }
+  });
   if (night > 0) {
-    ctx.fillStyle = css(WARSAW.clockFace, night);
-    ctx.beginPath();
-    ctx.arc(px, clockY, 3.6 * L.sx, 0, Math.PI * 2);
-    ctx.fill();
-    glow(ctx, px, clockY, 14 * L.sx, WARSAW.clockGlow, 0.7 * night);
+    ctx.fillStyle = css(WARSAW.backWindow, 0.9 * night);
+    FRONT_ROW.forEach((b, i) => {
+      const x0 = L.X(b.x - b.hw);
+      const wd = 2 * b.hw * L.w;
+      const top = L.oy + b.top * L.h;
+      for (let k = 0; k < 5; k++) {
+        if (hash2(i, 70 + k) > 0.55) continue;
+        ctx.fillRect(x0 + 1.5 * L.sx + hash2(k, 71 + i) * (wd - 3.5 * L.sx), top + 2 * L.sy + hash2(i + 40, k) * (L.river.top - top - 4 * L.sy), 1.5 * L.sx, 1.7 * L.sy);
+      }
+    });
   }
 
-  // snow on every roof
+  // snow on every roof and every setback
   if (snow) {
     for (const lm of L.landmarks) {
       if (lm.id === 'pkin') continue;
@@ -412,8 +497,8 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather) {
       else if (lm.id === 'cosmopolitan') capCosmopolitan(ctx, L, cap);
       else cap(lm.x0, lm.x1, lm.top);
     }
-    cap(px - 64 * L.sx, px + 64 * L.sx, L.gy - pk.base * L.h);
-    PALACE.tiers.slice(0, 4).forEach((t) => cap(px - t.hw * L.w, px + t.hw * L.w, L.gy - t.top * L.h));
+    PALACE.masses.slice(0, 5).forEach((m) => cap(px - m.hw * L.w, px + m.hw * L.w, L.gy - m.top * L.h));
+    for (const b of FRONT_ROW) cap(L.X(b.x - b.hw), L.X(b.x + b.hw), L.oy + b.top * L.h);
   }
 }
 
@@ -426,12 +511,12 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs) {
   let colour = tone(WARSAW.riverDay, WARSAW.riverNight, WARSAW.riverDeep, night);
   if (wet) colour = mix(colour, WARSAW.dull, 0.35 * clamp(tint.light + 0.2));
   const g = ctx.createLinearGradient(0, top, 0, bottom);
-  g.addColorStop(0, css(mix(colour, tint.skyLow, 0.35)));
+  g.addColorStop(0, css(mix(colour, tint.skyLow, 0.15)));
   g.addColorStop(1, css(colour));
   ctx.fillStyle = g;
   ctx.fillRect(L.ox, top, L.w, bottom - top);
   // ripples, a function of the phase so they loop with the day
-  ctx.strokeStyle = css(mix(colour, tint.skyLow, 0.6), 0.5);
+  ctx.strokeStyle = css(mix(mix(colour, tint.skyLow, 0.6), WARSAW.rimNight, 0.5 * night), 0.5 + 0.2 * night);
   ctx.lineWidth = 1;
   for (let i = 0; i < 3; i++) {
     const ry = top + 6 + i * ((bottom - top - 8) / 3);
@@ -453,21 +538,60 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs) {
         ctx.fillRect(x - bw / 2 + j, y, bw, 3 * L.sy);
       }
     };
-    reflect(L.X(TOWER.pkin.x), 40 * L.sx, WARSAW.reflectPalace, 0.85, 20);
+    reflect(L.X(TOWER.pkin.x), 40 * L.sx, flagDay(nowMs) ? WARSAW.flagRed : WARSAW.reflectPalace, 0.85, 20);
     reflect(L.X(TOWER.varso.x), 12 * L.sx, WARSAW.reflectVarso, 0.75, 30);
     reflect(L.X(TOWER.spire.x) + 6 * L.sx, 8 * L.sx, WARSAW.reflectSpire, 0.6, 40);
     reflect(L.X(TOWER.zlota.x), 10 * L.sx, WARSAW.reflectZlota, 0.45, 50);
   }
-  // the quay, with a rim line at its edge
-  const quay = tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night);
-  ctx.fillStyle = css(quay);
-  ctx.fillRect(L.ox, L.quayTop, L.w, L.oy + L.h - L.quayTop);
-  ctx.fillStyle = css(mix(quay, tint.skyLow, 0.5));
-  ctx.fillRect(L.ox, L.quayTop, L.w, 1.5);
+  drawBoulevard(ctx, L, tint, night, weather);
+  drawNearBank(ctx, L, phase, night, weather);
+}
+
+// The far bank's boulevard: a paved walk along the water under the low city,
+// its quay edge, and lamp posts that come on at dusk.
+function drawBoulevard(ctx, L, tint, night, weather) {
+  const snow = weather && weather.kind === 'snow';
+  const top = L.river.top;
+  const walk = L.boulevard;
+  ctx.fillStyle = css(snow ? mix(WARSAW.snowCap, WARSAW.boulevardNight, 0.6 * night + 0.05) : mix(tone(WARSAW.boulevardDay, WARSAW.boulevardNight, WARSAW.boulevardNight, night), tint.skyLow, 0.1));
+  ctx.fillRect(L.ox, walk, L.w, top - walk);
+  ctx.fillStyle = css(mix(tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night), tint.skyLow, 0.6));
+  ctx.fillRect(L.ox, top - 1.2 * L.sy, L.w, 1.2 * L.sy);
+  for (let x = L.ox + 9 * L.sx; x < L.ox + L.w; x += 18 * L.sx) {
+    ctx.fillStyle = css(tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night));
+    ctx.fillRect(x, walk - 4.5 * L.sy, 0.7 * L.sx, 4.5 * L.sy + 1);
+    if (night > 0) {
+      ctx.fillStyle = css(WARSAW.quayLamp, 0.9 * night);
+      ctx.fillRect(x - 0.4 * L.sx, walk - 5.6 * L.sy, 1.5 * L.sx, 1.4 * L.sy);
+      glow(ctx, x, walk - 4 * L.sy, 6 * L.sx, WARSAW.quayLamp, 0.3 * night);
+    }
+  }
+}
+
+// The near (Praga) bank: no wall and no path, only the riverside forest, its
+// jagged canopy running straight down to the water.
+function drawNearBank(ctx, L, phase, night, weather) {
+  const snow = weather && weather.kind === 'snow';
+  const bottom = L.oy + L.h;
+  const treeTop = (k) => L.quayTop + (hash2(k, 90) * 5 - 1 - 3 * Math.sin(k * 0.9)) * L.sy;
+  const step = 7 * L.sx;
+  const n = Math.ceil(L.w / step) + 1;
+  // the water runs under the trees' edge, so no gap of ground shows between them
+  ctx.beginPath();
+  ctx.moveTo(L.ox, bottom);
+  for (let k = 0; k <= n; k++) ctx.lineTo(L.ox + k * step, treeTop(k));
+  ctx.lineTo(L.ox + L.w, bottom);
+  ctx.closePath();
+  ctx.fillStyle = css(tone(WARSAW.treeDay, WARSAW.treeDusk, WARSAW.treeNight, night));
+  ctx.fill();
+  if (snow) {
+    ctx.fillStyle = css(mix(WARSAW.snowCap, WARSAW.treeNight, 0.5 * night + 0.05));
+    for (let k = 0; k <= n; k++) ctx.fillRect(L.ox + k * step - 2.5 * L.sx, treeTop(k) - 1, 5 * L.sx, 2 * L.sy);
+  }
 }
 
 // The Mermaid of Warsaw: sword raised, round shield on her arm, tail coiled, on a
-// plinth on the left bank. `c` is a css colour string.
+// plinth on the far (left) bank's quay, beside the bridgehead. `c` is a css colour string.
 function figure(ctx, bx, by, u, c, shieldDot) {
   const P = (dx, dy) => [bx + dx * u, by + dy * u];
   const move = (dx, dy) => ctx.moveTo(...P(dx, dy));
@@ -534,14 +658,14 @@ export function drawMermaid(ctx, rect, phase, tint, weather) {
   const cx = (p.x0 + p.x1) / 2;
 
   ctx.fillStyle = css(mix(WARSAW.plinthDay, WARSAW.plinthNight, night));
-  ctx.fillRect(cx - hw + 2 * L.sx, p.top, 2 * hw - 4 * L.sx, p.bottom - p.top);
+  ctx.fillRect(cx - hw + 1 * L.sx, p.top, 2 * hw - 4 * L.sx, p.bottom - p.top);
   ctx.fillStyle = css(mix(WARSAW.plinthCapDay, WARSAW.plinthCapNight, night));
-  ctx.fillRect(cx - hw, p.top - 3, 2 * hw, 4);
+  ctx.fillRect(cx - hw, p.top - 1.5, 2 * hw, 2);
   if (snow) {
     ctx.fillStyle = css(WARSAW.snowCap);
-    ctx.fillRect(cx - hw, p.top - 5, 2 * hw, 4);
+    ctx.fillRect(cx - hw, p.top - 3, 2 * hw, 2);
   }
-  if (night > 0) glow(ctx, cx, p.top, 46 * L.sx, WARSAW.floodGlow, 0.3 * night);
+  if (night > 0) glow(ctx, cx, p.top, 12 * L.sx, WARSAW.floodGlow, 0.3 * night);
 
   const body = tone(WARSAW.mermaidDay, WARSAW.mermaidDay, WARSAW.mermaidNight, night);
   if (night > 0) {

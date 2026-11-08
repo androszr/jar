@@ -2,9 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import warsaw from '../src/cities/warsaw/index.js';
 import {
-  SKYLINE, MERMAID, BACK_ROW, RIM_DX, FAR_BANK, STREAK_CLEAR, buildPlates, layout, nightAmount, sunSide, drawMermaid,
+  SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, PALACE, RIM_DX, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
+  buildPlates, layout, nightAmount, sunSide, drawMermaid, drawSkyline, flagDay,
 } from '../src/cities/warsaw/scene.js';
+import { BRIDGE, deckY, drawBridge } from '../src/cities/warsaw/bridge.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
+import { hash2 } from '../src/skyweather.js';
 import { EMPTY } from '../src/weather.js';
 import { css, tint, STREAKS } from '../src/look/index.js';
 import { sample } from '../src/clock.js';
@@ -52,30 +55,49 @@ function noRandom(fn) {
   }
 }
 
-function paint(phase, weather = EMPTY) {
+function paint(phase, weather = EMPTY, nowMs = 0) {
   const ctx = recordingCtx();
-  noRandom(() => warsaw.paint(ctx, rect, phase, tint(sample(phase)), weather, buildPlates(rect.w, rect.h), 0));
+  noRandom(() => warsaw.paint(ctx, rect, phase, tint(sample(phase)), weather, buildPlates(rect.w, rect.h), nowMs));
   return ctx;
 }
 
 const startsWith = (set, prefix) => [...set].filter((s) => s.startsWith(prefix));
+const rgbaOf = (c) => `rgba(${c.join(', ')},`;
 const AVIATION = 'rgba(255, 70, 60,';
 const SPIRE_EDGE = 'rgba(235, 245, 255,';
 
-test('the skyline has six landmarks, left to right, Varso tallest, the Palace central', () => {
-  assert.deepEqual(SKYLINE.map((t) => t.id), ['cosmopolitan', 'varso', 'pkin', 'spire', 'zlota', 'intercontinental']);
+test('the skyline from Praga: Varso and the Palace on the left, the cluster to the right, Varso tallest', () => {
+  assert.deepEqual(SKYLINE.map((t) => t.id), ['varso', 'pkin', 'zlota', 'intercontinental', 'spire', 'cosmopolitan']);
   const xs = SKYLINE.map((t) => t.x);
   assert.deepEqual([...xs].sort((a, b) => a - b), xs);
   const top = (t) => t.top ?? t.mast ?? t.h;
   assert.equal(SKYLINE.reduce((a, b) => (top(b) > top(a) ? b : a)).id, 'varso');
-  assert.equal(SKYLINE.reduce((a, b) => (Math.abs(b.x - 0.5) < Math.abs(a.x - 0.5) ? b : a)).id, 'pkin');
+  const pkin = SKYLINE.find((t) => t.id === 'pkin');
+  assert.ok(pkin.x < 0.5, 'the Palace stands left of centre');
   for (const t of SKYLINE) assert.ok(top(t) <= FAR_BANK, t.id);
 });
 
-test('the river sits above the label plate and the Mermaid stands left of it', () => {
+test('the Palace is a straight shaft with a crown and a needle, not a stepped pyramid', () => {
+  const [wings, front, shaft, crown, lantern, cupola] = PALACE.masses;
+  assert.ok(wings.hw > front.hw && front.hw > shaft.hw && shaft.hw > crown.hw && crown.hw > lantern.hw && lantern.hw > cupola.hw);
+  assert.ok(shaft.top - front.top > 0.5 * shaft.top, 'the shaft rises straight for more than half the height');
+  assert.ok(PALACE.needle - cupola.top >= 0.2 * PALACE.needle, 'the needle is at least a fifth of the height');
+  assert.equal(PALACE.needle, SKYLINE.find((t) => t.id === 'pkin').top);
+  for (const [i, n] of PALACE.combs) assert.ok(i < PALACE.masses.length && n >= 4);
+});
+
+test('the bands run top to bottom: towers, low city, boulevard, river, forest', () => {
+  assert.ok(FAR_BANK < RIVER_TOP - BOULEVARD && RIVER_TOP < QUAY_TOP);
+  for (const b of FRONT_ROW) assert.ok(b.top < RIVER_TOP && b.top > FAR_BANK - 0.06);
+});
+
+test('the river sits above the label plate and the Mermaid stands on the far quay, left of it', () => {
   const L = layout(340, 396);
-  assert.ok(Math.abs(L.river.top - 237.6) < 1e-9);
-  assert.ok(Math.abs(L.river.bottom - 277.2) < 1e-9);
+  assert.ok(Math.abs(L.river.top - 0.64 * 396) < 1e-9);
+  assert.ok(Math.abs(L.river.bottom - 0.69 * 396) < 1e-9);
+  assert.ok(Math.abs(L.plinth.bottom - L.river.top) < 1, 'her plinth stands on the far quay, at the water');
+  assert.ok(L.mermaid.bottom <= L.river.top && L.mermaid.bottom >= L.plinth.top - 2, 'she stands on her plinth');
+  assert.ok(L.mermaid.top > L.gy - 0.06 * 396, 'she is small, seen across the river');
   assert.equal(plateTop, 292);
   assert.ok(L.river.top < plateTop && L.river.bottom < plateTop);
   assert.ok(L.mermaid.x1 < LABEL.x);
@@ -180,12 +202,11 @@ function roofAt(line, x) {
   }
   return -Infinity;
 }
-// The Palace: the highest rect (base block or tier) that holds x.
+// The Palace: the highest mass that holds x.
 function palaceRoofAt(x) {
-  const px = 170;
+  const px = SKYLINE.find((t) => t.id === 'pkin').x * 340;
   let best = -Infinity;
-  if (Math.abs(x - px) <= 64 + 1e-9) best = 0.061 * 396;
-  for (const [h, top] of [[30, 92], [24, 108], [18, 122], [13, 134], [9, 146], [5, 156]]) if (Math.abs(x - px) <= h + 1e-9) best = Math.max(best, top);
+  for (const m of PALACE.masses) if (Math.abs(x - px) <= m.hw * 340 + 1e-9) best = Math.max(best, m.top * 396);
   return best;
 }
 
@@ -198,8 +219,12 @@ test('snow caps sit on the roofs: at both ends of every cap the roof is at or ab
   const caps = ctx.calls.filter(([m, , style]) => m === 'fillRect' && style === css(WARSAW.snowCap));
   assert.ok(caps.length >= 8);
   const seen = new Set();
+  const front = FRONT_ROW.map((b) => [(b.x - b.hw) * 340, b.top * 396]);
+  let frontCaps = 0;
   for (const [, [x, y, w]] of caps) {
-    if (Math.abs(y - (L.plinth.top - 5)) < 0.5) continue; // the plinth's own cap
+    if (Math.abs(y - (L.plinth.top - 3)) < 0.5) continue; // the plinth's own cap
+    if (y >= L.quayTop) continue; // snow on the near bank's trees, not a roof
+    if (front.some(([fx, fy]) => Math.abs(fx - x) < 1e-6 && Math.abs(fy - y) < 1e-6)) { frontCaps++; continue; } // the low city's roofs
     const mid = x + w / 2;
     const lm = L.landmarks.reduce((a, b) => (Math.abs((b.x0 + b.x1) / 2 - mid) < Math.abs((a.x0 + a.x1) / 2 - mid) ? b : a));
     seen.add(lm.id);
@@ -211,6 +236,52 @@ test('snow caps sit on the roofs: at both ends of every cap the roof is at or ab
     }
   }
   assert.deepEqual([...seen].sort(), ['cosmopolitan', 'intercontinental', 'pkin', 'spire', 'varso', 'zlota']);
+  assert.equal(frontCaps, FRONT_ROW.length);
+});
+
+test('the Palace is sandstone by day and floodlit by night', () => {
+  const stone = css(WARSAW.stoneDay);
+  assert.ok(paint(PHASE.noon).fills.has(stone));
+  assert.ok(!paint(PHASE.night).fills.has(stone));
+  assert.ok(startsWith(paint(PHASE.noon).fills, rgbaOf(WARSAW.needleGlint)).length > 0, 'the needle glints by day');
+});
+
+test('flag days: white over red on 3 May and 11 November in Warsaw, gold otherwise', () => {
+  assert.equal(flagDay(Date.UTC(2026, 10, 11, 20)), true);
+  assert.equal(flagDay(Date.UTC(2026, 4, 3, 12)), true);
+  assert.equal(flagDay(Date.UTC(2026, 10, 10, 23, 30)), true, '23:30 UTC on the 10th is 00:30 on the 11th in Warsaw');
+  assert.equal(flagDay(Date.UTC(2026, 10, 11, 23, 30)), false, '23:30 UTC on the 11th is the 12th in Warsaw');
+  assert.equal(flagDay(Date.UTC(2026, 10, 8, 20)), false);
+  assert.equal(flagDay(NaN), false);
+  const red = rgbaOf(WARSAW.flagRed);
+  const flag = paint(PHASE.night, EMPTY, Date.UTC(2026, 10, 11, 20));
+  assert.ok(startsWith(flag.fills, red).length > 0);
+  assert.equal(startsWith(paint(PHASE.night, EMPTY, Date.UTC(2026, 10, 8, 20)).fills, red).length, 0);
+  assert.equal(startsWith(paint(PHASE.noon, EMPTY, Date.UTC(2026, 10, 11, 12)).fills, red).length, 0, 'no floodlight by day');
+});
+
+test('the bridge leaves the far quay and lands in the near forest, above the label plate', () => {
+  const L = layout(340, 396);
+  const left = deckY(L, L.X(BRIDGE.x0));
+  const right = deckY(L, L.X(1));
+  assert.ok(Math.abs(left - (L.river.top - 2)) < 1e-6, `deck starts at the far quay (${left})`);
+  assert.ok(right >= L.quayTop, `deck lands on the near bank (${right})`);
+  assert.ok(right < plateTop);
+  assert.ok(L.X(BRIDGE.x0) > L.plinth.x1 + 0.1 * 340, 'the bridge leaves the far quay well right of the Mermaid');
+  const pylon = L.X(BRIDGE.pylon);
+  assert.ok(deckY(L, pylon) > L.quayTop - 12 && L.quayTop + 10 < plateTop, 'the pylon stands on the near bank');
+});
+
+test('the bridge lights its pylon and deck at night only, and never touches Math.random', () => {
+  const draw = (phase) => {
+    const ctx = recordingCtx();
+    noRandom(() => drawBridge(ctx, rect, phase, tint(sample(phase)), EMPTY));
+    return ctx;
+  };
+  const light = rgbaOf(WARSAW.pylonLight);
+  assert.ok(startsWith(draw(PHASE.night).fills, light).length > 0);
+  assert.equal(startsWith(draw(PHASE.noon).fills, light).length, 0);
+  noRandom(() => drawBridge(recordingCtx(), rect, PHASE.noon, tint(sample(PHASE.noon)), { ...EMPTY, kind: 'snow' }));
 });
 
 test('the Mermaid is outlined on both sides at night, inside the limits', () => {
@@ -225,4 +296,22 @@ test('the Mermaid is outlined on both sides at night, inside the limits', () => 
   const noon = recordingCtx();
   drawMermaid(noon, rect, PHASE.noon, tint(sample(PHASE.noon)), EMPTY);
   assert.equal(noon.calls.filter(([m]) => m === 'translate').length, 0);
+});
+
+test('the low city is plaster, brick and concrete, never blue, and mixes several façades', () => {
+  for (const [r, , b] of WARSAW.facades) assert.ok(r >= b, `façade ${r},${b} leans blue`);
+  const picked = new Set(FRONT_ROW.map((_, i) => Math.floor(hash2(i, 64) * WARSAW.facades.length)));
+  assert.ok(picked.size >= 4, `only ${picked.size} façade colours in use`);
+});
+
+test('lamps light the far bank\'s boulevard at night; the near bank is forest with no lamp or path', () => {
+  const ctx = recordingCtx();
+  noRandom(() => warsaw.paint(ctx, rect, PHASE.night, tint(sample(PHASE.night)), EMPTY, buildPlates(340, 396), 0));
+  const L = layout(340, 396);
+  const lamp = rgbaOf(WARSAW.quayLamp);
+  const lamps = ctx.calls.filter(([m, , style]) => m === 'fillRect' && typeof style === 'string' && style.startsWith(lamp));
+  assert.ok(lamps.length >= 10, 'a row of lamps along the boulevard');
+  for (const [, [, y]] of lamps) assert.ok(y < L.river.top, `lamp at y ${y} is on the far side of the river`);
+  assert.equal(WARSAW.promenadeLamp, undefined);
+  assert.equal(WARSAW.wallDay, undefined);
 });

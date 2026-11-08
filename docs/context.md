@@ -78,12 +78,12 @@ in Node). A city is a folder `src/cities/<id>/` with `index.js`, its own
 `palette.js` and its scene; adding one is the folder plus one entry in each
 registry (lint fails an unlisted folder). The contract is the comment at the
 top of `src/cities/index.js`. Warsaw (the downtown cluster — Varso, the
-Palace of Culture and Science, Warsaw Spire, Złota 44 — with the Mermaid in
-front) is the first, and one jar is one city. `CITIES = [warsaw, nazare]`: Nazaré
+Palace of Culture and Science, Warsaw Spire, Złota 44 — seen across the Vistula from
+Praga) is the first, and one jar is one city. `CITIES = [warsaw, nazare]`: Nazaré
 (`Europe/Lisbon`, a `tin` lid) is the second, the Sítio headland with the São Miguel
 Arcanjo fort and lighthouse above the Praia do Norte wave, its size set by the real swell (`src/cities/nazare/sea.js`:
 calm under 1 m, moderate 1-3, big 3-6, giant 6+, 2 m with no reading), surfers by day and a beam by night.
-Warsaw's scene is the *Floodlit Nocturne* (plan `plans/2026-10-19-warsaw-floodlit-nocturne.md`): silhouettes rim-lit by day, floodlit by night, the river above the label plate, the Mermaid on the left bank; the glass streaks of every jar sit at the glass edges (`STREAKS` in `src/look/lantern/draw.js`).
+Warsaw's scene began as the *Floodlit Nocturne* (plan `plans/2026-10-19-warsaw-floodlit-nocturne.md`) and is now the skyline seen from the Praga bank (2026-11-08): Varso and a sandstone Palace (shaft, pinnacle combs, brass needle, two clocks; floodlit gold by night, white over red on 3 May and 11 November by `flagDay`) on the left, the cluster to the right, a band of low lit city, the narrow river above the label plate, the far bank's boulevard with its lamps, the near bank only forest, the Świętokrzyski Bridge (`src/cities/warsaw/bridge.js`) from the far quay into that forest, and a small Mermaid on the far quay beside the bridgehead; the glass streaks of every jar sit at the glass edges (`STREAKS` in `src/look/lantern/draw.js`).
 
 **Weather path.** browser -> `/api/weather` (own origin) -> `api/weather.js`
 -> Open-Meteo `api.open-meteo.com`, one request for every city, tidied to

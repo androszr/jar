@@ -390,13 +390,15 @@ try {
   const warm = (r, g, b) => r >= b + 30 && r >= 90;
   const bluish = (r, g, b) => b >= r + 30 && b >= 90;
   const rim = (r, g, b) => r >= 200 && g >= 140 && g <= 210 && b <= 130;
-  check(all(await patch(noct, 'warsaw', 0.5, 0.47, 2), gold), 'Palace glows gold at night');
-  check(some(await patch(noct, 'warsaw', 0.271, 0.19, 2), blue), 'Varso crown glows blue');
-  check(some(await patch(noct, 'warsaw', 0.271, 0.07, 4), red), 'red aviation light at the needle tip');
-  check(some(await patch(noct, 'warsaw', 0.5, 0.66, 3), warm), 'the Palace reflects in the river above the label');
-  check(some(await patch(noct, 'warsaw', 0.271, 0.66, 3), bluish), 'Varso reflects in the river');
-  check(some(await patch(noct, 'warsaw', 0.147, 0.56, 8), rim), 'the Mermaid stands rim-lit left of the label');
-  check(some(await patch(noct, 'warsaw', 0.112, 0.56, 6), rim), 'the Mermaid is outlined on her left too, against the tower behind her');
+  check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), gold), 'Palace glows gold at night');
+  check(some(await patch(noct, 'warsaw', 0.235, 0.17, 2), blue), 'Varso crown glows blue');
+  check(some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'red aviation light at the needle tip');
+  check(some(await patch(noct, 'warsaw', 0.4, 0.665, 3), warm), 'the Palace reflects in the river above the label');
+  check(some(await patch(noct, 'warsaw', 0.235, 0.665, 3), bluish), 'Varso reflects in the river');
+  check(some(await patch(noct, 'warsaw', 0.8, 0.296, 3), red), 'red light on the bridge pylon');
+  check(some(await patch(noct, 'warsaw', 0.156, 0.596, 3), rim), 'the Mermaid stands rim-lit on the far quay');
+  check(some(await patch(noct, 'warsaw', 0.141, 0.596, 3), rim), 'the Mermaid is outlined on her left too');
+  check(all(await patch(noct, 'warsaw', 0.12, 0.675, 1), (r, g, b) => b >= r + 15 && b >= 40), 'the river is blue water at night, unlike the wall below it');
   const edge = luma(await patch(noct, 'warsaw', 0.0425, 0.4, 1));
   const oldSpot = luma(await patch(noct, 'warsaw', 0.15, 0.4, 1)); // where the left streak used to sit
   check(edge > oldSpot + 10, 'the streaks hug the glass edges');
@@ -407,13 +409,19 @@ try {
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   const fd = await noct.evaluate(() => window.__jar.forecast);
   check(!!fd && !!fd.sun && Math.abs(fd.sunT - 0.327) < 0.01, 'forecast card sun arc puts the dot a third of the way at 10:30 in Warsaw');
-  check(all(await patch(noct, 'warsaw', 0.5, 0.47, 2), (r, g, b) => b >= r), 'Palace is a cool silhouette by day');
-  check(!some(await patch(noct, 'warsaw', 0.271, 0.07, 4), red), 'no aviation light by day');
-  const rimEdge = luma(await patch(noct, 'warsaw', 0.5 - 0.188 + 0.003, 0.57, 1));
-  const rimBody = luma(await patch(noct, 'warsaw', 0.5, 0.57, 1));
-  check(rimEdge - rimBody >= 40, 'rim light on the sun side in the morning');
-  check(all(await patch(noct, 'warsaw', 0.5, 0.66, 3), (r, g, b) => b >= r + 20), 'river shows blue above the label by day');
+  check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 30), 'Palace is warm sandstone by day');
+  check(!some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'no aviation light by day');
+  const sunFace = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
+  const shadeFace = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
+  check(sunFace - shadeFace >= 20, `the Palace's sun side is brighter than its shade side in the morning (${sunFace} vs ${shadeFace})`);
+  check(all(await patch(noct, 'warsaw', 0.2, 0.668, 2), (r, g, b) => b >= r + 20), 'river shows blue left of the bridge, above the label, by day');
   await noct.screenshot({ path: join(OUT, 'warsaw-morning.png') });
+  const T_FLAG = Date.UTC(2026, 10, 11, 20, 0); // 21:00 in Warsaw on 11 November
+  await noct.evaluate((t) => window.__jar.pin(t), T_FLAG);
+  const white = (r, g, b) => r >= 200 && g >= 190 && b >= 180;
+  const flagRed = (r, g, b) => r >= 160 && r >= g + 80 && r >= b + 80;
+  check(all(await patch(noct, 'warsaw', 0.4, 0.32, 2), white) && all(await patch(noct, 'warsaw', 0.4, 0.47, 2), flagRed), 'the Palace is floodlit white over red on 11 November');
+  await noct.screenshot({ path: join(OUT, 'warsaw-flag.png') });
   check(noctSeen.errors.length === 0, `no console errors on the nocturne page${noctSeen.errors.length ? `: ${noctSeen.errors.join(' | ')}` : ''}`);
 
   check(deepSeen.errors.length === 0 && seen.errors.length === 0, `no console errors on the desktop pages${[...seen.errors, ...deepSeen.errors].length ? `: ${[...seen.errors, ...deepSeen.errors].join(' | ')}` : ''}`);
