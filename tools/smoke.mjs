@@ -728,7 +728,10 @@ try {
   check((await cw.pg.evaluate(() => window.__jar.cadence.weather)) === 250, 'windy clouds redraw four times a second at most');
   await cw.pg.screenshot({ path: join(OUT, 'warsaw-clouds-wind.png') });
   const readDrift = (pg) => pg.evaluate(() => window.__jar.drift('warsaw'));
-  const eastBody = (speed) => ({ current: { temperature_2m: 14, weather_code: 3, cloud_cover: 85, is_day: 1, wind_speed_10m: speed, wind_direction_10m: 90 } });
+  // Only Warsaw's wind changes; Nazare keeps the answer it was served, so the
+  // whole-canvas hash sees Warsaw's clouds alone.
+  const cwNazare = JSON.parse(bodyOf(cloudyWind)).cities.nazare;
+  const eastBody = (speed, nazare = cwNazare) => ({ v: 1, cities: { warsaw: { temperature: 14, code: 3, cloudCover: 85, isDay: 1, windSpeed: speed, windDir: 90 }, nazare } });
   await pin(cw.pg, CT + CD);
   const wh1 = await jarHash(cw.pg);
   const wd1 = await readDrift(cw.pg);
@@ -740,11 +743,12 @@ try {
   await pin(cw.pg, CT + 2 * CD);
   const wd3 = await readDrift(cw.pg);
   check(Math.abs(wd3 - wd2 - cloudDrift(12, 90, CD)) < 1e-7 && wd3 < wd2, 'the new reading sets the pace from then on');
-  await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(0));
+  await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(0, { ...cwNazare, windSpeed: 0 }));
+  // (Nazare calms too, so no wind anywhere asks the weather for a redraw.)
   const wd4 = await readDrift(cw.pg);
   await pin(cw.pg, CT + 3 * CD);
   const wd5 = await readDrift(cw.pg);
-  check(Math.abs(wd4 - wd3) < 1e-9 && wd5 === wd4 && (await cw.pg.evaluate(() => window.__jar.cadenceMs)) === 0, 'a dropped wind leaves the clouds resting');
+  check(Math.abs(wd4 - wd3) < 1e-9 && wd5 === wd4 && (await cw.pg.evaluate(() => window.__jar.cadence.weather)) === 0, 'a dropped wind leaves the clouds resting');
   const calmDelta = await driftDelta(cc.pg);
   check(calmDelta === 0 && (await cc.pg.evaluate(() => window.__jar.drift('warsaw'))) === 0 && (await cc.pg.evaluate(() => window.__jar.cadence.weather)) === 0, "calm clouds keep today's pace");
   // ... while Nazare's rolling sea asks for ten redraws a second on its own
