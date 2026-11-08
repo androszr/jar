@@ -57,3 +57,4 @@ test-output/
 .claude/skills/ship/PREFLIGHT-ios.md
 .agents/skills/ship/PREFLIGHT-ios.md
 scripts/
+.env*
