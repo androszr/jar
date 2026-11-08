@@ -11,7 +11,9 @@
 // and sunset line. Two jars stand on the
 // table, Warsaw and Nazare (Lisbon time, its wave sized by a stub sea reading):
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
-// four swell bands and their surfers, the lighthouse beam at night.
+// four swell bands and their surfers, the lighthouse beam at night, and the real moon phase (a new moon and a full
+// moon night over Nazare: the moon reported, its brightness on the glass and
+// the spoken sentence).
 // Writes screenshots to test-output/.
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -346,6 +348,20 @@ try {
   check(!!dark && !!noonScene && dark.surfers === 0 && noonScene.surfers === 3, 'surfers go home at night');
   await pinAt(sea, T_DARK);
   await sea.screenshot({ path: join(OUT, 'nazare-night.png') });
+
+  // the real moon phase: T_DARK is a new moon, T_FULL (two weeks on) a full one
+  const T_FULL = Date.UTC(2026, 5, 29, 23, 30); // 00:30 in Lisbon, a full moon
+  const newMoon = await sea.evaluate(() => window.__jar.moon('nazare'));
+  check(!!newMoon && newMoon.name === 'new' && newMoon.illumination < 0.02, 'a new moon night reports a new moon');
+  const dimSky = luma(await patch(sea, 'nazare', newMoon.x, newMoon.y, 3));
+  await pinAt(sea, T_FULL);
+  const fullMoon = await sea.evaluate(() => window.__jar.moon('nazare'));
+  check(!!fullMoon && fullMoon.name === 'full' && fullMoon.illumination > 0.98, 'a full moon night reports a full moon');
+  const brightSky = luma(await patch(sea, 'nazare', fullMoon.x, fullMoon.y, 3));
+  check(brightSky > dimSky + 15, `the full moon is brighter on the glass than the new moon (${brightSky.toFixed(0)} vs ${dimSky.toFixed(0)})`);
+  check(/A full moon\./.test(await sea.evaluate(() => document.getElementById('view').getAttribute('aria-label'))), 'the lifted sentence names the full moon');
+  await sea.screenshot({ path: join(OUT, 'nazare-full-moon.png') });
+  await pinAt(sea, T_DARK);
   check(seaSeen.errors.length === 0 && seaSeen.off.length === 0, `no console errors or off-origin requests in the sea run${seaSeen.errors.length ? `: ${seaSeen.errors.join(' | ')}` : ''}`);
 
   // no sea reading at all: the 2 m default, and nothing errors

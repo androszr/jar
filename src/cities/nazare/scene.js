@@ -6,6 +6,7 @@
 // Shapes are shares of the jar body: x of its width, y of its height from the top.
 import { LAMP_THRESHOLD, moonPos, osc, clamp, wrap, lerp, smoothstep } from '../../clock.js';
 import { css, mix, glow } from '../../look/index.js';
+import { moonPhase } from '../../moon.js';
 import { hash2 } from '../../skyweather.js';
 import { cloudAmount, windPush } from '../../weather.js';
 import { NAZARE } from './palette.js';
@@ -87,10 +88,11 @@ export function drawFarSea(ctx, rect, phase, tint, weather, nowMs) {
   }
   // a clear night: the moon's shimmering track on the water, in dashes
   const mp = moonPos(phase);
-  if (m.night > 0 && !m.wet && m.cloud < 0.35 && mp.alt > 0) {
+  const ill = moonPhase(nowMs).illumination;
+  if (m.night > 0 && !m.wet && m.cloud < 0.35 && mp.alt > 0 && ill >= 0.02) {
     const mx = L.ox + L.w * Math.max(0.15, Math.min(0.85, (mp.x - 400) / 1000));
     for (let k = 0; k < 10; k++) {
-      const a = 0.25 * m.night * clamp(0.5 + 0.5 * osc(nowMs / 4000, 1, hash2(k, 3))) * (1 - k / 14);
+      const a = 0.25 * m.night * clamp(0.5 + 0.5 * osc(nowMs / 4000, 1, hash2(k, 3))) * (1 - k / 14) * ill;
       ctx.fillStyle = css(NAZARE.moonStreak, a);
       const dash = 8 + 10 * hash2(k, 5);
       ctx.fillRect(mx - dash / 2 + (hash2(k, 6) - 0.5) * 10, top + 3 + k * 0.022 * L.h, dash, 2);

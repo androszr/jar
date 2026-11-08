@@ -5,7 +5,7 @@ import { KEYFRAMES, sample } from '../src/clock.js';
 import { TINTS } from '../src/look/lantern/palette.js';
 
 const REQUIRED = ['PALETTE', 'CSS_VARS', 'tint', 'skyGradient', 'glow', 'bloom', 'spill', 'vignette',
-  'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet'];
+  'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet', 'moonDisc'];
 
 test('LOOK is one of the three directions, and Lantern is chosen', () => {
   assert.ok(['lantern', 'toybox', 'pixel'].includes(look.LOOK));
@@ -15,7 +15,7 @@ test('LOOK is one of the three directions, and Lantern is chosen', () => {
 test('the active look exports the whole required surface', () => {
   for (const name of REQUIRED) assert.ok(name in look, `look lacks ${name}`);
   for (const name of ['skyGradient', 'glow', 'bloom', 'spill', 'vignette', 'plank', 'glassBody',
-    'glassHighlights', 'lid', 'label', 'text', 'tint']) assert.equal(typeof look[name], 'function', name);
+    'glassHighlights', 'lid', 'label', 'text', 'tint', 'moonDisc']) assert.equal(typeof look[name], 'function', name);
 });
 
 test('the weather nuances have their colours and a droplet primitive in the look', () => {

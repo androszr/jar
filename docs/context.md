@@ -105,6 +105,7 @@ tests and the smoke check inject a stub, so nothing touches the network.
 (a city's zone offset, `therePhase`, `localTimeText`), all copied from Memory
 Lane and credited in their headers. The shed window follows the **viewer's**
 phase (`realPhase`); each jar follows **its city's** phase (`therePhase`).
+The moon's phase is `moonPhase(nowMs)` in `src/moon.js` (mean synodic month from the 2000-01-06 18:14 UTC new moon; `{ fraction, illumination, waxing, name }`); every moon — jar skies, the shed window, Nazaré's track — is drawn through the look's `moonDisc` and scaled by `moonGlow`, so a new moon is a faint dark disc and no track.
 Clouds drift by `cloudDrift` (`src/weather.js`): the wind's east-west push from `windPush`, the same
 one that leans the rain, carried by `cloudTravel` from a per-city anchor, `WeatherFeed.cloudAnchor(id)` (`nextCloudAnchor`): a page's first reading starts from the shared origin (`NO_ANCHOR`, whatever its `fetchedAt`, so every page holding the same answer agrees), a changed wind re-anchors at the moment it lands carrying the old travel, so a new reading changes the pace and never the position (anchors are session memory like `fogClearedAt`, nothing persisted); slowed to 0.4 under reduced motion and
 wrapped through a margin of twice each cloud's radius. A windy cloudy jar redraws on a 250 ms tick, calm cloud

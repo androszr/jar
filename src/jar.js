@@ -93,6 +93,6 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
     b.drawImage(scratch.interior, body.x, body.y, body.w, body.h);
     b.restore();
   }
-  return { lum, foot: { x: rect.x + rect.w / 2, y: rect.y + rect.h }, drift: sky.wind, scene };
+  return { lum, foot: { x: rect.x + rect.w / 2, y: rect.y + rect.h }, drift: sky.wind, moon: sky.moon, scene };
 }
 

@@ -23,6 +23,8 @@ and on Nazaré's jar the swell as well.
 
 ## What you're looking at
 
+**The moon is the real one.** The moon in the jars and in the window shows its phase for the moment, from a thin crescent to full, and on a new moon night it is almost gone.
+
 **Click or tap a jar and it lifts closer.** A card beside it shows the next
 five days: today is marked with a band and an underline (and named *today* for
 screen readers), and a strip along the bottom gives today's sunrise and sunset
