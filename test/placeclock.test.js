@@ -1,7 +1,7 @@
 // Adapted from Memory Lane (vir-sunset) test/placeclock.test.js, 2026-10-18
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
+import { sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
 import { realPhase } from '../src/realclock.js';
 import { findCity } from '../src/cities/index.js';
 
@@ -81,4 +81,39 @@ test('localTimeText: Warsaw in summer and winter, midnight as 00:00, unknown zon
   assert.equal(localTimeText(Date.UTC(2026, 5, 15, 12, 5), 'Nowhere/Land'), '--:--');
   assert.equal(localTimeText(NaN, 'Europe/Warsaw'), '--:--');
   assert.equal(localTimeText(Date.UTC(2026, 5, 15, 12, 5), undefined), '--:--');
+});
+
+const SF = { sunrise: '07:05', sunset: '17:32' };
+const WZ = 'Europe/Warsaw';
+
+test('sunFraction is 0.5 at the middle of the Warsaw day', () => {
+  assert.ok(Math.abs(sunFraction(Date.UTC(2026, 9, 18, 10, 18), WZ, SF) - 0.5) < 0.01);
+});
+
+test('sunFraction is 0 at sunrise and 1 at sunset', () => {
+  assert.equal(sunFraction(Date.UTC(2026, 9, 18, 5, 5), WZ, SF), 0);
+  assert.equal(sunFraction(Date.UTC(2026, 9, 18, 15, 32), WZ, SF), 1);
+});
+
+test('sunFraction is negative before sunrise and above one after sunset', () => {
+  assert.ok(sunFraction(Date.UTC(2026, 9, 18, 4, 0), WZ, SF) < 0);
+  assert.ok(sunFraction(Date.UTC(2026, 9, 18, 16, 0), WZ, SF) > 1);
+});
+
+test("sunFraction reads the city's clock, not UTC", () => {
+  const a = sunFraction(Date.UTC(2026, 9, 19, 5, 30), WZ, SF);
+  assert.ok(a > 0 && a < 0.05);
+  assert.ok(sunFraction(Date.UTC(2026, 9, 19, 5, 30), 'UTC', SF) < 0);
+  assert.ok(sunFraction(Date.UTC(2026, 9, 18, 22, 30), WZ, SF) < 0);
+  assert.ok(sunFraction(Date.UTC(2026, 9, 18, 22, 30), 'UTC', SF) > 1);
+});
+
+test('sunFraction is null when it cannot be known', () => {
+  const t = Date.UTC(2026, 9, 18, 10, 18);
+  assert.equal(sunFraction(t, WZ, null), null);
+  assert.equal(sunFraction(t, WZ, { sunrise: '07:05', sunset: null }), null);
+  assert.equal(sunFraction(t, WZ, { sunrise: '7:05', sunset: '17:32' }), null);
+  assert.equal(sunFraction(t, WZ, { sunrise: '17:32', sunset: '07:05' }), null);
+  assert.equal(sunFraction(t, 'No/Such', SF), null);
+  assert.equal(sunFraction(NaN, WZ, SF), null);
 });

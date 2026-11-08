@@ -115,6 +115,21 @@ export function localTimeText(nowMs, zone) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+// How far through the city's daylight `nowMs` is: 0 at sunrise, 1 at sunset,
+// below 0 before and above 1 after (unclamped), null when it cannot be known
+// (bad moment, unknown zone, missing or odd 'HH:MM' times). Pure.
+export function sunFraction(nowMs, zone, sun) {
+  const ok = (s) => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
+  if (!Number.isFinite(nowMs) || !sun || typeof sun !== 'object' || !ok(sun.sunrise) || !ok(sun.sunset)) return null;
+  const mins = (s) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
+  const now = localTimeText(nowMs, zone);
+  if (now === '--:--') return null;
+  const rise = mins(sun.sunrise);
+  const set = mins(sun.sunset);
+  if (!(set > rise)) return null;
+  return (mins(now) - rise) / (set - rise);
+}
+
 const dateFormatters = new Map();
 // "YYYY-MM-DD" on the wall clock of `zone` at `nowMs`; null for an unknown
 // zone or a bad moment. A function of its arguments, never of the clock.

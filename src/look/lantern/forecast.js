@@ -87,10 +87,12 @@ export function weatherIcon(ctx, kind, x, y, size) {
 // 'column' (five rows) or 'row' (five columns). A cell with `today` gets a
 // brass band and a brighter day name; `sun` ({ sunrise, sunset } or null) adds
 // one strip along the bottom edge.
-export function forecastCard(ctx, rect, cells, layout, sun = null) {
+export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) {
   const { x, y, w } = rect;
-  const strip = sun ? CARD.strip[layout === 'row' ? 'row' : 'column'] : 0;
-  const h = rect.h - strip;
+  const key = layout === 'row' ? 'row' : 'column';
+  const strip = sun ? CARD.strip[key] : 0;
+  const arcH = sun ? CARD.arc[key] : 0;
+  const h = rect.h - strip - arcH;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
   ctx.beginPath();
@@ -135,6 +137,24 @@ export function forecastCard(ctx, rect, cells, layout, sun = null) {
     ctx.lineTo(x + w * 0.92, y + h);
     ctx.stroke();
     text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + strip * 0.5, strip * 0.48, PALETTE.labelDim);
+    // The sun's path under the strip: dim and dotless outside daylight.
+    const day = Number.isFinite(sunT) && sunT >= 0 && sunT <= 1;
+    const cx = x + w / 2;
+    const rx = w * 0.42;
+    const baseY = y + h + strip + arcH - 3;
+    const ry = arcH - 6;
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY, rx, ry, 0, Math.PI, Math.PI * 2);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = css(PALETTE.brass, day ? 0.55 : 0.22);
+    ctx.stroke();
+    if (day) {
+      const a = Math.PI + sunT * Math.PI;
+      ctx.fillStyle = css(PALETTE.sun);
+      ctx.beginPath();
+      ctx.arc(cx + rx * Math.cos(a), baseY + ry * Math.sin(a), Math.max(1.5, arcH * 0.14), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.restore();
 }
