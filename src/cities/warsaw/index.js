@@ -9,6 +9,7 @@ const place = PLACES.find((p) => p.id === 'warsaw');
 export default {
   id: 'warsaw',
   title: place.title,
+  country: place.country,
   location: { lat: place.lat, lon: place.lon, zone: place.zone },
   lid: 'cork',
   label: { inks: { plate: 'plate', ink: 'labelInk' } },

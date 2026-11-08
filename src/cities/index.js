@@ -4,6 +4,7 @@
 // A city entry provides:
 //   id        kebab-case; the same as its places.js entry and its folder name
 //   title     the name on the label
+//   country   the country shown after the city on the label, the tab title and the accessible text; optional on read (placeName in places.js falls back to title)
 //   location  { lat, lon, zone } (from places.js); drives the city's clock
 //   lid       'cork' | 'tin'
 //   label     { inks: { plate, ink } } - names of colours in the look's PALETTE

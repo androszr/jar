@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
 import { CITIES, findCity } from '../src/cities/index.js';
-import { PLACES } from '../src/cities/places.js';
+import { PLACES, placeName } from '../src/cities/places.js';
 import { PALETTE } from '../src/look/index.js';
 import { EMPTY } from '../src/weather.js';
 
@@ -14,6 +14,8 @@ test('every city meets the contract', () => {
   for (const c of CITIES) {
     assert.equal(typeof c.id, 'string');
     assert.equal(typeof c.title, 'string');
+    assert.equal(typeof c.country, 'string');
+    assert.ok(c.country.length > 0, `${c.id} has no country`);
     for (const k of ['lat', 'lon']) assert.ok(Number.isFinite(c.location[k]), `${c.id}.location.${k}`);
     assert.equal(typeof c.location.zone, 'string');
     assert.ok(['cork', 'tin'].includes(c.lid));
@@ -69,4 +71,15 @@ test('Nazare asks the page for a tick of its own; Warsaw asks for none', () => {
   assert.equal(n.cadenceMs(EMPTY, {}), 100);
   assert.equal(n.cadenceMs(EMPTY, { reduced: true }), 250);
   assert.equal(findCity('warsaw').cadenceMs, undefined);
+});
+
+test('every place carries a country', () => {
+  for (const p of PLACES) assert.ok(typeof p.country === 'string' && p.country.length > 0, `${p.id} has no country`);
+  assert.equal(findCity('warsaw').country, 'Poland');
+  assert.equal(findCity('nazare').country, 'Portugal');
+});
+
+test('placeName joins city and country, and falls back to the city', () => {
+  assert.equal(placeName({ title: 'Warsaw', country: 'Poland' }), 'Warsaw, Poland');
+  assert.equal(placeName({ title: 'Atlantis' }), 'Atlantis');
 });

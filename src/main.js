@@ -4,6 +4,7 @@ import { placeGuess, realPhase } from './realclock.js';
 import { therePhase, localDate } from './placeclock.js';
 import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
 import { CITIES } from './cities/index.js';
+import { placeName } from './cities/places.js';
 import { Shelf, shelfMetrics, frameDt } from './shelf.js';
 import { fitScreen, SCENE } from './framing.js';
 import { Lift, liftCamera } from './lift.js';
@@ -238,7 +239,7 @@ function syncAria() {
     : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
-  const facts = l ? `${c.title}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : c.title;
+  const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : placeName(c);
   const text = view === 'jar'
     ? `${facts}. The jar is lifted.${days} Press Escape to put it back on the table.`
     : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.`;
@@ -249,7 +250,7 @@ function syncAria() {
 }
 
 function setTitle() {
-  document.title = view === 'jar' ? `${CITIES[focus].title}, in a jar` : 'Jars';
+  document.title = view === 'jar' ? `${placeName(CITIES[focus])}, in a jar` : 'Jars';
 }
 
 function doLift(i) {

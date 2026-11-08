@@ -66,7 +66,7 @@ isometric, flat-shaded low-poly) and **Pixel** (cosy pixel-art diorama).
 
 ## Adding a city
 
-1. Add `{ id, title, lat, lon, zone }` to `src/cities/places.js` (append, never
+1. Add `{ id, title, country, lat, lon, zone }` to `src/cities/places.js` (append, never
    insert: the order is the weather request's order). An optional
    `sea: { lat, lon }` is an offshore point the weather function also reads the
    wave height at; a city without one makes no marine call. A place with a `sea`

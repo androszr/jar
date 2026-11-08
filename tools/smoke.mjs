@@ -189,13 +189,13 @@ try {
   const time = await page.evaluate(() => window.__jar.labels.warsaw[2]);
   const okTimes = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Warsaw'), localTimeText(Date.now() + m * 60000, 'Europe/Warsaw')]));
   check(/^\d\d:\d\d$/.test(time) && okTimes.has(time), `warsaw label shows a Warsaw time (${time})`);
-  check(await page.evaluate(() => window.__jar.labels.warsaw[0] === 'WARSAW'), 'warsaw label carries the city name');
+  check(await page.evaluate(() => window.__jar.labels.warsaw[0] === 'WARSAW, POLAND'), 'warsaw label carries the city and country');
   // the second jar: Nazare, in Lisbon time
   check(await page.evaluate(() => Object.keys(window.__jar.labels).length === 2), 'table shows two jars');
   check(await labelIs(page, 1, '18°', 'nazare'), 'nazare label shows fixture temperature');
   const lisbonTime = await page.evaluate(() => window.__jar.labels.nazare[2]);
   const okLisbon = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Lisbon'), localTimeText(Date.now() + m * 60000, 'Europe/Lisbon')]));
-  check(/^\d\d:\d\d$/.test(lisbonTime) && okLisbon.has(lisbonTime) && (await page.evaluate(() => window.__jar.labels.nazare[0] === 'NAZARÉ')), `nazare label shows a Lisbon time (${lisbonTime})`);
+  check(/^\d\d:\d\d$/.test(lisbonTime) && okLisbon.has(lisbonTime) && (await page.evaluate(() => window.__jar.labels.nazare[0] === 'NAZARÉ, PORTUGAL')), `nazare label shows a Lisbon time (${lisbonTime})`);
   check(await page.evaluate(() => { const l = window.__jar.labels; return l.nazare.length === 4 && l.nazare[3] === '4.2 m · 14 s'; }), 'nazare label shows the swell');
   check(await page.evaluate(() => window.__jar.labels.warsaw.length === 3), 'warsaw label keeps three lines');
   check(await page.evaluate(() => { const l = window.__jar.labels; return l.warsaw[0] !== l.nazare[0] && l.warsaw[1] !== l.nazare[1]; }), 'two labels differ');
@@ -281,7 +281,7 @@ try {
   await labelIs(deepN, 1, '18°', 'nazare');
   await settled(deepN);
   const nf0 = await deepN.evaluate(() => ({ view: window.__jar.view, title: document.title, forecast: window.__jar.forecast }));
-  check(nf0.view === 'jar' && nf0.title === 'Nazaré, in a jar' && !!nf0.forecast && nf0.forecast.cells.length === 5 && nf0.forecast.cells[0].day !== '—' && nf0.forecast.cells[0].high === '20°', '?jar=nazare opens lifted');
+  check(nf0.view === 'jar' && nf0.title === 'Nazaré, Portugal, in a jar' && !!nf0.forecast && nf0.forecast.cells.length === 5 && nf0.forecast.cells[0].day !== '—' && nf0.forecast.cells[0].high === '20°', '?jar=nazare opens lifted');
   await deepN.screenshot({ path: join(OUT, 'nazare-lifted.png') });
   const wantSwell = ['2.1 m', '4.2 m', '3.8 m', '5.2 m', '1.6 m'];
   check(JSON.stringify(nf0.forecast.cells.map((c) => c.swell && c.swell.height)) === JSON.stringify(wantSwell), 'nazare card shows a swell per day');
