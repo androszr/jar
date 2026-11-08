@@ -4,7 +4,7 @@
 import { PLACES } from '../places.js';
 import { waveHeightOf, waveBand, waveSize } from './sea.js';
 import {
-  buildPlates, drawFarSea, drawHeadland, drawFort, drawWave, drawBeach, drawSurfers, drawBeam,
+  buildPlates, drawFarSea, drawHeadland, drawFort, drawWave, drawBeach, drawSpray, drawSurfers, drawBeam, drawVeil,
 } from './scene.js';
 
 const place = PLACES.find((p) => p.id === 'nazare');
@@ -25,12 +25,16 @@ export default {
   cadenceMs: (weather, opts = {}) => (opts.reduced ? 250 : 100),
   paint(ctx, rect, phase, tint, weather, plates, nowMs) {
     drawFarSea(ctx, rect, phase, tint, weather, nowMs);
+    // the wave first: its water runs on behind the rock, never over it
+    drawWave(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawHeadland(ctx, rect, phase, tint, weather, plates);
     drawFort(ctx, rect, phase, tint, weather, plates);
-    drawWave(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawBeach(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
+    // spray climbs in front of the rock, where the wave meets it
+    drawSpray(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     const surfers = drawSurfers(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawBeam(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
+    drawVeil(ctx, rect, phase, tint, weather);
     const metres = waveHeightOf(weather);
     return { band: waveBand(metres), waveSize: waveSize(metres), surfers };
   },

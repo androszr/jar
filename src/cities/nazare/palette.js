@@ -14,6 +14,7 @@ export const NAZARE = {
   spray: [226, 238, 248],
   faceLit: [126, 186, 196],
   faceShadow: [34, 86, 112],
+  faceGlass: [170, 230, 220],
   // the Sitio headland
   cliffDay: [88, 74, 66],
   cliffDusk: [46, 38, 54],
@@ -31,12 +32,20 @@ export const NAZARE = {
   villageWindow: [255, 200, 120],
   // the beach
   sandDay: [214, 190, 150],
+  sandWet: [150, 136, 112],
+  umbrellas: [[214, 84, 64], [60, 130, 170], [236, 190, 70]],
+  umbrellaPole: [80, 70, 60],
+  bather: [40, 36, 40],
   sandNight: [40, 42, 56],
   // the people on the wave
   surfer: [16, 20, 28],
   board: [236, 120, 60],
+  ski: [232, 236, 240],
+  skiTrim: [200, 60, 48],
+  towLine: [20, 24, 30],
   skiWake: [236, 246, 252],
   // weather
   snowCap: [236, 242, 250],
   dull: [120, 130, 138],
+  fogVeil: [196, 202, 206],
 };
