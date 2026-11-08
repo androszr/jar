@@ -13,6 +13,7 @@ import { forecastPose, forecastExtent } from './forecast.js';
 import { forecastCells, forecastSentence, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
 import { WeatherFeed } from './weatherfeed.js';
+import { forecastAnnouncement } from './announce.js';
 import { buildShedArt, drawShed, tintBucket } from './shed.js';
 import { paintJar, labelLines, bodyRect, QUALITY } from './jar.js';
 import { JAR } from './jar-geometry.js';
@@ -20,6 +21,7 @@ import { JAR } from './jar-geometry.js';
 const opts = readOptions(location.search);
 const canvas = document.getElementById('view');
 const backBtn = document.getElementById('back');
+const liveEl = document.getElementById('announce');
 const navEl = document.getElementById('shelfnav');
 // Under automation (the smoke check reads pixels back constantly) the canvas
 // is made software-backed up front: Chromium otherwise flips it from GPU to
@@ -231,6 +233,7 @@ function syncChrome() {
 
 // The label is only canvas pixels, so the canvas's accessible name carries it.
 let ariaText = '';
+let spoken = null; // { id, text } of the lifted jar's spoken forecast last synced, null on the table
 function syncAria() {
   const here = view === 'jar' ? feed.get(CITIES[focus].id) : null;
   const todayHere = view === 'jar' ? localDate(nowMs(), CITIES[focus].location.zone) : null;
@@ -247,6 +250,11 @@ function syncAria() {
     const ph = therePhase(at, c.location, viewerAt(at));
     if (isNight(ph) && moonPos(ph).alt > 0) moonText = ` A ${moonPhase(at).name} moon.`;
   }
+  const next = view === 'jar' ? { id: c.id, text: days.trim() } : null;
+  const say = forecastAnnouncement(spoken, next);
+  spoken = next;
+  if (say !== null) liveEl.textContent = say;
+  else if (!next && liveEl.textContent) liveEl.textContent = '';
   const text = view === 'jar'
     ? `${facts}. The jar is lifted.${moonText}${days} Press Escape to put it back on the table.`
     : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.`;
