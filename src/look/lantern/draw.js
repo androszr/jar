@@ -118,6 +118,13 @@ export function text(ctx, str, x, y, size, colour, align = 'center') {
   ctx.fillText(str, x, y);
 }
 
+// The size at which str fits in maxW, never below 0.7 of size.
+export function fitSize(ctx, str, size, maxW) {
+  ctx.font = `500 ${size}px ${MONO}`;
+  const width = ctx.measureText(str).width;
+  return width <= maxW ? size : Math.max(size * maxW / width, size * 0.7);
+}
+
 // A small dark plate with a brass edge and three monospace lines
 // ([title, temperature, time]).
 export function label(ctx, rect, lines) {
@@ -131,7 +138,7 @@ export function label(ctx, rect, lines) {
   ctx.strokeStyle = css(PALETTE.brass, 0.85);
   ctx.stroke();
   const cx = x + w / 2;
-  text(ctx, lines[0] ?? '', cx, y + h * 0.22, h * 0.17, PALETTE.labelDim);
+  text(ctx, lines[0] ?? '', cx, y + h * 0.22, fitSize(ctx, lines[0] ?? '', h * 0.17, w - 16), PALETTE.labelDim);
   text(ctx, lines[1] ?? '', cx, y + h * 0.52, h * 0.3, PALETTE.labelInk);
   text(ctx, lines[2] ?? '', cx, y + h * 0.82, h * 0.17, PALETTE.labelDim);
   ctx.restore();

@@ -3,6 +3,7 @@
 // jar spills that light onto the table and into the bloom.
 import { JAR, LABEL } from './jar-geometry.js';
 import { localTimeText } from './placeclock.js';
+import { placeName } from './cities/places.js';
 import { formatTemp } from './weather.js';
 import { drawJarSky, drawFog } from './skyweather.js';
 import { skyGradient, glow, spill, glassBody, glassHighlights, lid, label, mix } from './look/index.js';
@@ -12,7 +13,7 @@ export { JAR };
 export const QUALITY = 2; // interior pixels per logical px
 
 export function labelLines(city, weather, nowMs) {
-  return [city.title.toUpperCase(), formatTemp(weather && weather.temperature), localTimeText(nowMs, city.location.zone)];
+  return [placeName(city).toUpperCase(), formatTemp(weather && weather.temperature), localTimeText(nowMs, city.location.zone)];
 }
 
 // The body of the glass inside a jar rect of JAR proportions: below the lid.

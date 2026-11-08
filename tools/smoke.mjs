@@ -168,7 +168,7 @@ try {
   const time = await page.evaluate(() => window.__jar.labels.warsaw[2]);
   const okTimes = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Warsaw'), localTimeText(Date.now() + m * 60000, 'Europe/Warsaw')]));
   check(/^\d\d:\d\d$/.test(time) && okTimes.has(time), `warsaw label shows a Warsaw time (${time})`);
-  check(await page.evaluate(() => window.__jar.labels.warsaw[0] === 'WARSAW'), 'warsaw label carries the city name');
+  check(await page.evaluate(() => window.__jar.labels.warsaw[0] === 'WARSAW, POLAND'), 'warsaw label carries the city and country');
   await page.screenshot({ path: join(OUT, 'table.png') });
 
   // light on the table: the strip just below the jar's foot is brighter than one far from any jar

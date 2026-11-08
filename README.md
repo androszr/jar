@@ -56,7 +56,7 @@ isometric, flat-shaded low-poly) and **Pixel** (cosy pixel-art diorama).
 
 ## Adding a city
 
-1. Add `{ id, title, lat, lon, zone }` to `src/cities/places.js`.
+1. Add `{ id, title, country, lat, lon, zone }` to `src/cities/places.js`.
 2. Copy `src/cities/warsaw/` to `src/cities/<id>/`, write its `palette.js` and
    scene, and fill in `index.js` (the contract is the comment at the top of
    `src/cities/index.js`).

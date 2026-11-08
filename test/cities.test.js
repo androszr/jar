@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, statSync } from 'node:fs';
 import { CITIES, findCity } from '../src/cities/index.js';
-import { PLACES } from '../src/cities/places.js';
+import { PLACES, placeName } from '../src/cities/places.js';
 import { PALETTE } from '../src/look/index.js';
 
 const DIR = new URL('../src/cities/', import.meta.url).pathname;
@@ -13,6 +13,8 @@ test('every city meets the contract', () => {
   for (const c of CITIES) {
     assert.equal(typeof c.id, 'string');
     assert.equal(typeof c.title, 'string');
+    assert.equal(typeof c.country, 'string');
+    assert.ok(c.country.length > 0, `${c.id} has no country`);
     for (const k of ['lat', 'lon']) assert.ok(Number.isFinite(c.location[k]), `${c.id}.location.${k}`);
     assert.equal(typeof c.location.zone, 'string');
     assert.ok(['cork', 'tin'].includes(c.lid));
@@ -50,4 +52,14 @@ test('Warsaw sits in its own zone', () => {
 test('buildPlates is deterministic', () => {
   const w = findCity('warsaw');
   assert.deepEqual(w.buildPlates(340, 390), w.buildPlates(340, 390));
+});
+
+test('every place carries a country', () => {
+  for (const p of PLACES) assert.ok(typeof p.country === 'string' && p.country.length > 0, `${p.id} has no country`);
+  assert.equal(findCity('warsaw').country, 'Poland');
+});
+
+test('placeName joins city and country, and falls back to the city', () => {
+  assert.equal(placeName({ title: 'Warsaw', country: 'Poland' }), 'Warsaw, Poland');
+  assert.equal(placeName({ title: 'Atlantis' }), 'Atlantis');
 });
