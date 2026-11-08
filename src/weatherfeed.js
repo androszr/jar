@@ -1,9 +1,12 @@
 // The page's weather: fetches the own-origin /api/weather once at start and
 // every 15 minutes after, only while the tab is visible. Keeps the last good
-// answer on any failure and never throws.
+// answer on any failure for STALE_MS (45 minutes, measured by the feed's own
+// clock from when it was accepted), then answers EMPTY until the next good
+// one. Never throws.
 import { EMPTY, NO_ANCHOR, fromEntry, nextCloudAnchor, weatherKind } from './weather.js';
 
 export const REFRESH_MS = 15 * 60 * 1000;
+export const STALE_MS = 3 * REFRESH_MS; // 45 minutes: three missed refreshes and the held answer is no longer shown
 
 export class WeatherFeed {
   constructor({ fetchImpl = globalThis.fetch?.bind(globalThis), now = () => Date.now(), visible = () => true } = {}) {
@@ -12,6 +15,7 @@ export class WeatherFeed {
     this.visible = visible;
     this.cities = {};
     this.lastMs = null;
+    this.goodAt = null; // feed-clock ms of the last accepted answer
     this.revision = 0;
     this.busy = false;
     this.stopped = true;
@@ -33,8 +37,14 @@ export class WeatherFeed {
     this.stopped = true;
   }
 
+  // Strict >, so exactly STALE_MS is fresh and a negative age (a pinned or
+  // rewound clock) is fresh too.
+  isStale(nowMs = this.now()) {
+    return this.goodAt !== null && nowMs - this.goodAt > STALE_MS;
+  }
+
   get(id) {
-    return this.cities[id] || EMPTY;
+    return this.isStale() ? EMPTY : (this.cities[id] || EMPTY);
   }
 
   // Ms since this session saw `id`'s fog lift, or null when it has not.
@@ -74,8 +84,11 @@ export class WeatherFeed {
       }
       this.winds.set(id, { windSpeed: now.windSpeed, windDir: now.windDir });
     }
+    // goodAt moves only on an accepted body, never on a failed attempt (lastMs does).
+    const wasStale = this.isStale();
+    this.goodAt = this.now();
     this.cities = next;
-    if (key === this.key) return false;
+    if (key === this.key && !wasStale) return false;
     this.key = key;
     this.revision += 1;
     return true;

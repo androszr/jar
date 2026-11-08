@@ -97,7 +97,9 @@ noted when an answer turns a city from fog to anything else; `dewSince` feeds 45
 the glass, and nothing is persisted, so a reload forgets it.
 Cached 15 minutes at the edge (`s-maxage=900`) and 15 minutes in the page
 (`WeatherFeed` refetches only while the tab is visible, and keeps the last good
-answer on any failure). Locally `tools/serve.mjs` routes the same handler;
+answer on any failure for up to 45 minutes — `STALE_MS`, three refreshes, measured
+by the feed's own clock from when the answer was accepted — after which `get`
+answers `EMPTY` until the next good answer). Locally `tools/serve.mjs` routes the same handler;
 tests and the smoke check inject a stub, so nothing touches the network.
 
 **Clocks.** `src/clock.js` (nine keyframes, `sample(p)` -> `{ light, a, b, t }`),

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WeatherFeed, REFRESH_MS } from '../src/weatherfeed.js';
+import { WeatherFeed, REFRESH_MS, STALE_MS } from '../src/weatherfeed.js';
 import { EMPTY, NO_ANCHOR, cloudTravel } from '../src/weather.js';
 
 const body = (temp, code = 61) => ({ v: 1, cities: { warsaw: { temperature: temp, code, cloudCover: 50, isDay: 1 } } });
@@ -63,7 +63,9 @@ test('a failed or malformed answer keeps the last good one and never throws', as
   const rev = f.revision;
   for (const m of ['throw', '500', 'junk']) {
     mode = m;
-    clock += REFRESH_MS + 1;
+    // Steps by exactly REFRESH_MS so the third failure lands at STALE_MS, still
+    // fresh; the stale case past that point is the `stale:` tests' subject.
+    clock += REFRESH_MS;
     await f.tick(clock);
     assert.equal(f.get('warsaw').temperature, 7, m);
   }
@@ -251,4 +253,82 @@ test('a city left out of one answer keeps its cloud anchor when it comes back', 
   f.applyResponse(two(9), t);
   assert.deepEqual(f.cloudAnchor('nazare'), anchor);
   assert.notDeepEqual(f.cloudAnchor('nazare'), NO_ANCHOR);
+});
+
+test('stale: STALE_MS is three refreshes, forty-five minutes', () => {
+  assert.equal(STALE_MS, 3 * REFRESH_MS);
+  assert.equal(STALE_MS, 45 * 60 * 1000);
+});
+
+test('stale: an answer is shown for exactly STALE_MS and reads as EMPTY one tick later', () => {
+  let clock = 0;
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(7)), now: () => clock });
+  assert.equal(f.isStale(), false);
+  f.applyResponse(body(7));
+  clock = STALE_MS;
+  assert.equal(f.get('warsaw').temperature, 7);
+  clock = STALE_MS + 1;
+  assert.equal(f.get('warsaw'), EMPTY);
+  assert.equal(f.isStale(), true);
+});
+
+test('stale: three failed refreshes in a row leave the jar with no reading', async () => {
+  let clock = 0;
+  let fail = false;
+  const f = new WeatherFeed({
+    fetchImpl: async () => {
+      if (fail) throw new Error('offline');
+      return { ok: true, json: async () => body(7) };
+    },
+    now: () => clock,
+  });
+  await f.start();
+  fail = true;
+  for (let i = 0; i < 3; i++) {
+    clock += REFRESH_MS + 1;
+    await f.tick(clock);
+  }
+  assert.equal(clock, 3 * REFRESH_MS + 3);
+  assert.equal(f.get('warsaw'), EMPTY);
+  assert.equal(f.lastMs, clock, 'lastMs moves on failures; goodAt does not');
+  fail = false;
+  clock += REFRESH_MS + 1;
+  await f.tick(clock);
+  assert.equal(f.get('warsaw').temperature, 7);
+});
+
+test('stale: the next good answer restores live values at once and bumps revision even when unchanged', () => {
+  let clock = 0;
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(7)), now: () => clock });
+  f.applyResponse(body(7));
+  clock = STALE_MS + 1;
+  const rev = f.revision;
+  assert.equal(f.applyResponse(body(7)), true);
+  assert.equal(f.revision, rev + 1);
+  assert.equal(f.get('warsaw').temperature, 7);
+  assert.equal(f.applyResponse(body(7)), false);
+});
+
+test('stale: a body with fetchedAt and one without age the same way, by the feed\'s clock', () => {
+  for (const b of [{ ...body(7), fetchedAt: '2020-01-01T00:00:00.000Z' }, body(7)]) {
+    let clock = 0;
+    const f = new WeatherFeed({ fetchImpl: okFetch(b), now: () => clock });
+    f.applyResponse(b);
+    assert.equal(f.get('warsaw').temperature, 7);
+    clock = STALE_MS + 1;
+    assert.equal(f.get('warsaw'), EMPTY);
+  }
+});
+
+test('stale: a clock that runs backwards never makes an answer stale, and fog memory survives a stale spell', () => {
+  let clock = 1_000_000;
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => clock });
+  f.applyResponse(body(6, 45));
+  clock = 1_000_100;
+  f.applyResponse(body(8, 61));
+  clock = 0;
+  assert.equal(f.get('warsaw').temperature, 8);
+  clock = 1_000_100 + STALE_MS + 1;
+  assert.equal(f.get('warsaw'), EMPTY);
+  assert.equal(f.dewSince('warsaw', clock), STALE_MS + 1);
 });
