@@ -3,9 +3,10 @@
 // (portrait -> a row of five below the jar, otherwise a column to its right).
 
 export const CARD = {
-  column: { w: 170, h: 374 },
-  row: { w: 340, h: 146 },
+  column: { w: 200, h: 374 },
+  row: { w: 380, h: 230 },
   strip: { column: 30, row: 24 },
+  tide: { column: 30, row: 24 },
   arc: { column: 14, row: 12 },
   gap: 14,
   drop: 36,

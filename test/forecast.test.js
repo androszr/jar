@@ -70,3 +70,11 @@ test('localDate is the zone wall-clock date', () => {
   assert.equal(localDate(t, 'UTC'), '2026-10-18');
   assert.equal(localDate(t, 'No/Such'), null);
 });
+
+test('the row card, resting under a jar whose foot is on the table, ends inside the scene', () => {
+  const foot = 710;
+  const onTable = { x: 600, y: foot - 440, w: 340, h: 440 };
+  const { rect } = forecastPose(onTable, true, 1);
+  assert.ok(rect.y + rect.h < 1000, `ends at ${rect.y + rect.h}`);
+  assert.equal(rect.h, 230);
+});
