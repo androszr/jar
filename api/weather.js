@@ -12,6 +12,10 @@ const MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
 const MARINE_FIELDS = 'wave_height,wave_period,wave_direction';
 const MARINE_DAILY = 'wave_height_max,wave_period_max';
 const FORECAST_DAYS = 5;
+// The next day hour by hour (the lifted jar's scrub): the same six fields as
+// `current`, 25 rows so a full day ahead has both ends.
+const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m';
+const FORECAST_HOURS = 25;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
 export function openMeteoUrl(places) {
@@ -20,7 +24,7 @@ export function openMeteoUrl(places) {
   // Each location's own zone, so daily.time is that city's local date. (current.time
   // is therefore local too; it is not read.)
   const zones = places.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
+  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&hourly=${HOURLY_FIELDS}&forecast_hours=25&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
 }
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -85,10 +89,34 @@ function dailyRows(d) {
   return rows;
 }
 
+// The vendor's hourly block (parallel arrays) -> at most 25
+// { time, temperature, code, cloudCover, isDay, windSpeed, windDir }. `time` is
+// the vendor's local ISO "YYYY-MM-DDTHH:MM", kept as a string; bad rows dropped.
+export function hourlyRows(h) {
+  if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return [];
+  const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
+  const rows = [];
+  for (let i = 0; i < h.time.length && rows.length < FORECAST_HOURS; i++) {
+    const time = h.time[i];
+    if (typeof time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(time)) continue;
+    rows.push({
+      time,
+      temperature: at(h.temperature_2m, i),
+      code: at(h.weather_code, i),
+      cloudCover: at(h.cloud_cover, i),
+      isDay: at(h.is_day, i),
+      windSpeed: at(h.wind_speed_10m, i),
+      windDir: at(h.wind_direction_10m, i),
+    });
+  }
+  return rows;
+}
+
 // The vendor body (an object for one place, an array for several) ->
 // { v, fetchedAt, ok, cities }. Six numeric fields (wind in km/h and degrees
 // the wind comes from) and the daily rows are kept, plus `sea` (the wave
-// reading, or null) from the optional marine body.
+// reading, or null) from the optional marine body, and `hourly` (the next 25
+// hours, [] when the vendor leaves it out).
 export function normalise(payload, places, nowMs = Date.now(), marinePayload = null) {
   const list = Array.isArray(payload) ? payload : [payload];
   const seas = marinePayload ? normaliseMarine(marinePayload, seaPlaces(places)) : {};
@@ -104,6 +132,7 @@ export function normalise(payload, places, nowMs = Date.now(), marinePayload = n
       windSpeed: num(cur.wind_speed_10m),
       windDir: num(cur.wind_direction_10m),
       daily: dailyRows(list[i].daily),
+      hourly: hourlyRows(list[i].hourly),
       sea: seas[p.id] || null,
     };
   });

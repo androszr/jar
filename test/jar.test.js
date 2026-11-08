@@ -66,3 +66,19 @@ test('fitSize leaves a short line alone and shrinks a long one, never below 0.7x
   const s = fitSize(ctx, 'X'.repeat(40), 13.6, 188);
   assert.ok(s >= 13.6 * 0.7 && s < 13.6, String(s));
 });
+
+test('labelLines with a preview marks the time line with the offset', () => {
+  const lines = labelLines(warsaw, { temperature: 12.3 }, NOW, { offsetMin: 300 });
+  assert.deepEqual(lines, ['WARSAW, POLAND', '12°', '14:05 (+5 h)']);
+  assert.equal(labelLines(warsaw, EMPTY, NOW, { offsetMin: 90 })[2], '14:05 (+1½ h)');
+});
+
+test('labelLines at offset 0 or no preview is the plain three lines, the swell still follows', () => {
+  const plain = labelLines(warsaw, { temperature: 12.3 }, NOW);
+  assert.deepEqual(labelLines(warsaw, { temperature: 12.3 }, NOW, { offsetMin: 0 }), plain);
+  assert.deepEqual(labelLines(warsaw, { temperature: 12.3 }, NOW, null), plain);
+  const sea = labelLines(nazare, { temperature: 17, sea: { waveHeight: 2.4, wavePeriod: 12 } }, NOW, { offsetMin: 300 });
+  assert.equal(sea.length, 4);
+  assert.match(sea[2], /^\d\d:\d\d \(\+5 h\)$/);
+  assert.equal(sea[3], '2.4 m · 12 s');
+});

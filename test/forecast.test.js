@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CARD, forecastPose, forecastExtent } from '../src/forecast.js';
+import { CARD, forecastPose, forecastExtent, liftExtent } from '../src/forecast.js';
 import { liftCamera } from '../src/lift.js';
 
 const jar = { x: 600, y: 300, w: 340, h: 440 };
@@ -69,4 +69,24 @@ test('localDate is the zone wall-clock date', () => {
   assert.equal(localDate(t, 'Europe/Warsaw'), '2026-10-19');
   assert.equal(localDate(t, 'UTC'), '2026-10-18');
   assert.equal(localDate(t, 'No/Such'), null);
+});
+
+test('liftExtent contains forecastExtent and is exactly scrubBand taller, in both layouts', () => {
+  for (const portrait of [false, true]) {
+    const a = forecastExtent(jar, portrait);
+    const b = liftExtent(jar, portrait);
+    assert.deepEqual({ x: b.x, y: b.y, w: b.w }, { x: a.x, y: a.y, w: a.w });
+    assert.equal(b.h, a.h + CARD.scrubBand);
+    assert.ok(b.y + b.h >= a.y + a.h);
+  }
+});
+
+test('liftCamera with the taller extent never scales larger than with the plain one', () => {
+  const rect = jar;
+  for (const [W, H, portrait] of [[1280, 800, false], [390, 844, true], [844, 390, false]]) {
+    const dview = { cx: 800, cy: 500, scale: 0.8, viewW: W, viewH: H };
+    const plain = liftCamera(1, rect, dview, forecastExtent(jar, portrait));
+    const tall = liftCamera(1, rect, dview, liftExtent(jar, portrait));
+    assert.ok(tall.scale <= plain.scale + 1e-9, `${W}x${H}`);
+  }
 });

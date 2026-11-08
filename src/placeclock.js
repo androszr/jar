@@ -148,3 +148,20 @@ export function localDate(nowMs, zone) {
   const get = (type) => parts.find((x) => x.type === type)?.value;
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
+
+// The epoch ms of a wall-clock "YYYY-MM-DDTHH:MM" in `zone`; null for a bad
+// string or an unknown zone. The offset is read at the guess and again at the
+// corrected moment, so a DST change inside that window lands on the right side.
+// Pure: it never reads the clock.
+export function wallToMs(localIso, zone) {
+  const m = typeof localIso === 'string' && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(localIso);
+  if (!m) return null;
+  const [y, mo, d, h, mi] = m.slice(1).map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const back = new Date(guess);
+  if (!Number.isFinite(guess) || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d || h > 23 || mi > 59) return null;
+  const off1 = zoneOffsetMinutes(guess, zone);
+  if (off1 === null) return null;
+  const off2 = zoneOffsetMinutes(guess + off1 * MIN_MS, zone);
+  return guess + (off2 === null ? off1 : off2) * MIN_MS;
+}

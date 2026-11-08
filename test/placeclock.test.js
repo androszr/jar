@@ -1,7 +1,7 @@
 // Adapted from Memory Lane (vir-sunset) test/placeclock.test.js, 2026-10-18
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
+import { wallToMs, sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
 import { realPhase } from '../src/realclock.js';
 import { findCity } from '../src/cities/index.js';
 
@@ -116,4 +116,21 @@ test('sunFraction is null when it cannot be known', () => {
   assert.equal(sunFraction(t, WZ, { sunrise: '17:32', sunset: '07:05' }), null);
   assert.equal(sunFraction(t, 'No/Such', SF), null);
   assert.equal(sunFraction(NaN, WZ, SF), null);
+});
+
+test('wallToMs: a wall time in a zone is the right moment', () => {
+  assert.equal(wallToMs('2026-10-18T15:00', 'Europe/Warsaw'), Date.UTC(2026, 9, 18, 13, 0));
+  assert.equal(wallToMs('2026-10-18T15:00', 'Europe/Lisbon'), Date.UTC(2026, 9, 18, 14, 0));
+  assert.equal(localTimeText(wallToMs('2026-10-18T15:00', 'Europe/Warsaw'), 'Europe/Warsaw'), '15:00');
+});
+
+test('wallToMs: after the autumn fall-back it lands on the standard-time offset', () => {
+  assert.equal(wallToMs('2026-10-25T03:30', 'Europe/Warsaw'), Date.UTC(2026, 9, 25, 2, 30));
+  assert.equal(wallToMs('2026-10-24T03:30', 'Europe/Warsaw'), Date.UTC(2026, 9, 24, 1, 30));
+});
+
+test('wallToMs: junk or an unknown zone is null', () => {
+  for (const s of [null, undefined, 5, '', '2026-10-18', '2026-10-18T25:00', '2026-02-30T10:00', 'x']) assert.equal(wallToMs(s, 'Europe/Warsaw'), null, String(s));
+  assert.equal(wallToMs('2026-10-18T15:00', 'Nowhere/Land'), null);
+  assert.equal(wallToMs('2026-10-18T15:00', null), null);
 });

@@ -2,15 +2,17 @@
 import { readOptions, sample, isNight, moonPos } from './clock.js';
 import { moonPhase } from './moon.js';
 import { placeGuess, realPhase } from './realclock.js';
-import { therePhase, localDate, sunFraction } from './placeclock.js';
+import { therePhase, localDate, sunFraction, localTimeText } from './placeclock.js';
 import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
 import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
 import { Shelf, shelfMetrics, frameDt } from './shelf.js';
 import { fitScreen, SCENE } from './framing.js';
 import { Lift, liftCamera, pressLowers } from './lift.js';
-import { forecastPose, forecastExtent } from './forecast.js';
-import { forecastCells, forecastSentence, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
+import { forecastPose, liftExtent } from './forecast.js';
+import { offsetText, previewWeather, clampScrub } from './scrub.js';
+import { ScrubBar } from './scrubbar.js';
+import { formatTemp, forecastCells, forecastSentence, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
 import { WeatherFeed } from './weatherfeed.js';
 import { forecastAnnouncement } from './announce.js';
@@ -23,6 +25,7 @@ const canvas = document.getElementById('view');
 const backBtn = document.getElementById('back');
 const liveEl = document.getElementById('announce');
 const navEl = document.getElementById('shelfnav');
+const scrubEl = document.getElementById('scrub');
 // Under automation (the smoke check reads pixels back constantly) the canvas
 // is made software-backed up front: Chromium otherwise flips it from GPU to
 // CPU mid-run, and the two rasterise gradients a shade apart.
@@ -46,6 +49,7 @@ let view = 'table';
 let pendingBack = false; // a history.back() is on its way
 let focus = 0; // the jar the lift is on
 let pinned = null;
+let scrubMin = 0; // minutes ahead the lifted jar is previewed at; 0 is now
 let lastKey = '';
 let lastDraw = 0;
 let lastTick = null; // the previous animation frame's time, for the glide's dt
@@ -67,6 +71,7 @@ let ready = false;
 
 const make = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
 const nowMs = () => (pinned !== null ? pinned : Date.now());
+const previewMs = () => nowMs() + scrubMin * 60000;
 const perf = () => performance.now();
 
 function viewerAt(ms) {
@@ -122,7 +127,7 @@ function currentCam(t) {
   const e = lift.progress(t);
   if (e > 0) {
     const jar = shelf.jarRect(focus);
-    return liftCamera(e, jar, { cx: c0.cx, cy: c0.cy, scale: c0.scale, viewH: H, viewW: W }, forecastExtent(jar, c0.portrait));
+    return liftCamera(e, jar, { cx: c0.cx, cy: c0.cy, scale: c0.scale, viewH: H, viewW: W }, liftExtent(jar, c0.portrait));
   }
   return { cx: c0.cx, cy: c0.cy, scale: c0.scale };
 }
@@ -132,11 +137,16 @@ function render(force = false) {
   const ms = nowMs();
   const viewer = viewerAt(ms);
   const shedPhase = realPhase(ms, viewer);
-  const phases = CITIES.map((c) => therePhase(ms, c.location, viewer));
-  const weathers = CITIES.map((c) => feed.get(c.id));
+  // Only the lifted jar travels: its moment is the previewed one, every other jar
+  // and the shed stay on `ms`.
+  const scrubbing = view === 'jar' && scrubMin > 0;
+  const at = CITIES.map((c, i) => (scrubbing && i === focus ? previewMs() : ms));
+  const phases = CITIES.map((c, i) => therePhase(at[i], c.location, viewer));
+  const weathers = CITIES.map((c, i) => (scrubbing && i === focus ? previewWeather(feed.get(c.id), at[i], c.location.zone) : feed.get(c.id)));
+  const preview = scrubbing ? { offsetMin: scrubMin } : null;
   // lightning and dew per jar: functions of the moment and the feed alone
-  const flashes = CITIES.map((c, i) => flashIntensity(weathers[i].code, ms, { reduced: reduceMotion }));
-  const dews = CITIES.map((c) => dewAmount(feed.dewSince(c.id, ms)));
+  const flashes = CITIES.map((c, i) => flashIntensity(weathers[i].code, at[i], { reduced: reduceMotion }));
+  const dews = CITIES.map((c, i) => dewAmount(feed.dewSince(c.id, at[i])));
   const animated = weathers.some((w) => ANIMATED.has(w.kind) && w.known);
   const windy = weathers.some((w) => w.known && cloudAmount(w.cloudCover, w.kind) > 0.05 && cloudDrift(w.windSpeed, w.windDir, CLOUD_TICK_MS) !== 0);
   weatherCadence = animated ? 50 : windy ? CLOUD_TICK_MS : 0;
@@ -148,7 +158,7 @@ function render(force = false) {
   cam = currentCam(t);
   const key = [view, lift.state, Math.round(lift.progress(t) * 1000), Math.round(shelf.pos * 1000), minute,
     feed.revision, W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
-    cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0,
+    cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0, scrubbing ? scrubMin : 0,
     flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(',')].join('|');
   if (!force && key === lastKey) return false;
   lastKey = key;
@@ -173,10 +183,10 @@ function render(force = false) {
   const nextScenes = {};
   CITIES.forEach((city, i) => {
     const tn = lookTint(sample(phases[i]));
-    const painted = paintJar(ctx, shelf.jarRect(i), city, phases[i], tn, weathers[i], ms, plates[i], scratch, { reduced: reduceMotion, dew: dews[i], anchor: feed.cloudAnchor(city.id) });
+    const painted = paintJar(ctx, shelf.jarRect(i), city, phases[i], tn, weathers[i], at[i], plates[i], scratch, { reduced: reduceMotion, dew: dews[i], anchor: feed.cloudAnchor(city.id), preview: i === focus ? preview : null });
     nextScenes[city.id] = painted.scene;
     nextDrawn[city.id] = { flash: flashes[i], dew: dews[i], drift: painted.drift, moon: painted.moon };
-    nextLabels[city.id] = labelLines(city, weathers[i], ms);
+    nextLabels[city.id] = labelLines(city, weathers[i], at[i], i === focus ? preview : null);
     bloomStrength = Math.max(bloomStrength, tn.bloom);
   });
   labels = nextLabels;
@@ -188,7 +198,7 @@ function render(force = false) {
     const todayHere = localDate(ms, CITIES[focus].location.zone);
     const cells = forecastCells(weathers[focus], todayHere);
     const sun = sunTimesFor(weathers[focus], todayHere);
-    const sunT = sunFraction(ms, CITIES[focus].location.zone, sun);
+    const sunT = sunFraction(at[focus], CITIES[focus].location.zone, sun);
     ctx.save();
     // emerge from behind the glass: nothing of the card is drawn over the jar
     const jr = shelf.jarRect(focus);
@@ -229,6 +239,7 @@ function syncChrome() {
   if (backBtn.hidden === lifted) backBtn.hidden = !lifted;
   const showNav = !lifted && CITIES.length > 1;
   if (navEl.hidden === showNav) navEl.hidden = !showNav;
+  if (scrubRow.hidden === lifted) scrub.show(lifted);
 }
 
 // The label is only canvas pixels, so the canvas's accessible name carries it.
@@ -246,7 +257,7 @@ function syncAria() {
   const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : placeName(c);
   let moonText = '';
   if (view === 'jar') {
-    const at = nowMs();
+    const at = scrubMin > 0 ? previewMs() : nowMs();
     const ph = therePhase(at, c.location, viewerAt(at));
     if (isNight(ph) && moonPos(ph).alt > 0) moonText = ` A ${moonPhase(at).name} moon.`;
   }
@@ -255,8 +266,9 @@ function syncAria() {
   spoken = next;
   if (say !== null) liveEl.textContent = say;
   else if (!next && liveEl.textContent) liveEl.textContent = '';
+  syncValueText();
   const text = view === 'jar'
-    ? `${facts}. The jar is lifted.${moonText}${days} Press Escape to put it back on the table.`
+    ? `${view === 'jar' && scrubMin > 0 ? `Previewing ${offsetText(scrubMin)}: ` : ''}${facts}. The jar is lifted.${moonText}${days} Press Escape to put it back on the table.`
     : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.`;
   if (text !== ariaText) {
     ariaText = text;
@@ -268,12 +280,32 @@ function setTitle() {
   document.title = view === 'jar' ? `${placeName(CITIES[focus])}, in a jar` : 'Jars';
 }
 
+// The slider's spoken value: offset, the previewed clock time and temperature,
+// all taken from the previewed moment itself (never from the throttled draw).
+function syncValueText() {
+  let text = 'now';
+  if (view === 'jar' && scrubMin > 0) {
+    const c = CITIES[focus];
+    const w = previewWeather(feed.get(c.id), previewMs(), c.location.zone);
+    text = `${offsetText(scrubMin)}, ${localTimeText(previewMs(), c.location.zone)}, ${formatTemp(w.temperature)}`;
+  }
+  if (scrubEl.getAttribute('aria-valuetext') !== text) scrub.setValueText(text);
+}
+
+function setScrub(min) {
+  scrubMin = clampScrub(min);
+  scrub.setValue(scrubMin);
+  syncValueText();
+  lastKey = '';
+}
+
 function doLift(i) {
   if (i < 0 || i >= CITIES.length) return;
   focus = i;
   shelf.go(i);
   shelf.pos = shelf.target;
   view = 'jar';
+  setScrub(0);
   lift.open(perf());
   setTitle();
   syncChrome();
@@ -286,10 +318,11 @@ function doLift(i) {
 function doLower() {
   if (view !== 'jar') return;
   view = 'table';
+  setScrub(0);
   pendingBack = false;
   lift.close(perf());
   setTitle();
-  if (document.activeElement === backBtn) canvas.focus();
+  if (document.activeElement === backBtn || scrubRow.contains(document.activeElement)) canvas.focus();
   syncChrome();
   lastKey = '';
 }
@@ -322,7 +355,11 @@ window.addEventListener('popstate', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') lowerFromUser();
+  // The first Escape of a preview returns to now; the next puts the jar down.
+  if (e.key === 'Escape') {
+    if (scrubMin > 0) setScrub(0);
+    else lowerFromUser();
+  }
 });
 canvas.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') {
@@ -332,6 +369,8 @@ canvas.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowLeft' && view === 'table') shelf.prev();
 });
 backBtn.addEventListener('click', lowerFromUser);
+const scrub = new ScrubBar(scrubEl, document.getElementById('now'), { onChange: (min) => setScrub(min) });
+const scrubRow = scrubEl.parentElement;
 document.getElementById('prev').addEventListener('click', () => shelf.prev());
 document.getElementById('next').addEventListener('click', () => shelf.next());
 
@@ -341,6 +380,8 @@ canvas.addEventListener('pointerdown', (e) => {
   if (view === 'jar') {
     // a press outside the lifted jar and its card puts the jar back, like Back
     if (lift.moving) return;
+    // the band kept free for the slider row never lowers the jar
+    if (!scrubRow.hidden && e.clientY >= scrubRow.getBoundingClientRect().top) return;
     const s = cssToScene(e.clientX, e.clientY);
     if (pressLowers(s, shelf.jarRect(focus), lastForecast && lastForecast.rect)) lowerFromUser();
     return;
@@ -392,6 +433,21 @@ function hashCanvas() {
 }
 
 window.__jar = {
+  // Preview the lifted jar `min` minutes ahead (snapped to the slider's step);
+  // returns the clamped value. Only the lifted jar moves.
+  scrub(min) {
+    setScrub(min);
+    render(true);
+    return scrubMin;
+  },
+  get scrubMin() { return scrubMin; },
+  // null at now, else the focused jar's previewed moment and weather.
+  get preview() {
+    if (view !== 'jar' || scrubMin === 0) return null;
+    const c = CITIES[focus];
+    const w = previewWeather(feed.get(c.id), previewMs(), c.location.zone);
+    return { ms: previewMs(), offsetMin: scrubMin, kind: w.kind, temperature: w.temperature };
+  },
   get ready() { return ready; },
   get view() { return view; },
   look: LOOK,
