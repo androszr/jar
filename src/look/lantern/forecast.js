@@ -85,7 +85,7 @@ export function weatherIcon(ctx, kind, x, y, size) {
 
 // The card on `rect`: `cells` is five { day, kind, high, low }; `layout` is
 // 'column' (five rows) or 'row' (five columns). A cell with `today` gets a
-// brass band and a brighter day name; `sun` ({ sunrise, sunset } or null) adds
+// brass band, a brighter day name and a short underline under that name; `sun` ({ sunrise, sunset } or null) adds
 // one strip along the bottom edge.
 export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) {
   const { x, y, w } = rect;
@@ -115,12 +115,20 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) 
       const dayInk = c.today ? PALETTE.labelInk : PALETTE.labelDim;
       if (swell) {
         text(ctx, c.day, cx, y + h * 0.12, h * 0.12, dayInk);
+        if (c.today) {
+          ctx.fillStyle = css(PALETTE.labelInk, 0.9);
+          ctx.fillRect(cx - cw * 0.21, y + h * 0.21, cw * 0.42, Math.max(1, h * 0.015));
+        }
         weatherIcon(ctx, c.kind, cx, y + h * 0.36, Math.min(cw * 0.7, h * 0.3));
         text(ctx, c.high, cx, y + h * 0.6, h * 0.14, PALETTE.labelInk);
         text(ctx, c.low, cx, y + h * 0.75, h * 0.12, PALETTE.labelDim);
         text(ctx, swellText(c), cx, y + h * 0.91, h * 0.12, PALETTE.labelDim);
       } else {
         text(ctx, c.day, cx, y + h * 0.14, h * 0.13, dayInk);
+        if (c.today) {
+          ctx.fillStyle = css(PALETTE.labelInk, 0.9);
+          ctx.fillRect(cx - cw * 0.21, y + h * 0.235, cw * 0.42, Math.max(1, h * 0.015));
+        }
         weatherIcon(ctx, c.kind, cx, y + h * 0.43, Math.min(cw * 0.7, h * 0.34));
         text(ctx, c.high, cx, y + h * 0.69, h * 0.15, PALETTE.labelInk);
         text(ctx, c.low, cx, y + h * 0.88, h * 0.13, PALETTE.labelDim);
@@ -135,11 +143,18 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) 
         ctx.fillRect(x, y + rh * i, w, rh);
       }
       const dayInk = c.today ? PALETTE.labelInk : PALETTE.labelDim;
+      // The today underline is drawn after the day name, so text() cannot repaint it.
+      const underline = (uy) => {
+        ctx.fillStyle = css(PALETTE.labelInk, 0.9);
+        ctx.fillRect(x + w * 0.1, uy, w * 0.2, Math.max(1, rh * 0.025));
+      };
       if (swell) {
         text(ctx, c.day, x + w * 0.1, cy - rh * 0.14, rh * 0.24, dayInk, 'left');
+        if (c.today) underline(cy + rh * 0.01);
         text(ctx, swellText(c), x + w * 0.1, cy + rh * 0.2, rh * 0.2, PALETTE.labelDim, 'left');
       } else {
         text(ctx, c.day, x + w * 0.1, cy, rh * 0.26, dayInk, 'left');
+        if (c.today) underline(cy + rh * 0.2);
       }
       weatherIcon(ctx, c.kind, x + w * 0.45, cy, rh * 0.44);
       text(ctx, c.high, x + w * 0.73, cy, rh * 0.26, PALETTE.labelInk, 'right');

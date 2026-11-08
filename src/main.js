@@ -9,7 +9,7 @@ import { Shelf, shelfMetrics, frameDt } from './shelf.js';
 import { fitScreen, SCENE } from './framing.js';
 import { Lift, liftCamera } from './lift.js';
 import { forecastPose, forecastExtent } from './forecast.js';
-import { forecastCells, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
+import { forecastCells, forecastSentence, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
 import { WeatherFeed } from './weatherfeed.js';
 import { buildShedArt, drawShed, tintBucket } from './shed.js';
@@ -235,9 +235,8 @@ function syncAria() {
   const todayHere = view === 'jar' ? localDate(nowMs(), CITIES[focus].location.zone) : null;
   const cells = view === 'jar' ? forecastCells(here, todayHere) : null;
   const sun = view === 'jar' ? sunTimesFor(here, todayHere) : null;
-  const days = (cells && cells[0].day !== '—'
-    ? ` Next five days: ${cells.map((c) => `${c.day} ${c.high} to ${c.low}${c.swell ? ` swell ${c.swell.height}` : ''}`).join(', ')}.`
-    : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '');
+  const sentence = cells ? forecastSentence(cells) : '';
+  const days = (sentence ? ` ${sentence}` : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
   const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : placeName(c);

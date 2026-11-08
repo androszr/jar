@@ -7,7 +7,7 @@
 // degraded page (weather failing), and a phone held upright and sideways and
 // a tablet, and the five-day forecast card of the lifted jar (beside the jar on
 // a laptop, below it on a phone, absent on the table, dashes without a daily
-// block), with today marked and the sunrise and sunset, with a sun arc under the sunrise
+// block), with today marked (and named today for screen readers) and the sunrise and sunset, with a sun arc under the sunrise
 // and sunset line. Two jars stand on the
 // table, Warsaw and Nazare (Lisbon time, its wave sized by a stub sea reading):
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
@@ -230,13 +230,14 @@ try {
   await page.screenshot({ path: join(OUT, 'warsaw-rain.png') });
   // The page's own clock, read beside the card: a Warsaw midnight between the
   // route and the check drops the first fixture row, exactly as the page does.
-  const [fc, pageNow] = await page.evaluate(() => [window.__jar.forecast, Date.now()]);
+  const [fc, pageNow, aria] = await page.evaluate(() => [window.__jar.forecast, Date.now(), document.getElementById('view').getAttribute('aria-label')]);
   const todayThere = localDate(pageNow, 'Europe/Warsaw');
   const rows = [['14°', '9°', 'rain'], ['12°', '5°', 'cloud'], ['9°', '2°', 'clear'], ['2°', '-2°', 'snow'], ['8°', '3°', 'storm']];
   const want = days.map((d, i) => [dayName(d), ...rows[i]]).filter((_, i) => days[i] >= todayThere);
   while (want.length < 5) want.push(['—', '—°', '—°', 'cloud']);
   check(!!fc && JSON.stringify(fc.cells.map((k) => [k.day, k.high, k.low, k.kind])) === JSON.stringify(want), 'forecast card shows five fixture days when lifted');
   check(!!fc && fc.cells[0].today === days.includes(todayThere) && fc.cells.slice(1).every((k) => !k.today), 'forecast card marks today and only today');
+  check(!!fc && typeof aria === 'string' && aria.includes('Next five days: ') && (aria.match(/today /g) || []).length === (fc.cells[0].today ? 1 : 0) && (!fc.cells[0].today || aria.includes(`Next five days: today ${fc.cells[0].day} `)), 'forecast card names today for screen readers');
   const sunRow = Math.max(0, days.findIndex((d) => d >= todayThere));
   const hm = (s) => s.slice(11, 16);
   const wantSun = { sunrise: hm(fixture.daily.sunrise[sunRow]), sunset: hm(fixture.daily.sunset[sunRow]) };
@@ -442,7 +443,7 @@ try {
   await viewIs(np, 'jar');
   await settled(np);
   const nf = await np.evaluate(() => window.__jar.forecast);
-  check(!!nf && DASHES(nf.cells) && nf.sun === null && nf.sunT === null && nSeen.errors.length === 0, 'forecast card shows dashes without a daily block');
+  check(!!nf && DASHES(nf.cells) && nf.sun === null && nf.sunT === null && nSeen.errors.length === 0 && !(await np.evaluate(() => document.getElementById('view').getAttribute('aria-label'))).includes('today'), 'forecast card shows dashes without a daily block');
   await nod.close();
 
   // ---- a daily block without sun times: five days, no strip -------------------
@@ -508,12 +509,13 @@ try {
   check(await viewIs(pp, 'jar'), 'phone tap lifts');
   await settled(pp);
   await pp.screenshot({ path: join(OUT, 'phone', 'lifted.png') });
-  const [pf, pNow] = await pp.evaluate(() => [window.__jar.forecast, Date.now()]);
+  const [pf, pNow, paria] = await pp.evaluate(() => [window.__jar.forecast, Date.now(), document.getElementById('view').getAttribute('aria-label')]);
   const pfoot = await pp.evaluate(() => window.__jar.foot('warsaw'));
   const pcanvas = await pp.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!pf && pf.rect.y > pfoot.y && inside(pf.rect, pcanvas[0], pcanvas[1]), 'phone forecast card sits below the jar and fits');
   check(!!pf && pf.cells.slice(1).every((k) => !k.today) && pf.sun !== null && pf.sun.sunrise === wantSun.sunrise, 'phone forecast card marks today and shows the sun strip');
   check(!!pf && pf.sun !== null && Number.isFinite(pf.sunT) && Math.abs(pf.sunT - sunFraction(pNow, 'Europe/Warsaw', pf.sun)) < 0.01, 'phone forecast card sun arc follows the Warsaw clock');
+  check(!!pf && typeof paria === 'string' && (paria.match(/today /g) || []).length === (pf.cells[0].today ? 1 : 0), 'phone forecast card names today for screen readers');
   const box = await pp.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return { w: r.width, h: r.height, vis: !document.getElementById('back').hidden }; });
   check(box.vis && box.w >= 44 && box.h >= 44, `phone targets are 44px (back ${box.w}x${box.h})`);
   await pp.touchscreen.tap(30, 30);

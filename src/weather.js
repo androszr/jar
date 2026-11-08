@@ -148,6 +148,13 @@ function fromSea(s) {
   return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir), daily: normaliseSeaDaily(s.daily) };
 }
 
+// The spoken five-day sentence; "today" goes before any cell flagged today,
+// and a day with a swell reading says its peak wave height.
+export function forecastSentence(cells) {
+  if (!Array.isArray(cells) || !cells.length || cells[0].day === '—') return '';
+  return `Next five days: ${cells.map((c) => `${c.today ? 'today ' : ''}${c.day} ${c.high} to ${c.low}${c.swell ? ` swell ${c.swell.height}` : ''}`).join(', ')}.`;
+}
+
 // One city's entry from the function's body, as the page draws from it.
 export function fromEntry(e) {
   if (!e || typeof e !== 'object') return EMPTY;

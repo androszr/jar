@@ -5,6 +5,7 @@ import { PALETTE, css } from '../src/look/lantern/palette.js';
 import { CARD } from '../src/forecast.js';
 
 const BAND = css(PALETTE.brass, 0.12);
+const MARK = css(PALETTE.labelInk, 0.9);
 const SUN = { sunrise: '07:05', sunset: '17:32' };
 
 // A 2D context that records fillText strings (with y) and fillRect calls with the fillStyle at the time.
@@ -50,17 +51,20 @@ function paint(layout, cs, sun, sunT = null) {
 }
 
 const bands = (ctx) => ctx.rects.filter((r) => r.style === BAND);
+const marks = (ctx) => ctx.rects.filter((r) => r.style === MARK);
 
 test('no sun and no today: no strip, no band', () => {
   const ctx = paint('column', cells(), null);
   assert.ok(!ctx.texts.some((t) => t.s.includes('↑')));
   assert.equal(bands(ctx).length, 0);
+  assert.equal(marks(ctx).length, 0);
 });
 
 for (const layout of ['column', 'row']) {
   test(`${layout}: today band and sun strip appear`, () => {
     const ctx = paint(layout, cells(0), SUN);
     assert.equal(bands(ctx).length, 1);
+    assert.equal(marks(ctx).length, 1);
     assert.ok(ctx.texts.some((t) => t.s === '↑ 07:05  ↓ 17:32'));
   });
 
@@ -71,6 +75,7 @@ for (const layout of ['column', 'row']) {
     const strip = ctx.texts.find((t) => t.s.includes('↑'));
     assert.ok(strip.y > stripY);
     for (const t of ctx.texts.filter((k) => k !== strip)) assert.ok(t.y < stripY, `${t.s} at ${t.y}`);
+    for (const m of marks(ctx)) assert.ok(m.a[1] + m.a[3] < stripY);
   });
 }
 
@@ -78,11 +83,25 @@ test('today on cell 2 only: one band at the third cell', () => {
   const col = paint('column', cells(2), SUN);
   assert.equal(bands(col).length, 1);
   const rc = RECT('column');
-  assert.equal(bands(col)[0].a[1], rc.y + ((rc.h - CARD.arc.column - CARD.strip.column) / 5) * 2);
+  const rh = (rc.h - CARD.arc.column - CARD.strip.column) / 5;
+  assert.equal(bands(col)[0].a[1], rc.y + rh * 2);
+  assert.equal(marks(col).length, 1);
+  assert.ok(marks(col)[0].a[1] >= rc.y + rh * 2 && marks(col)[0].a[1] < rc.y + rh * 3);
   const row = paint('row', cells(2), SUN);
   assert.equal(bands(row).length, 1);
   const rr = RECT('row');
   assert.equal(bands(row)[0].a[0], rr.x + (rr.w / 5) * 2);
+  const m = marks(row)[0];
+  assert.ok(Math.abs(m.a[0] + m.a[2] / 2 - (rr.x + (rr.w / 5) * 2.5)) < 1e-6);
+  assert.ok(m.a[1] < rr.y + (rr.h - CARD.strip.row) * 0.43);
+});
+
+test('today mark is drawn without a sun strip too', () => {
+  for (const layout of ['row', 'column']) {
+    const ctx = paint(layout, cells(0), null);
+    assert.equal(marks(ctx).length, 1);
+    assert.equal(bands(ctx).length, 1);
+  }
 });
 
 const swellCells = () => cells().map((c, i) => ({ ...c, swell: i === 2 ? null : { height: '2.4 m', period: '12 s' } }));
@@ -162,3 +181,21 @@ test('arc: the row layout carries it below the cells and the strip', () => {
   assert.ok(dy >= r.y + r.h - CARD.arc.row && dy <= r.y + r.h);
   assert.ok(ctx.texts.every((t) => t.y < r.y + r.h - CARD.arc.row));
 });
+
+for (const layout of ['row', 'column']) {
+  test(`${layout} card with swell still underlines today, clear of the wave figure`, () => {
+    const cs = cells(1).map((c, i) => ({ ...c, swell: { height: '2.4 m', period: '12 s' }, day: i === 1 ? 'MON' : 'SUN' }));
+    const ctx = paint(layout, cs, SUN);
+    assert.equal(marks(ctx).length, 1);
+    const m = marks(ctx)[0];
+    const day = ctx.texts.find((t) => t.s === 'MON');
+    const wave = ctx.texts.filter((t) => t.s === '2.4 m');
+    assert.ok(m.a[1] > day.y, 'the underline sits below the day name');
+    const r = RECT(layout);
+    const h = r.h - CARD.strip[layout] - CARD.arc[layout];
+    // The wave figure in the same cell as MON, and half its text size (row: h*0.12, column: rh*0.2).
+    const wv = layout === 'row' ? wave[1] : wave.find((t) => t.y > day.y && t.y < day.y + h / 5);
+    const half = layout === 'row' ? h * 0.06 : (h / 5) * 0.1;
+    assert.ok(m.a[1] + m.a[3] < wv.y - half, `the underline (${m.a[1]}+${m.a[3]}) ends above the wave figure at ${wv.y}`);
+  });
+}

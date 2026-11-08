@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, sunTimesFor, formatSwell } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -144,6 +144,26 @@ test('forecastCells marks only the first cell, only when it is today', () => {
   assert.ok(forecastCells(w, '2026-10-17').every((k) => !k.today));
 });
 
+test('forecastSentence says today before the flagged day only', () => {
+  const w = sunW();
+  const s = forecastSentence(forecastCells(w, '2026-10-18'));
+  assert.ok(s.startsWith('Next five days: today '));
+  assert.equal((s.match(/today /g) || []).length, 1);
+  assert.ok(s.endsWith('.'));
+  const plain = forecastSentence(forecastCells(w));
+  assert.ok(!plain.includes('today'));
+  assert.equal(plain, s.replace('today ', ''));
+  const cs = forecastCells(w, '2026-10-18');
+  cs[0].today = false;
+  cs[2].today = true;
+  const s2 = forecastSentence(cs);
+  assert.equal((s2.match(/today /g) || []).length, 1);
+  assert.ok(s2.includes(`, today ${cs[2].day} `));
+  assert.equal(forecastSentence(forecastCells(EMPTY)), '');
+  assert.equal(forecastSentence([]), '');
+  assert.equal(forecastSentence(null), '');
+});
+
 test('sunTimesFor picks today\'s row and needs both times', () => {
   const w = sunW();
   assert.deepEqual(sunTimesFor(w, '2026-10-18'), { sunrise: '07:05', sunset: '17:32' });
@@ -190,4 +210,9 @@ test('the sea daily rows: folded by fromEntry, junk gives [], the swell joins fo
   assert.deepEqual(cells[0].swell, { height: '2.4 m', period: '12 s' });
   assert.equal(cells[1].swell, null, 'a date with no marine row');
   assert.ok(forecastCells(EMPTY).every((c) => c.swell === null));
+});
+
+test('forecastSentence says the swell after a day that has one', () => {
+  const cs = [{ day: 'MON', high: '18°', low: '12°', today: true, swell: { height: '4.2 m', period: '14 s' } }, { day: 'TUE', high: '17°', low: '11°', today: false, swell: null }];
+  assert.equal(forecastSentence(cs), 'Next five days: today MON 18° to 12° swell 4.2 m, TUE 17° to 11°.');
 });
