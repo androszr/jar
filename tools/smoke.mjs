@@ -8,7 +8,7 @@
 // a tablet, and the five-day forecast card of the lifted jar (beside the jar on
 // a laptop, below it on a phone, absent on the table, dashes without a daily
 // block), with today marked (and named today for screen readers) and the sunrise and sunset, with a sun arc under the sunrise
-// and sunset line. Two jars stand on the
+// and sunset line, and a polite live region that announces a refreshed forecast while a jar is lifted. Two jars stand on the
 // table, Warsaw and Nazare (Lisbon time, its wave sized by a stub sea reading):
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
 // four swell bands and their surfers, the lighthouse beam at night.
@@ -126,6 +126,8 @@ function watch(page, origin) {
 }
 
 const ready = (page) => page.waitForFunction(() => window.__jar && window.__jar.ready, null, { timeout: 15000 });
+const live = (pg) => pg.evaluate(() => document.getElementById('announce').textContent);
+const twoFrames = (pg) => pg.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const viewIs = (page, view, timeout = 3000) =>
   page.waitForFunction((v) => window.__jar.view === v && !window.__jar.lifting, view, { timeout }).then(() => true, () => false);
 const settled = (page, timeout = 3000) =>
@@ -245,11 +247,32 @@ try {
   const dfoot = await page.evaluate(() => window.__jar.foot('warsaw'));
   const dcanvas = await page.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!fc && fc.rect.x > dfoot.x && inside(fc.rect, dcanvas[0], dcanvas[1]), 'desktop forecast card sits beside the jar and fits');
+  // a refreshed answer while lifted is announced; the lift itself and a same-forecast refresh are not
+  check((await live(page)) === '', 'live region is silent on the lift itself');
+  const hotter = JSON.parse(bodyOf(dated)); hotter.cities.warsaw.temperature = 30.2;
+  await page.evaluate((b) => window.__jar.applyWeather(b), hotter);
+  await labelIs(page, 1, '30°');
+  await twoFrames(page);
+  check((await live(page)) === '', 'live region stays quiet when only the current temperature changes');
+  const bumped = JSON.parse(bodyOf(dated));
+  bumped.cities.warsaw.daily = bumped.cities.warsaw.daily.map((r) => ({ ...r, high: r.high + 1 }));
+  await page.evaluate((b) => window.__jar.applyWeather(b), bumped);
+  const heard = await page.waitForFunction(() => document.getElementById('announce').textContent.startsWith('Weather updated. '), null, { timeout: 3000 }).then(() => true, () => false);
+  const [live1, aria1] = await page.evaluate(() => [document.getElementById('announce').textContent, document.getElementById('view').getAttribute('aria-label')]);
+  const spokenOf = (a) => a.slice(a.indexOf('Next five days: '), a.indexOf(' Press Escape'));
+  check(heard && live1 === `Weather updated. ${spokenOf(aria1)}` && spokenOf(aria1) !== spokenOf(aria) && live1.includes('Sunrise '), 'live region announces a refreshed forecast while lifted');
+  await page.evaluate((b) => window.__jar.applyWeather(b), bumped);
+  await twoFrames(page);
+  check((await live(page)) === live1, 'live region stays quiet on an identical refresh');
   await page.keyboard.press('Escape');
   check((await viewIs(page, 'table')) && !page.url().includes('jar='), 'escape lowers the jar');
+  await twoFrames(page);
+  check((await live(page)) === '', 'live region is cleared on the table');
   check(await page.evaluate(() => window.__jar.forecast === null), 'forecast card is absent on the table');
   await page.mouse.click(c.x, c.y);
   await viewIs(page, 'jar');
+  await twoFrames(page);
+  check((await live(page)) === '', 'live region is silent on a second lift');
   await page.goBack();
   check(await viewIs(page, 'table'), 'browser back lowers the jar');
   await settled(page);
@@ -516,6 +539,9 @@ try {
   check(!!pf && pf.cells.slice(1).every((k) => !k.today) && pf.sun !== null && pf.sun.sunrise === wantSun.sunrise, 'phone forecast card marks today and shows the sun strip');
   check(!!pf && pf.sun !== null && Number.isFinite(pf.sunT) && Math.abs(pf.sunT - sunFraction(pNow, 'Europe/Warsaw', pf.sun)) < 0.01, 'phone forecast card sun arc follows the Warsaw clock');
   check(!!pf && typeof paria === 'string' && (paria.match(/today /g) || []).length === (pf.cells[0].today ? 1 : 0), 'phone forecast card names today for screen readers');
+  await pp.evaluate((b) => window.__jar.applyWeather(b), bumped);
+  const pheard = await pp.waitForFunction(() => document.getElementById('announce').textContent.startsWith('Weather updated. '), null, { timeout: 3000 }).then(() => true, () => false);
+  check(pheard && (await live(pp)).includes('Next five days: '), 'phone live region announces a refreshed forecast while lifted');
   const box = await pp.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return { w: r.width, h: r.height, vis: !document.getElementById('back').hidden }; });
   check(box.vis && box.w >= 44 && box.h >= 44, `phone targets are 44px (back ${box.w}x${box.h})`);
   await pp.touchscreen.tap(30, 30);
