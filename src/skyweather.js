@@ -3,7 +3,8 @@
 // Every mover is a function of the phase or of the `nowMs` passed in.
 import { sunPos, sunAltitude, moonPos, isNight, wrap } from './clock.js';
 import { weatherKind, cloudAmount, windSlant, cloudTravel, flashIntensity } from './weather.js';
-import { PALETTE, css, glow, droplet } from './look/index.js';
+import { moonPhase, moonGlow } from './moon.js';
+import { PALETTE, css, glow, droplet, moonDisc } from './look/index.js';
 
 // A tiny deterministic 0..1 from two numbers.
 export function hash2(i, seed = 0) {
@@ -148,17 +149,17 @@ export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
     ctx.arc(sx, sy, 15, 0, Math.PI * 2);
     ctx.fill();
   }
+  let drawnMoon = null;
   if (night || nightness > 0) {
     if (clear) stars(ctx, rect, nightness, nowMs);
     const mp = moonPos(phase);
     if (mp.alt > 0) {
       const mx = rect.x + rect.w * Math.max(0.15, Math.min(0.85, (mp.x - 400) / 1000));
       const my = rect.y + rect.h * (0.4 - 0.28 * mp.alt);
-      glow(ctx, mx, my, rect.w * 0.25, PALETTE.moon, 0.45 * (1 - amount * 0.7));
-      ctx.fillStyle = css(PALETTE.moon, 0.95 * (1 - amount * 0.6));
-      ctx.beginPath();
-      ctx.arc(mx, my, 10, 0, Math.PI * 2);
-      ctx.fill();
+      const moon = moonPhase(nowMs);
+      glow(ctx, mx, my, rect.w * 0.25, PALETTE.moon, 0.45 * (1 - amount * 0.7) * moonGlow(moon.illumination));
+      moonDisc(ctx, mx, my, 10, moon, 0.95 * (1 - amount * 0.6));
+      drawnMoon = { illumination: moon.illumination, name: moon.name, x: (mx - rect.x) / rect.w, y: (my - rect.y) / rect.h };
     }
   }
 
@@ -186,7 +187,7 @@ export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
   // dew is what a fog leaves behind; while the fog is there the glass is misted instead
   if (kind !== 'fog' && opts.dew > 0) drawDew(ctx, rect, opts.dew);
   // fog is drawn last in the jar (see paintFog), on the inside of the glass
-  return { wind }; // the cloud drift term actually painted (0 when no clouds or no wind)
+  return { wind, moon: drawnMoon }; // the cloud drift term actually painted (0 when no clouds or no wind)
 }
 
 // Fog as condensation on the inside of the glass, over the city.

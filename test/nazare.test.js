@@ -147,6 +147,21 @@ test('painting never touches Math.random: noon, dusk and night, clear, rain, fog
   }
 });
 
+const T_FULL = Date.UTC(2026, 5, 29, 23, 30);
+const T_DARK_MOON = Date.UTC(2026, 5, 15, 23, 30);
+const CLEAR = { ...EMPTY, known: true, kind: 'clear', cloudCover: 5 };
+
+test('the moon track is on the water at a full moon and gone at a new moon', () => {
+  const key = css(NAZARE.moonStreak, 0).slice(0, 18);
+  const has = (ms) => [...paint(PHASE.night, CLEAR, ms).fills].some((f) => f.startsWith(key));
+  assert.ok(has(T_FULL), 'no track at full moon');
+  assert.ok(!has(T_DARK_MOON), 'track at new moon');
+});
+
+test('painting a full-moon night never touches Math.random', () => {
+  assert.doesNotThrow(() => paint(PHASE.night, CLEAR, T_FULL));
+});
+
 test('paint reports a moderate sea with three surfers at noon and none at night', () => {
   const noon = paint(PHASE.noon).out;
   assert.equal(noon.band, 'moderate');

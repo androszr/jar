@@ -1,5 +1,6 @@
 // Boot, render loop and wiring: the potting table, the jars on it, the lift.
-import { readOptions, sample } from './clock.js';
+import { readOptions, sample, isNight, moonPos } from './clock.js';
+import { moonPhase } from './moon.js';
 import { placeGuess, realPhase } from './realclock.js';
 import { therePhase, localDate, sunFraction } from './placeclock.js';
 import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
@@ -55,7 +56,7 @@ let cadenceMs = 0; // the redraw tick the last render keyed on: the smallest pos
 let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
 let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
 let scenes = {}; // city id -> what the scene reported painting
-let drawn = {}; // city id -> { flash, dew, drift } the last frame painted with
+let drawn = {}; // city id -> { flash, dew, drift, moon } the last frame painted with
 let lastForecast = null; // { cells, rect, sun, sunT } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
@@ -163,7 +164,7 @@ function render(force = false) {
   scratch.bloomCtx.clearRect(0, 0, scratch.bloomCanvas.width, scratch.bloomCanvas.height);
   scratch.bloomCtx.setTransform(k / 4, 0, 0, k / 4, tx / 4, ty / 4);
 
-  drawShed(ctx, art, shedTint, null, shedPhase);
+  drawShed(ctx, art, shedTint, null, shedPhase, ms);
   let bloomStrength = 0;
   const nextLabels = {};
   const nextDrawn = {};
@@ -172,7 +173,7 @@ function render(force = false) {
     const tn = lookTint(sample(phases[i]));
     const painted = paintJar(ctx, shelf.jarRect(i), city, phases[i], tn, weathers[i], ms, plates[i], scratch, { reduced: reduceMotion, dew: dews[i], anchor: feed.cloudAnchor(city.id) });
     nextScenes[city.id] = painted.scene;
-    nextDrawn[city.id] = { flash: flashes[i], dew: dews[i], drift: painted.drift };
+    nextDrawn[city.id] = { flash: flashes[i], dew: dews[i], drift: painted.drift, moon: painted.moon };
     nextLabels[city.id] = labelLines(city, weathers[i], ms);
     bloomStrength = Math.max(bloomStrength, tn.bloom);
   });
@@ -240,8 +241,14 @@ function syncAria() {
   const c = CITIES[focus];
   const l = labels[c.id];
   const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : placeName(c);
+  let moonText = '';
+  if (view === 'jar') {
+    const at = nowMs();
+    const ph = therePhase(at, c.location, viewerAt(at));
+    if (isNight(ph) && moonPos(ph).alt > 0) moonText = ` A ${moonPhase(at).name} moon.`;
+  }
   const text = view === 'jar'
-    ? `${facts}. The jar is lifted.${days} Press Escape to put it back on the table.`
+    ? `${facts}. The jar is lifted.${moonText}${days} Press Escape to put it back on the table.`
     : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.`;
   if (text !== ariaText) {
     ariaText = text;
@@ -410,6 +417,7 @@ window.__jar = {
   get cadence() { return { weather: weatherCadence, cities: cityCadences }; },
   scene: (id) => scenes[id] || null,
   drift: (id) => (drawn[id] ? drawn[id].drift : 0),
+  moon: (id) => (drawn[id] ? drawn[id].moon : null),
   dew: (id) => (drawn[id] ? drawn[id].dew : 0),
   flash: (id) => (drawn[id] ? drawn[id].flash : 0),
   blankHash() {

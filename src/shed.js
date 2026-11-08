@@ -2,9 +2,10 @@
 // table. The static art is drawn once per size and tint bucket into an
 // offscreen canvas; the window sky and the light it casts are drawn live.
 import { isNight, moonPos } from './clock.js';
+import { moonPhase, moonGlow } from './moon.js';
 import { SCENE } from './framing.js';
 import { hash2 } from './skyweather.js';
-import { PALETTE, css, mix, plank, skyGradient, glow, vignette } from './look/index.js';
+import { PALETTE, css, mix, plank, skyGradient, glow, vignette, moonDisc } from './look/index.js';
 
 export const WINDOW = { x: 200, y: 120, w: 400, h: 360 };
 export const TABLE_Y = 680;
@@ -71,27 +72,25 @@ export function buildShedArt(w, h, tint, make = (cw, ch) => Object.assign(docume
 }
 
 // The sky seen through the window panes.
-export function drawWindowSky(ctx, tint, phase) {
+export function drawWindowSky(ctx, tint, phase, nowMs) {
   skyGradient(ctx, WINDOW, tint);
   if (phase !== undefined && isNight(phase)) {
     const mp = moonPos(phase);
     if (mp.alt > 0) {
       const mx = WINDOW.x + WINDOW.w * Math.max(0.2, Math.min(0.8, (mp.x - 400) / 1000));
       const my = WINDOW.y + WINDOW.h * (0.42 - 0.26 * mp.alt);
-      glow(ctx, mx, my, 60, PALETTE.moon, 0.5);
-      ctx.fillStyle = css(PALETTE.moon);
-      ctx.beginPath();
-      ctx.arc(mx, my, 14, 0, Math.PI * 2);
-      ctx.fill();
+      const moon = moonPhase(nowMs);
+      glow(ctx, mx, my, 60, PALETTE.moon, 0.5 * moonGlow(moon.illumination));
+      moonDisc(ctx, mx, my, 14, moon);
     }
   }
 }
 
 // Compose the shed under the current camera transform of `ctx`; `view` is
 // { w, h } in device px, used for the vignette once the transform is reset.
-export function drawShed(ctx, art, tint, view, phase) {
+export function drawShed(ctx, art, tint, view, phase, nowMs) {
   ctx.save();
-  drawWindowSky(ctx, tint, phase);
+  drawWindowSky(ctx, tint, phase, nowMs);
   ctx.drawImage(art, 0, 0, SCENE.w, SCENE.h);
   // the window's light falls across the table as a pale slanting patch
   ctx.save();

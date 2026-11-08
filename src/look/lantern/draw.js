@@ -165,3 +165,32 @@ export function droplet(ctx, x, y, r, strength = 1) {
   ctx.arc(x - r * 0.3, y - r * 0.35, Math.max(0.4, r * 0.32), 0, Math.PI * 2);
   ctx.fill();
 }
+
+// The moon with its real phase: the lit limb is a semicircle (right side while
+// waxing, left while waning) closed by the terminator ellipse. One filled path,
+// never an erase, so the glow beneath stays whole. `moon` is from moonPhase.
+export function moonDisc(ctx, x, y, r, moon, alpha = 1) {
+  if (moon.name === 'new') {
+    ctx.fillStyle = css(PALETTE.moon, 0.08 * alpha);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  const ill = moon.illumination;
+  const rx = r * Math.abs(2 * ill - 1);
+  const gibbous = ill > 0.5;
+  ctx.fillStyle = css(PALETTE.moon, alpha);
+  ctx.beginPath();
+  if (moon.waxing) {
+    ctx.arc(x, y, r, -Math.PI / 2, Math.PI / 2);
+    if (gibbous) ctx.ellipse(x, y, rx, r, 0, Math.PI / 2, Math.PI * 1.5, false);
+    else ctx.ellipse(x, y, rx, r, 0, Math.PI / 2, -Math.PI / 2, true);
+  } else {
+    ctx.arc(x, y, r, Math.PI / 2, Math.PI * 1.5);
+    if (gibbous) ctx.ellipse(x, y, rx, r, 0, Math.PI * 1.5, Math.PI * 2.5, false);
+    else ctx.ellipse(x, y, rx, r, 0, Math.PI * 1.5, Math.PI / 2, true);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
