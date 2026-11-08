@@ -23,10 +23,13 @@ export const LANTERN = { x: 0.78, y: 0.165, roof: { y0: 0.14, y1: 0.17 } };
 // rock (x1), so neither end ever stands in open water, and it is tallest at the
 // rock and lowest at the left (lowShare). It breaks first at the rock, and the
 // break runs left, away from the lighthouse, between peelFrom and peelTo of the
-// roll. A second wave follows half a roll behind, so the sea is never empty.
+// roll. A second wave follows half a roll behind, so the sea is never empty:
+// it stays small while the one ahead breaks, and only builds to full height
+// as it reaches its own break (fullAt), once the one ahead is spent (spendFrom).
 export const WAVE = {
   x0: -0.04, rock: 0.56, x1: 0.68, lowShare: 0.12,
-  formY: 0.515, breakY: 0.695, peelFrom: 0.4, peelTo: 0.9, lag: 0.5,
+  formY: 0.515, breakY: 0.695, peelFrom: 0.4, peelTo: 0.85, lag: 0.5,
+  fullAt: 0.45, spendFrom: 0.74,
 };
 export const BEACH = { y0: 0.7, y1: 0.737, x1: 0.52 };
 // The x bands the glass streaks occupy (shares of the width); the look's STREAKS.
@@ -318,8 +321,12 @@ export function drawFort(ctx, rect, phase, tint, weather, plates) {
 const bump = (t) => smoothstep(clamp(t));
 // where the wave's foot is at roll phase p (a share of the height): it comes at you
 export const baseAt = (p) => lerp(WAVE.formY, WAVE.breakY, bump(p * 1.04));
-// how much of it stands up: it rises from the swell and spends itself on the sand
-export const standAt = (p) => bump(p / 0.5) * (1 - bump((p - 0.82) / 0.14)) * (0.4 + 0.6 * bump(p / 0.6));
+// how much of it stands up: it builds slowly out of the swell, low for most of
+// its approach and steepening into the break, so the wave behind is always
+// clearly smaller than the one breaking; it shrinks with distance too. Then it
+// spends itself on the sand.
+const growAt = (p) => bump(p / WAVE.fullAt) ** 3 * (0.6 + 0.4 * bump(p / WAVE.fullAt));
+export const standAt = (p) => growAt(p) * (1 - bump((p - WAVE.spendFrom) / 0.16));
 // its height along the bay, 0..1: tallest at the rock, where the canyon focuses it
 export const reachAt = (xs) => WAVE.lowShare + (1 - WAVE.lowShare) * bump((xs - WAVE.x0) / (WAVE.rock - WAVE.x0));
 // where the break has got to: nowhere before peelFrom, then from the rock leftward
@@ -345,8 +352,15 @@ export function waveState(L, weather, nowMs, reduced, lag = 0) {
 }
 
 // Both waves on the water, the farther (earlier in its roll) first.
+// One paint asks for them from several layers with the same arguments, so the
+// last answer is kept and handed back while those arguments are unchanged.
+let lastStates = null;
 export function waveStates(L, weather, nowMs, reduced) {
-  return [waveState(L, weather, nowMs, reduced, 0), waveState(L, weather, nowMs, reduced, WAVE.lag)].sort((a, b) => a.p - b.p);
+  const k = lastStates;
+  if (k && k.L.w === L.w && k.L.h === L.h && k.L.ox === L.ox && k.L.oy === L.oy && k.weather === weather && k.nowMs === nowMs && k.reduced === reduced) return k.states;
+  const states = [waveState(L, weather, nowMs, reduced, 0), waveState(L, weather, nowMs, reduced, WAVE.lag)].sort((a, b) => a.p - b.p);
+  lastStates = { L, weather, nowMs, reduced, states };
+  return states;
 }
 
 // the sea's colour at a height, as drawFarSea paints it, so a wave's foot melts into it
@@ -613,7 +627,7 @@ export function drawBeach(ctx, rect, phase, tint, weather, plates, nowMs, reduce
 export const PADDLER = { x: 0.17, y: 0.545 };
 export function surferSpots(L, weather, state, plan, nowMs, states = [state]) {
   const spots = [];
-  const on = bump((state.p - 0.3) / 0.08) * (1 - bump((state.p - 0.84) / 0.06));
+  const on = bump((state.p - 0.3) / 0.08) * (1 - bump((state.p - WAVE.spendFrom) / 0.06));
   const lead = Math.min(state.brk, WAVE.rock - 0.04);
   const base = L.Y(state.baseTop);
   plan.forEach((who, i) => {

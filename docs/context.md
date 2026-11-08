@@ -99,7 +99,7 @@ Cached 15 minutes at the edge (`s-maxage=900`) and 15 minutes in the page
 (`WeatherFeed` refetches only while the tab is visible, and keeps the last good
 answer on any failure for up to 45 minutes — `STALE_MS`, three refreshes, measured
 by the feed's own clock from when the answer was accepted — after which `get`
-answers `EMPTY` until the next good answer). Locally `tools/serve.mjs` routes the same handler;
+answers `EMPTY` until the next good answer; it counts from receipt, not from the body's `fetchedAt`, so with the edge cache a reading can be up to an hour old before the dash). Locally `tools/serve.mjs` routes the same handler;
 tests and the smoke check inject a stub, so nothing touches the network.
 
 **Clocks.** `src/clock.js` (nine keyframes, `sample(p)` -> `{ light, a, b, t }`),
@@ -118,7 +118,7 @@ keeps the once-a-minute key, precipitation its 50 ms one; a city may declare `ca
 the address remembers it as `?jar=<id>` (`src/address.js`). A wide screen shows
 the whole scene; a taller one a full-height slice centred on the focused jar
 (`src/framing.js`) — one code path branching on aspect. `window.__jar` is the
-test surface. The canvas's `aria-label` is the lifted jar's spoken description; because the lift moves focus to `#back`, a polite live region `#announce` (`src/index.html`, written only by `syncAria` through `forecastAnnouncement` in `src/announce.js`) says `Weather updated.` plus the forecast and sun sentence when a refresh changes them for the jar that stays lifted — never on the lift, a jar switch, identical numbers, a blank forecast or the minute tick.
+test surface. The canvas's `aria-label` is the lifted jar's spoken description; because the lift moves focus to `#back`, a polite live region `#announce` (`src/index.html`, written only by `syncAria` through `forecastAnnouncement` in `src/announce.js`) says `Weather updated.` plus the forecast and sun sentence when a refresh changes them for the jar that stays lifted — never on the lift, a jar switch, identical numbers, a blank forecast, the minute tick or the day names shifting at local midnight (the announcement is keyed on `feed.revision`).
 
 **Hosting.** `vercel.json` publishes `src/` as it is (`framework: null`, Git
 deploys off, deploys by `.github/workflows/deploy.yml` with a pinned CLI in

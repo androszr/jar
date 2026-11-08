@@ -102,6 +102,17 @@ test('it comes toward the beach: its foot moves down the jar and it grows, then 
   assert.ok(standAt(0) < 0.01 && standAt(0.999) < 0.01, 'a roll starts and ends flat, so nothing jumps');
 });
 
+test('the wave behind stays smaller while the one ahead breaks, then grows into its own break', () => {
+  // while a wave breaks and is still standing, the one half a roll behind is at most half its size
+  for (let p = WAVE.peelFrom; p <= WAVE.spendFrom + 1e-9; p += 0.01) {
+    const behind = standAt(p - WAVE.lag < 0 ? p - WAVE.lag + 1 : p - WAVE.lag);
+    assert.ok(behind <= 0.5 * standAt(p), `at ${p.toFixed(2)}: behind ${behind.toFixed(2)} vs breaking ${standAt(p).toFixed(2)}`);
+  }
+  // and it grows steadily up to its own break, where it is at full height
+  for (let p = 0.02; p <= WAVE.fullAt + 1e-9; p += 0.02) assert.ok(standAt(p) > standAt(p - 0.02), `grows at ${p.toFixed(2)}`);
+  assert.ok(standAt(WAVE.peelFrom) > 0.8 && standAt(WAVE.fullAt) > 0.99);
+});
+
 test('it is tallest at the rock and lowest at the left', () => {
   assert.ok(reachAt(WAVE.rock) > reachAt(0.3) && reachAt(0.3) > reachAt(0.02));
   assert.ok(Math.abs(reachAt(WAVE.x0) - WAVE.lowShare) < 1e-9);
@@ -349,4 +360,13 @@ test('at night the beam paints no wedge that climbs above the lantern', () => {
   const len = BEAM.reach * rect.w;
   // the wedge's far edge spans the beam's own height around a level line
   assert.ok(Math.max(Math.abs(y1 - ly), Math.abs(y2 - ly)) < 0.3 * len, `${y1}, ${y2}`);
+});
+
+test('waveStates hands back the same answer for the same moment, a fresh one for the next', () => {
+  const a = waveStates(layout(340, 440, 10, 20), EMPTY, 5000, false);
+  const b = waveStates(layout(340, 440, 10, 20), EMPTY, 5000, false);
+  assert.equal(a, b);
+  const c = waveStates(layout(340, 440, 10, 20), EMPTY, 5100, false);
+  assert.notEqual(a, c);
+  assert.notEqual(waveStates(layout(300, 440, 10, 20), EMPTY, 5100, false), c);
 });

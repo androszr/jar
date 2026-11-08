@@ -147,7 +147,7 @@ function render(force = false) {
   const minute = Math.floor(ms / 60000);
   cam = currentCam(t);
   const key = [view, lift.state, Math.round(lift.progress(t) * 1000), Math.round(shelf.pos * 1000), minute,
-    feed.revision, W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
+    feed.revision, feed.isStale(), W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
     cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0,
     flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(',')].join('|');
   if (!force && key === lastKey) return false;
@@ -250,7 +250,7 @@ function syncAria() {
     const ph = therePhase(at, c.location, viewerAt(at));
     if (isNight(ph) && moonPos(ph).alt > 0) moonText = ` A ${moonPhase(at).name} moon.`;
   }
-  const next = view === 'jar' ? { id: c.id, text: days.trim() } : null;
+  const next = view === 'jar' ? { id: c.id, text: days.trim(), rev: feed.revision } : null;
   const say = forecastAnnouncement(spoken, next);
   spoken = next;
   if (say !== null) liveEl.textContent = say;
@@ -339,6 +339,7 @@ document.getElementById('next').addEventListener('click', () => shelf.next());
 let press = null;
 canvas.addEventListener('pointerdown', (e) => {
   if (view === 'jar') {
+    if (e.button !== 0) return; // a right-click or a pen's barrel button is not a press
     // a press outside the lifted jar and its card puts the jar back, like Back
     if (lift.moving) return;
     const s = cssToScene(e.clientX, e.clientY);

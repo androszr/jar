@@ -41,3 +41,10 @@ test('the live region is in the markup, empty, and not hidden', () => {
   assert.ok(rule.includes('clip-path'));
   assert.ok(!rule.includes('display: none'));
 });
+
+test('quiet when only the clock moved: same feed revision, shifted day names', () => {
+  const a = { id: 'warsaw', text: 'Next five days: Mon 4 to 1.', rev: 7 };
+  const b = { id: 'warsaw', text: 'Next five days: Tue 5 to 2.', rev: 7 };
+  assert.equal(forecastAnnouncement(a, b), null);
+  assert.equal(forecastAnnouncement(a, { ...b, rev: 8 }), `${UPDATED} ${b.text}`);
+});

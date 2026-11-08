@@ -291,6 +291,9 @@ try {
   await viewIs(page, 'jar');
   await settled(page);
   const vp = page.viewportSize();
+  await page.mouse.click(8, Math.round(vp.height / 2), { button: 'right' });
+  await page.waitForTimeout(300); // a lowering goes through history.back, so give popstate its turn
+  check((await viewIs(page, 'jar')) && page.url().includes('jar='), 'a right-click outside the lifted jar leaves it up');
   await page.mouse.click(8, Math.round(vp.height / 2));
   check((await viewIs(page, 'table')) && !page.url().includes('jar='), 'a click outside the lifted jar lowers it');
   await settled(page);
