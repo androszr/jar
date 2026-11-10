@@ -3,7 +3,7 @@
 // Colours only from PALETTE, text only through text().
 import { PALETTE, css } from './palette.js';
 import { text, fitSize } from './draw.js';
-import { formatTideStrip } from '../../weather.js';
+import { formatTideStrip, formatTideHeight, tideCurve } from '../../weather.js';
 import { CARD } from '../../forecast.js';
 
 function cloudShape(ctx, x, y, s, colour) {
@@ -91,7 +91,7 @@ export function weatherIcon(ctx, kind, x, y, size) {
 // bottom edge and `tides` (today's { time, kind } entries, [] for none) a
 // second strip under it. A missing rain or wind figure leaves its line empty.
 // Text never drops under FLOOR px (12.5 in the row, 12 in the column).
-export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = []) {
+export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null) {
   const { x, y, w } = rect;
   const key = layout === 'row' ? 'row' : 'column';
   const floor = layout === 'row' ? 12.5 : 12;
@@ -99,7 +99,8 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
   const arcH = sun ? CARD.arc[key] : 0;
   const strips = formatTideStrip(tides);
   const tideH = strips ? CARD.tide[key] : 0;
-  const h = rect.h - strip - arcH - tideH;
+  const curveH = strips ? CARD.curve[key] : 0;
+  const h = rect.h - strip - arcH - tideH - curveH;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
   ctx.beginPath();
@@ -196,25 +197,49 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
     text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + strip * 0.5, Math.max(floor, strip * 0.48), PALETTE.labelDim);
   }
   if (tideH) {
-    {
-      // Today's tides, with or without a sun strip above: a hairline, then one
-      // line (row) or two (column).
-      const ty = y + h + strip;
+    // Today's tides, with or without a sun strip above: a hairline, then the
+    // times with their heights (row: two lines on the left; column: one line
+    // per extreme) and a small curve of the day with a dot for now (row: to the
+    // right of the text; column: under it).
+    const ty = y + h + strip;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = css(PALETTE.brass, 0.35);
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.08, ty);
+    ctx.lineTo(x + w * 0.92, ty);
+    ctx.stroke();
+    let box;
+    if (layout === 'row') {
+      const line = (str, ly) => text(ctx, str, x + w * 0.04, ly, Math.max(floor, fitSize(ctx, str, floor, w * 0.64)), PALETTE.labelDim, 'left');
+      // Line 1 always opens "tide ↑" (the arrow alone when no highs), line 2 is indented under it.
+      const up = `tide ↑${strips.highs.length ? ` ${strips.highs.join(' ')}` : ''}`;
+      const down = strips.lows.length ? `     ↓ ${strips.lows.join(' ')}` : '';
+      line(up, ty + tideH * 0.3);
+      if (down) line(down, ty + tideH * 0.72);
+      box = { x: x + w * 0.72, y: ty + 4, w: w * 0.24, h: tideH - 8 };
+    } else {
+      const ordered = [...tides].filter((t) => t && (t.kind === 'high' || t.kind === 'low')).sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+      ordered.slice(0, 4).forEach((t, i) => {
+        const hgt = formatTideHeight(t.height);
+        const str = `${i === 0 ? 'tide ' : '     '}${t.kind === 'high' ? '↑' : '↓'} ${t.time}${hgt ? ` ${hgt}` : ''}`;
+        text(ctx, str, x + w * 0.1, ty + 10 + 14 * i, Math.max(floor, fitSize(ctx, str, floor, w * 0.8)), PALETTE.labelDim, 'left');
+      });
+      box = { x: x + w * 0.1, y: ty + tideH + 4, w: w * 0.8, h: curveH - 8 };
+    }
+    const c = tideCurve(tides, dayT);
+    if (c) {
+      const px = (t) => box.x + t * box.w;
+      const py = (v) => box.y + box.h * (1 - 0.15 - 0.7 * ((v - c.min) / (c.max - c.min || 1)));
       ctx.lineWidth = 1;
-      ctx.strokeStyle = css(PALETTE.brass, 0.35);
+      ctx.strokeStyle = css(PALETTE.glass, 0.6);
       ctx.beginPath();
-      ctx.moveTo(x + w * 0.08, ty);
-      ctx.lineTo(x + w * 0.92, ty);
+      c.points.forEach((p, i) => (i === 0 ? ctx.moveTo(px(p.t), py(p.h)) : ctx.lineTo(px(p.t), py(p.h))));
       ctx.stroke();
-      const up = strips.highs.join(layout === 'row' ? ' ' : ' · ');
-      const down = strips.lows.join(layout === 'row' ? ' ' : ' · ');
-      if (layout === 'row') {
-        const str = ['tide', strips.highs.length ? `↑ ${up}` : '', strips.lows.length ? `${strips.highs.length ? ' ' : ''}↓ ${down}` : ''].filter(Boolean).join(' ');
-        text(ctx, str, x + w / 2, ty + tideH * 0.48, Math.max(floor, tideH * 0.5), PALETTE.labelDim);
-      } else {
-        const size = Math.max(floor, tideH * 0.4);
-        if (strips.highs.length) text(ctx, `tide ↑ ${up}`, x + w / 2, ty + tideH * 0.27, size, PALETTE.labelDim);
-        if (strips.lows.length) text(ctx, `${strips.highs.length ? '' : 'tide '}↓ ${down}`, x + w / 2, ty + tideH * 0.73, size, PALETTE.labelDim);
+      if (c.now) {
+        ctx.fillStyle = css(PALETTE.labelInk);
+        ctx.beginPath();
+        ctx.arc(px(c.now.t), py(c.now.h), Math.max(1.5, box.h * 0.08), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -223,7 +248,7 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
     const day = Number.isFinite(sunT) && sunT >= 0 && sunT <= 1;
     const cx = x + w / 2;
     const rx = w * 0.42;
-    const baseY = y + h + strip + tideH + arcH - 3;
+    const baseY = y + h + strip + tideH + curveH + arcH - 3;
     const ry = arcH - 6;
     ctx.beginPath();
     ctx.ellipse(cx, baseY, rx, ry, 0, Math.PI, Math.PI * 2);

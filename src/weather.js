@@ -170,22 +170,69 @@ export function tidesFor(weather, today = null) {
   return r && Array.isArray(r.tides) ? r.tides : [];
 }
 
-// { highs: ['03:12', ...], lows: [...] }, or null when there are none of either.
+// "3.1 m" for a finite height (one decimal, sign kept: a low can be below mean sea level), else null.
+export function formatTideHeight(h) {
+  const n = tideMetres(h);
+  return n === null ? null : `${n} m`;
+}
+
+// One decimal; a height that rounds to zero from below is "0.0", never "-0.0".
+function tideMetres(h) {
+  return typeof h === 'number' && Number.isFinite(h) ? (Math.round(h * 10) / 10 || 0).toFixed(1) : null;
+}
+
+// { highs: ['03:12 3.1 m', ...], lows: [...] } (the height is left off an entry
+// that has none), or null when there are none of either.
 export function formatTideStrip(tides) {
   if (!Array.isArray(tides)) return null;
-  const highs = tides.filter((t) => t && t.kind === 'high').map((t) => t.time);
-  const lows = tides.filter((t) => t && t.kind === 'low').map((t) => t.time);
+  const entry = (t) => [t.time, formatTideHeight(t.height)].filter(Boolean).join(' ');
+  const highs = tides.filter((t) => t && t.kind === 'high').map(entry);
+  const lows = tides.filter((t) => t && t.kind === 'low').map(entry);
   return highs.length || lows.length ? { highs, lows } : null;
 }
 
-// "High tide 03:12 and 15:37, low tide 09:25 and 21:50." (either half alone; "" for none).
+// "High tide 03:12 at 3.1 metres and 15:37 at 3.3 metres, low tide 09:25 at 0.4 metres and 21:50." (either half alone; "" for none).
 export function tideSentence(tides) {
-  const s = formatTideStrip(tides);
-  if (!s) return '';
+  if (!formatTideStrip(tides)) return '';
+  const spoken = (t) => (tideMetres(t.height) !== null ? `${t.time} at ${tideMetres(t.height)} metres` : t.time);
+  const of = (kind) => tides.filter((t) => t && t.kind === kind).map(spoken);
+  const highs = of('high');
+  const lows = of('low');
   const parts = [];
-  if (s.highs.length) parts.push(`High tide ${s.highs.join(' and ')}`);
-  if (s.lows.length) parts.push(`${s.highs.length ? 'low' : 'Low'} tide ${s.lows.join(' and ')}`);
+  if (highs.length) parts.push(`High tide ${highs.join(' and ')}`);
+  if (lows.length) parts.push(`${highs.length ? 'low' : 'Low'} tide ${lows.join(' and ')}`);
   return `${parts.join(', ')}.`;
+}
+
+// The day's tide as a smooth curve through today's extremes (cosine between
+// consecutive highs and lows), sampled across 0..1 of the local day:
+// { points: [{ t, h }], min, max, now: { t, h } | null }, or null with fewer
+// than two extremes that carry a time and a finite height. `nowT` is the day
+// fraction (0..1) the dot sits at. Pure: no clock.
+export function tideCurve(tides, nowT = null, samples = 48) {
+  if (!Array.isArray(tides)) return null;
+  const ex = tides
+    .filter((e) => e && typeof e.time === 'string' && /^\d{2}:\d{2}$/.test(e.time) && typeof e.height === 'number' && Number.isFinite(e.height))
+    .map((e) => ({ t: (Number(e.time.slice(0, 2)) * 60 + Number(e.time.slice(3))) / 1440, h: e.height }))
+    .sort((a, b) => a.t - b.t);
+  if (ex.length < 2) return null;
+  // A virtual extreme beyond each end gives a smooth turnaround there.
+  const first = ex[0];
+  const last = ex[ex.length - 1];
+  const chain = [{ t: first.t - (ex[1].t - first.t), h: ex[1].h }, ...ex, { t: last.t + (last.t - ex[ex.length - 2].t), h: ex[ex.length - 2].h }];
+  const at = (t) => {
+    let i = 0;
+    while (i < chain.length - 2 && t > chain[i + 1].t) i++;
+    const a = chain[i];
+    const b = chain[i + 1];
+    const u = b.t === a.t ? 0 : Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
+    return a.h + (b.h - a.h) * (1 - Math.cos(Math.PI * u)) / 2;
+  };
+  const n = Math.max(2, samples);
+  const points = Array.from({ length: n }, (_, i) => ({ t: i / (n - 1), h: at(i / (n - 1)) }));
+  const hs = ex.map((e) => e.h);
+  const ok = typeof nowT === 'number' && Number.isFinite(nowT) && nowT >= 0 && nowT < 1;
+  return { points, min: Math.min(...hs), max: Math.max(...hs), now: ok ? { t: nowT, h: at(nowT) } : null };
 }
 
 export function forecastCells(weather, today = null) {

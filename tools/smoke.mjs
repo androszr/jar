@@ -19,7 +19,7 @@ import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { startServer } from './serve.mjs';
-import { localTimeText, localDate, sunFraction } from '../src/placeclock.js';
+import { localTimeText, localDate, sunFraction, dayFraction } from '../src/placeclock.js';
 import { normalise } from '../api/weather.js';
 import { dayName, nextFlashPeak, cloudDrift, cloudTravel } from '../src/weather.js';
 import { PLACES } from '../src/cities/places.js';
@@ -337,6 +337,9 @@ try {
   await deepN.screenshot({ path: join(OUT, 'nazare-swell-card.png') });
   const nAria = await deepN.evaluate(() => document.getElementById('view').getAttribute('aria-label'));
   check(JSON.stringify(nf0.forecast.tides.map((t) => t.kind)) === JSON.stringify(['high', 'low', 'high', 'low']) && nAria.includes('High tide ') && nAria.includes(' wind '), "nazare card shows today's tides and speaks them");
+  check(nf0.forecast.tides.length > 0 && nf0.forecast.tides.every((t) => Number.isFinite(t.height)) && nAria.includes(' metres'), 'nazare card prints and speaks tide heights');
+  const [dayTNow, lisbonNow] = await deepN.evaluate(() => [window.__jar.forecast.dayT, Date.now()]);
+  check(Number.isFinite(dayTNow) && Math.abs(dayTNow - dayFraction(lisbonNow, 'Europe/Lisbon')) < 0.01, 'nazare tide curve dot follows the Lisbon clock');
   check(!!(await deepN.evaluate(() => window.__jar.forecast)), 'nazare swell card is lifted');
   check(deepNSeen.errors.length === 0 && deepNSeen.off.length === 0, `no console errors or off-origin requests on the nazare link${deepNSeen.errors.length ? `: ${deepNSeen.errors.join(' | ')}` : ''}`);
 
@@ -424,7 +427,7 @@ try {
   await viewIs(nos2, 'jar');
   await settled(nos2);
   check(await nos2.evaluate(() => window.__jar.forecast.cells.every((c) => c.swell === null)) && nos2Seen.errors.length === 0, 'missing sea leaves the label and card plain');
-  check(await nos2.evaluate(() => window.__jar.forecast.tides.length === 0 && !document.getElementById('view').getAttribute('aria-label').includes('tide')) && nos2Seen.errors.length === 0, 'missing sea leaves no tide line');
+  check(await nos2.evaluate(() => window.__jar.forecast.tides.length === 0 && window.__jar.forecast.dayT !== undefined && !document.getElementById('view').getAttribute('aria-label').includes('tide')) && nos2Seen.errors.length === 0, 'missing sea leaves no tide line');
   const dflt = await sceneOf(nos2);
   check(!!dflt && dflt.band === 'moderate' && nos2Seen.errors.length === 0, 'missing sea draws the default swell');
 
@@ -609,6 +612,7 @@ try {
   await pp.screenshot({ path: join(OUT, 'phone', 'nazare-lifted.png') });
   const pnf = await pp.evaluate(() => window.__jar.forecast);
   check(!!pnf && pnf.tides.length === 4 && pnf.cells.some((k) => k.rain !== null && k.wind !== null) && inside(pnf.rect, pcanvas[0], pcanvas[1]), 'phone forecast card fits with rain, wind and tides');
+  check(!!pnf && pnf.tides.length === 4 && pnf.tides.every((t) => Number.isFinite(t.height)) && inside(pnf.rect, pcanvas[0], pcanvas[1]), 'phone card fits with tide heights and curve');
   await pp.touchscreen.tap(30, 30);
   await viewIs(pp, 'table');
   timed(await medianFrameMs(pp) < 25, 'phone frame time under 25 ms');

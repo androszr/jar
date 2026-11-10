@@ -130,6 +130,16 @@ export function sunFraction(nowMs, zone, sun) {
   return (mins(now) - rise) / (set - rise);
 }
 
+// How far through the city's calendar day `nowMs` is: minutes since local
+// midnight / 1440 (0 <= t < 1), null for a bad moment or an unknown zone.
+// The same seam as sunFraction, so the tide dot and the sun agree on "now". Pure.
+export function dayFraction(nowMs, zone) {
+  if (!Number.isFinite(nowMs)) return null;
+  const s = localTimeText(nowMs, zone);
+  if (s === '--:--') return null;
+  return (Number(s.slice(0, 2)) * 60 + Number(s.slice(3))) / 1440;
+}
+
 const dateFormatters = new Map();
 // "YYYY-MM-DD" on the wall clock of `zone` at `nowMs`; null for an unknown
 // zone or a bad moment. A function of its arguments, never of the clock.

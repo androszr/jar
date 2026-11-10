@@ -1,7 +1,7 @@
 // Adapted from Memory Lane (vir-sunset) test/placeclock.test.js, 2026-10-18
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
+import { dayFraction, sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
 import { realPhase } from '../src/realclock.js';
 import { findCity } from '../src/cities/index.js';
 
@@ -116,4 +116,11 @@ test('sunFraction is null when it cannot be known', () => {
   assert.equal(sunFraction(t, WZ, { sunrise: '17:32', sunset: '07:05' }), null);
   assert.equal(sunFraction(t, 'No/Such', SF), null);
   assert.equal(sunFraction(NaN, WZ, SF), null);
+});
+
+test('dayFraction is the share of the local day gone, null when unknown', () => {
+  assert.equal(dayFraction(Date.UTC(2026, 10, 8, 12, 0), 'Europe/Lisbon'), 0.5);
+  assert.equal(dayFraction(Date.UTC(2026, 10, 8, 0, 0), 'Europe/Lisbon'), 0);
+  assert.equal(dayFraction(Date.UTC(2026, 10, 8, 12, 0), 'Nowhere/Zone'), null);
+  assert.equal(dayFraction(NaN, 'Europe/Lisbon'), null);
 });

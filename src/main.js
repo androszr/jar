@@ -2,7 +2,7 @@
 import { readOptions, sample, isNight, moonPos } from './clock.js';
 import { moonPhase } from './moon.js';
 import { placeGuess, realPhase } from './realclock.js';
-import { therePhase, localDate, sunFraction } from './placeclock.js';
+import { therePhase, localDate, sunFraction, dayFraction } from './placeclock.js';
 import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
 import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
@@ -59,7 +59,7 @@ let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
 let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
 let scenes = {}; // city id -> what the scene reported painting
 let drawn = {}; // city id -> { flash, dew, drift, moon } the last frame painted with
-let lastForecast = null; // { cells, rect, sun, sunT, tides } of the card drawn last, or null
+let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
 let plates = [];
@@ -189,6 +189,7 @@ function render(force = false) {
     const cells = forecastCells(weathers[focus], todayHere);
     const sun = sunTimesFor(weathers[focus], todayHere);
     const sunT = sunFraction(ms, CITIES[focus].location.zone, sun);
+    const dayT = dayFraction(ms, CITIES[focus].location.zone);
     const tides = tidesFor(weathers[focus], todayHere);
     ctx.save();
     // emerge from behind the glass: nothing of the card is drawn over the jar
@@ -198,9 +199,9 @@ function render(force = false) {
     ctx.rect(jr.x, jr.y, jr.w, jr.h);
     ctx.clip('evenodd');
     ctx.globalAlpha = pose.alpha;
-    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides);
+    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides, dayT);
     ctx.restore();
-    lastForecast = { cells, rect: pose.rect, sun, sunT, tides };
+    lastForecast = { cells, rect: pose.rect, sun, sunT, tides, dayT };
   } else {
     lastForecast = null;
   }
@@ -454,13 +455,13 @@ window.__jar = {
     const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));
     return this.toCanvas(r.x + r.w / 2, r.y + r.h);
   },
-  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides } in canvas px.
+  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT } in canvas px.
   get forecast() {
     if (!lastForecast) return null;
     const r = lastForecast.rect;
     const a = this.toCanvas(r.x, r.y);
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
-    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
+    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   get dpr() { return dpr; },
   get framing() { return fitScreen(W, H, shelf.centreX); },

@@ -27,6 +27,7 @@ function fake() {
       if (k === 'fillRect') return (...a) => { rects.push({ a, style: t.fillStyle }); };
       if (k === 'fill') return () => { calls.push(['fill', [], t.fillStyle]); };
       if (k === 'stroke') return () => { calls.push(['stroke', [], t.strokeStyle]); };
+      if (k === 'moveTo' || k === 'lineTo') return (...a) => { calls.push([k, a]); };
       if (k === 'ellipse' || k === 'arc') return (...a) => { calls.push([k, a]); };
       if (k === 'measureText') return () => ({ width: 0 });
       return () => {};
@@ -38,12 +39,12 @@ function fake() {
 const cells = (todayAt = -1) => Array.from({ length: 5 }, (_, i) => ({ day: 'SUN', kind: 'clear', high: '1°', low: '0°', today: i === todayAt }));
 const RECT = (layout) => ({ x: 100, y: 50, w: CARD[layout].w, h: CARD[layout].h });
 
-function paint(layout, cs, sun, sunT = null, tides = []) {
+function paint(layout, cs, sun, sunT = null, tides = [], dayT = null) {
   const real = Math.random;
   Math.random = () => { throw new Error('Math.random in a draw function'); };
   try {
     const ctx = fake();
-    forecastCard(ctx, RECT(layout), cs, layout, sun, sunT, tides);
+    forecastCard(ctx, RECT(layout), cs, layout, sun, sunT, tides, dayT);
     return ctx;
   } finally {
     Math.random = real;
@@ -202,6 +203,7 @@ for (const layout of ['row', 'column']) {
 
 // ---- rain, wind and tides ---------------------------------------------------
 const TIDES = [{ time: '03:12', kind: 'high' }, { time: '09:25', kind: 'low' }, { time: '15:37', kind: 'high' }, { time: '21:50', kind: 'low' }];
+const HTIDES = TIDES.map((t, i) => ({ ...t, height: [3.14, 0.4, 3.3, 0.62][i] }));
 const fullCells = () => cells(0).map((c, i) => ({ ...c, swell: { height: '2.4 m', period: '12 s' }, rain: `${40 + i}%`, wind: `${20 + i} km/h`, windArrow: '↘', windFrom: 'north-west' }));
 const rainTexts = (ctx) => ctx.texts.filter((t) => /^\d+%$/.test(t.s));
 const windTexts = (ctx) => ctx.texts.filter((t) => /km\/h/.test(t.s));
@@ -225,8 +227,10 @@ for (const layout of ['row', 'column']) {
   test(`${layout} card prints the tide strip with tides and nothing without`, () => {
     const withT = paint(layout, fullCells(), SUN, 0.5, TIDES);
     assert.ok(withT.texts.some((t) => t.s.startsWith('tide')));
-    assert.ok(withT.texts.some((t) => t.s.includes('↑') && t.s.includes('03:12') && t.s.includes('15:37')));
-    assert.ok(withT.texts.some((t) => t.s.includes('↓') && t.s.includes('09:25') && t.s.includes('21:50')));
+    // Row: one line per kind; column: one line per extreme.
+    for (const [arrow, times] of [['↑', ['03:12', '15:37']], ['↓', ['09:25', '21:50']]]) {
+      for (const tm of times) assert.ok(withT.texts.some((t) => t.s.includes(arrow) && t.s.includes(tm)), `${arrow} ${tm}`);
+    }
     const none = paint(layout, fullCells(), SUN, 0.5, []);
     assert.ok(!none.texts.some((t) => t.s.includes('tide')));
     assert.ok(!none.texts.some((t) => t.s.includes('03:12')));
@@ -235,14 +239,59 @@ for (const layout of ['row', 'column']) {
   });
 }
 
-test('row card: one tide line; column card: two lines, tide on the first', () => {
-  const row = paint('row', fullCells(), SUN, 0.5, TIDES);
-  assert.equal(row.texts.filter((t) => t.s.startsWith('tide')).length, 1);
-  assert.ok(row.texts.find((t) => t.s.startsWith('tide')).s.includes('↓'));
-  const col = paint('column', fullCells(), SUN, 0.5, TIDES);
-  assert.equal(col.texts.filter((t) => t.s.startsWith('tide ↑')).length, 1);
-  assert.equal(col.texts.filter((t) => t.s.startsWith('↓')).length, 1);
+test('row card: two tide lines with heights; column card: one line per extreme', () => {
+  const row = paint('row', fullCells(), SUN, 0.5, HTIDES);
+  assert.ok(row.texts.some((t) => t.s.startsWith('tide ↑ 03:12 3.1 m')));
+  assert.ok(row.texts.some((t) => t.s.includes('↓ 09:25 0.4 m')));
+  const col = paint('column', fullCells(), SUN, 0.5, HTIDES);
+  const lines = col.texts.filter((t) => /^(tide| +[↑↓])/.test(t.s));
+  assert.equal(lines.length, 4);
+  assert.ok(lines[0].s.startsWith('tide ↑ 03:12 3.1 m'));
+  assert.ok(lines[1].s.includes('↓ 09:25 0.4 m'));
 });
+
+test('row card: a lows-only day prints "tide" once, with the arrow', () => {
+  const lows = HTIDES.filter((t) => t.kind === 'low');
+  const row = paint('row', fullCells(), SUN, 0.5, lows);
+  assert.equal(row.texts.filter((t) => /^tide/.test(t.s)).length, 1);
+  assert.ok(row.texts.some((t) => t.s === 'tide ↑'));
+  assert.ok(row.texts.some((t) => /^ {5}↓ 09:25 0\.4 m/.test(t.s)));
+});
+
+test('tides without heights print the times only and add no curve', () => {
+  for (const layout of ['row', 'column']) {
+    const bare = paint(layout, fullCells(), SUN, 0.5, TIDES, 0.5);
+    assert.ok(bare.texts.some((t) => t.s.includes('03:12') && !t.s.includes(' m')), layout);
+    assert.ok(!bare.texts.some((t) => / m$/.test(t.s) && t.s.includes(':')), layout);
+    const withH = paint(layout, fullCells(), SUN, 0.5, HTIDES, 0.5);
+    const lt = (c) => c.calls.filter((k) => k[0] === 'lineTo').length;
+    assert.equal(lt(withH) - lt(bare), 47, `${layout}: curve adds 47 lineTo`);
+  }
+});
+
+for (const layout of ['row', 'column']) {
+  test(`${layout} tide curve: inside its box, dot only with dayT, arc below it`, () => {
+    const r = RECT(layout);
+    const a = paint(layout, fullCells(), SUN, 0.5, HTIDES, null);
+    const b = paint(layout, fullCells(), SUN, 0.5, HTIDES, 0.5);
+    const dots = (c) => c.calls.filter((k) => k[0] === 'arc').length;
+    assert.equal(dots(b) - dots(a), 1);
+    const curve = b.calls.filter((k) => k[0] === 'lineTo').slice(-47);
+    assert.equal(curve.length, 47);
+    const xs = curve.map((k) => k[1][0]);
+    const ys = curve.map((k) => k[1][1]);
+    // The layout's curve box: row right of the text, column under it.
+    const bx = layout === 'row' ? [r.x + r.w * 0.72, r.x + r.w * 0.96] : [r.x + r.w * 0.1, r.x + r.w * 0.9];
+    assert.ok(Math.min(...xs) >= bx[0] - 1e-6 && Math.max(...xs) <= bx[1] + 1e-6, `x within ${bx}`);
+    const k = layout;
+    const tyTop = r.y + r.h - CARD.strip[k] - CARD.arc[k] - CARD.tide[k] - CARD.curve[k] + CARD.strip[k];
+    const by = layout === 'row' ? [tyTop + 4, tyTop + CARD.tide[k] - 4] : [tyTop + CARD.tide[k] + 4, tyTop + CARD.tide[k] + CARD.curve[k] - 4];
+    assert.ok(Math.min(...ys) >= by[0] - 1e-6 && Math.max(...ys) <= by[1] + 1e-6, `y within ${by}`);
+    const ell = b.calls.find((k) => k[0] === 'ellipse');
+    if (layout === 'column') assert.ok(ell[1][1] > Math.max(...ys), 'sun arc below the curve');
+    assert.ok(Math.max(...ys) <= r.y + r.h);
+  });
+}
 
 test('the arc sits below the tide strip', () => {
   for (const layout of ['row', 'column']) {
@@ -259,7 +308,7 @@ test('the arc sits below the tide strip', () => {
 for (const layout of ['row', 'column']) {
   test(`${layout} card legibility: no text under the floor, no two lines of a cell touching`, () => {
     const floor = layout === 'row' ? 12.5 : 12;
-    const ctx = paint(layout, fullCells(), SUN, 0.5, TIDES);
+    const ctx = paint(layout, fullCells(), SUN, 0.5, HTIDES, 0.5);
     for (const t of ctx.texts) assert.ok(t.size >= floor, `${t.s} is ${t.size}px`);
     const byX = new Map();
     for (const t of ctx.texts) byX.set(t.x, [...(byX.get(t.x) || []), t]);

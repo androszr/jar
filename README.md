@@ -59,7 +59,7 @@ sit at the edges of the glass, so they never cover a tower.
     <td width="38%">
       <b>A wave sized by the real sea.</b> The Sítio cliff, the São Miguel Arcanjo fort and its red-roofed lighthouse stand above the Praia do Norte wave. By day a few surfers ride it; at night the lighthouse beam sweeps the foam.<br><br>
       The wave's size follows the real wave height off the coast: <b>calm</b> under 1 m, <b>moderate</b> 1–3 m, <b>big</b> 3–6 m, <b>giant</b> from 6 m. With no reading it shows a moderate two-metre day.<br><br>
-      The label adds the swell (height · period) as a fourth line, and the forecast card gives each day's peak wave height and today's high and low tide times. The jar keeps Lisbon time and wears a tin lid instead of Warsaw's cork.
+      The label adds the swell (height · period) as a fourth line, and the forecast card gives each day's peak wave height and today's high and low tide times, each with its height in metres, under a small tide curve with a dot for now. The jar keeps Lisbon time and wears a tin lid instead of Warsaw's cork.
     </td>
   </tr>
 </table>
