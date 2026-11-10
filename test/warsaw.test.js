@@ -315,3 +315,42 @@ test('lamps light the far bank\'s boulevard at night; the near bank is forest wi
   assert.equal(WARSAW.promenadeLamp, undefined);
   assert.equal(WARSAW.wallDay, undefined);
 });
+
+const DAY_REFLECTS = [
+  ['reflectDayPalace', 0.4, 0],
+  ['reflectDayVarso', 0.235, 0],
+  ['reflectDayZlota', 0.555, 0],
+  ['reflectDaySpire', 0.72, 6],
+];
+
+test('reflections by day: sandstone under the Palace, pale under the towers, none at night, night set unchanged', () => {
+  const noon = paint(PHASE.noon);
+  const night = paint(PHASE.night);
+  for (const [name] of DAY_REFLECTS) {
+    assert.ok(startsWith(noon.fills, rgbaOf(WARSAW[name])).length > 0, `${name} by day`);
+    assert.equal(startsWith(night.fills, rgbaOf(WARSAW[name])).length, 0, `${name} not at night`);
+  }
+  assert.ok(startsWith(night.fills, rgbaOf(WARSAW.reflectPalace)).length > 0, 'the night streaks are still there');
+});
+
+test('reflections by day sit inside the river, under their own towers', () => {
+  const L = layout(rect.w, rect.h, rect.x, rect.y);
+  const ctx = paint(PHASE.noon);
+  const wids = { reflectDayPalace: 44, reflectDayVarso: 17, reflectDayZlota: 24, reflectDaySpire: 20 };
+  for (const [name, share, off] of DAY_REFLECTS) {
+    const prefix = rgbaOf(WARSAW[name]);
+    const rects = ctx.calls.filter((c) => c[0] === 'fillRect' && typeof c[2] === 'string' && c[2].startsWith(prefix));
+    assert.ok(rects.length > 0, name);
+    for (const [, [x, y, w, h]] of rects) {
+      assert.ok(y >= L.river.top - 1e-9 && y + h <= L.river.bottom + 1e-9, `${name} inside the river`);
+      assert.ok(Math.abs(x + w / 2 - (L.X(share) + off * L.sx)) <= wids[name] * L.sx, `${name} under its tower`);
+    }
+  }
+});
+
+test('reflections by day follow the phase, not the clock', () => {
+  const grab = (nowMs) => paint(PHASE.noon, EMPTY, nowMs).calls.filter((c) => c[0] === 'fillRect' && typeof c[2] === 'string' && DAY_REFLECTS.some(([n]) => c[2].startsWith(rgbaOf(WARSAW[n])))).map((c) => [c[2], c[1]]);
+  const a = grab(0);
+  assert.ok(a.length > 0);
+  assert.deepEqual(a, grab(99999));
+});
