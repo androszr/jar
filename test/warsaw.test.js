@@ -33,6 +33,8 @@ function recordingCtx() {
       if (k === 'strokes') return strokes;
       if (k === 'calls') return calls;
       if (k in t) return t[k];
+      if (k === 'fill') return (...a) => { calls.push(['fill', a, t.fillStyle]); return a; };
+      if (k === 'stroke') return (...a) => { calls.push(['stroke', a, t.strokeStyle]); return a; };
       if (k === 'fillRect') return (...a) => { calls.push(['fillRect', a, t.fillStyle]); return a; };
       return (...a) => { calls.push([String(k), a]); return a; };
     },
@@ -63,6 +65,7 @@ function paint(phase, weather = EMPTY, nowMs = 0) {
 
 const startsWith = (set, prefix) => [...set].filter((s) => s.startsWith(prefix));
 const rgbaOf = (c) => `rgba(${c.join(', ')},`;
+const MAST_LIT = rgbaOf(WARSAW.mastLit);
 const AVIATION = 'rgba(255, 70, 60,';
 const SPIRE_EDGE = 'rgba(235, 245, 255,';
 
@@ -154,6 +157,18 @@ test('the aviation light and the spire edge glow at night, dusk blends, noon has
   const alphas = startsWith(dusk.fills, AVIATION).map((s) => Number(s.slice(AVIATION.length, -1)));
   assert.ok(alphas.length > 0);
   assert.ok(alphas.every((a) => a > 0 && a < 1), `dusk aviation alphas ${alphas}`);
+});
+
+test("Varso's needle is lit at night, blends at dusk and is dark by day", () => {
+  const night = paint(PHASE.night);
+  assert.ok(startsWith(night.strokes, MAST_LIT).length > 0);
+  assert.equal(startsWith(paint(PHASE.noon).strokes, MAST_LIT).length, 0);
+  const alphas = startsWith(paint(PHASE.dusk).strokes, MAST_LIT).map((s) => Number(s.slice(MAST_LIT.length, -1)));
+  assert.ok(alphas.length > 0);
+  assert.ok(alphas.every((a) => a > 0 && a < 1), `dusk needle alphas ${alphas}`);
+  const lit = night.calls.findIndex(([m, , style]) => m === 'stroke' && typeof style === 'string' && style.startsWith(MAST_LIT));
+  const dot = night.calls.findIndex(([m, , style]) => m === 'fill' && typeof style === 'string' && style.startsWith(AVIATION));
+  assert.ok(lit >= 0 && dot >= 0 && lit < dot, `lit needle at ${lit}, aviation dot at ${dot}`);
 });
 
 test('windows on the background blocks light at night and not at noon', () => {
