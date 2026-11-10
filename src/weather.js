@@ -137,6 +137,19 @@ export function normaliseSeaDaily(list) {
   return rows;
 }
 
+// The sea's hourly rows ({ time, waveHeight }, at most 25) as the page draws
+// from them; junk gives [].
+export function normaliseSeaHourly(list) {
+  if (!Array.isArray(list)) return [];
+  const rows = [];
+  for (const r of list) {
+    if (rows.length >= 25) break;
+    if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
+    rows.push({ time: r.time, waveHeight: num(r.waveHeight) });
+  }
+  return rows;
+}
+
 // { height, period } formatted for a date, joined by date string; null when none.
 export function swellFor(weather, date) {
   const rows = weather && weather.sea && Array.isArray(weather.sea.daily) ? weather.sea.daily : [];
@@ -160,7 +173,7 @@ export function forecastCells(weather, today = null) {
 // The sea reading of an entry, or null when it is not an object.
 function fromSea(s) {
   if (!s || typeof s !== 'object') return null;
-  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir), daily: normaliseSeaDaily(s.daily) };
+  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir), daily: normaliseSeaDaily(s.daily), hourly: normaliseSeaHourly(s.hourly) };
 }
 
 // The spoken five-day sentence; "today" goes before any cell flagged today,

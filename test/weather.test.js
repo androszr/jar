@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, normaliseHourly, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, normaliseHourly, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell, normaliseSeaHourly } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -184,10 +184,18 @@ test('normaliseDaily keeps HH:MM sun times and nulls junk', () => {
 
 test('the sea reading (swell): EMPTY has none, fromEntry folds it and tolerates junk', () => {
   assert.equal(EMPTY.sea, null);
-  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null, daily: [] });
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null, daily: [], hourly: [] });
   assert.equal(fromEntry({}).sea, null);
   assert.equal(fromEntry({ sea: 'junk' }).sea, null);
   assert.equal(fromEntry({ sea: { waveHeight: 'x' } }).sea.waveHeight, null);
+});
+
+test('normaliseSeaHourly: junk is [], caps at 25, drops a bad time; fromEntry keeps the rows', () => {
+  for (const v of [undefined, null, 'junk', 3, {}]) assert.deepEqual(normaliseSeaHourly(v), [], String(v));
+  const rows = Array.from({ length: 30 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, waveHeight: i }));
+  assert.equal(normaliseSeaHourly(rows).length, 25);
+  assert.deepEqual(normaliseSeaHourly([{ time: 'bad', waveHeight: 1 }, { time: '2026-10-18T05:00', waveHeight: 'x' }, null]), [{ time: '2026-10-18T05:00', waveHeight: null }]);
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2, hourly: [{ time: '2026-10-18T05:00', waveHeight: 2 }] } }).sea.hourly, [{ time: '2026-10-18T05:00', waveHeight: 2 }]);
 });
 
 test('swell: formatSwell gives height and period, height alone, nothing', () => {

@@ -11,6 +11,8 @@ const FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wi
 const MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
 const MARINE_FIELDS = 'wave_height,wave_period,wave_direction';
 const MARINE_DAILY = 'wave_height_max,wave_period_max';
+// The next day's wave height hour by hour (the lifted jar's scrub).
+const MARINE_HOURLY = 'wave_height';
 const FORECAST_DAYS = 5;
 // The next day hour by hour (the lifted jar's scrub): the same six fields as
 // `current`, 25 rows so a full day ahead has both ends.
@@ -40,7 +42,7 @@ export function marineUrl(places) {
   const lon = sea.map((p) => p.sea.lon).join(',');
   // Each sea place's own zone, so daily.time is that city's local date.
   const zones = sea.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
+  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&hourly=${MARINE_HOURLY}&forecast_hours=${FORECAST_HOURS}&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
 }
 
 // The marine daily block (parallel arrays) -> at most five { date, waveHeightMax, wavePeriodMax }.
@@ -56,15 +58,29 @@ export function marineDailyRows(d) {
   return rows;
 }
 
+// The marine hourly block (parallel arrays) -> at most 25 { time, waveHeight }.
+// `time` is the vendor's local ISO "YYYY-MM-DDTHH:MM", kept as a string; bad rows dropped.
+export function marineHourlyRows(h) {
+  if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return [];
+  const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
+  const rows = [];
+  for (let i = 0; i < h.time.length && rows.length < FORECAST_HOURS; i++) {
+    const time = h.time[i];
+    if (typeof time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(time)) continue;
+    rows.push({ time, waveHeight: at(h.wave_height, i) });
+  }
+  return rows;
+}
+
 // The marine body (an object for one point, an array for several) ->
-// { [id]: { waveHeight, wavePeriod, waveDir, daily } }. Junk gives nulls, never a throw.
+// { [id]: { waveHeight, wavePeriod, waveDir, daily, hourly } }. Junk gives nulls, never a throw.
 export function normaliseMarine(payload, sea) {
   const list = Array.isArray(payload) ? payload : [payload];
   const out = {};
   sea.forEach((p, i) => {
     const cur = list[i] && typeof list[i] === 'object' ? list[i].current : null;
     out[p.id] = cur && typeof cur === 'object'
-      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily) }
+      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily), hourly: marineHourlyRows(list[i].hourly) }
       : null;
   });
   return out;

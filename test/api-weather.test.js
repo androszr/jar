@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { openMeteoUrl, hourlyRows, marineUrl, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
+import handler, { openMeteoUrl, hourlyRows, marineHourlyRows, marineUrl, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
 import { PLACES } from '../src/cities/places.js';
 import { readFileSync } from 'node:fs';
 
@@ -264,13 +264,34 @@ test('normaliseMarine daily: five rows from the fixture, [] without daily or on 
   assert.deepEqual(short, [{ date: '2026-10-18', waveHeightMax: 1, wavePeriodMax: null }]);
 });
 
+test('marineUrl asks hourly=wave_height once and forecast_hours=25', () => {
+  const u = new URL(marineUrl([nazare]));
+  assert.equal(u.searchParams.getAll('hourly').length, 1);
+  assert.equal(u.searchParams.get('hourly'), 'wave_height');
+  assert.equal(u.searchParams.get('forecast_hours'), '25');
+});
+
+test('marineHourlyRows: 25 rows from the fixture, [] on junk, nulls when short, bad time dropped', () => {
+  const rows = marineHourlyRows(fixture('marine.json').hourly);
+  assert.equal(rows.length, 25);
+  assert.equal(rows[14].time, '2026-10-18T14:00');
+  assert.equal(rows[14].waveHeight, 1.2);
+  assert.equal(rows[15].waveHeight, 6.5);
+  assert.equal(rows[9].waveHeight, 4.2);
+  for (const v of [undefined, null, 'junk', 3, {}, { time: 'x' }]) assert.deepEqual(marineHourlyRows(v), [], String(v));
+  assert.deepEqual(marineHourlyRows({ time: ['2026-10-18T00:00', '2026-10-18T01:00'], wave_height: [1] }), [{ time: '2026-10-18T00:00', waveHeight: 1 }, { time: '2026-10-18T01:00', waveHeight: null }]);
+  assert.deepEqual(marineHourlyRows({ time: ['bad', '2026-10-18T01:00'], wave_height: [1, 2] }), [{ time: '2026-10-18T01:00', waveHeight: 2 }]);
+  assert.equal(marineHourlyRows({ time: Array.from({ length: 40 }, (_, i) => `2026-10-18T${String(i % 24).padStart(2, '0')}:00`), wave_height: [] }).length, 25);
+  assert.equal(normaliseMarine(fixture('marine.json'), [nazare]).nazare.hourly.length, 25);
+});
+
 test('normaliseMarine reads the fixture, junk and a short array', () => {
-  assert.deepEqual(normaliseMarine(fixture('marine.json'), [nazare]), { nazare: { waveHeight: 4.2, wavePeriod: 13.5, waveDir: 300, daily: normaliseMarine(fixture('marine.json'), [nazare]).nazare.daily } });
+  assert.deepEqual(normaliseMarine(fixture('marine.json'), [nazare]), { nazare: { waveHeight: 4.2, wavePeriod: 13.5, waveDir: 300, daily: normaliseMarine(fixture('marine.json'), [nazare]).nazare.daily, hourly: normaliseMarine(fixture('marine.json'), [nazare]).nazare.hourly } });
   assert.deepEqual(normaliseMarine(null, [nazare]), { nazare: null });
   assert.deepEqual(normaliseMarine('junk', [nazare]), { nazare: null });
   const second = { id: 'b', sea: { lat: 3, lon: 4 } };
   assert.deepEqual(normaliseMarine([fixture('marine.json')], [nazare, second]).b, null);
-  assert.deepEqual(normaliseMarine({ current: { wave_height: 'x' } }, [nazare]).nazare, { waveHeight: null, wavePeriod: null, waveDir: null, daily: [] });
+  assert.deepEqual(normaliseMarine({ current: { wave_height: 'x' } }, [nazare]).nazare, { waveHeight: null, wavePeriod: null, waveDir: null, daily: [], hourly: [] });
 });
 
 test('normalise with a marine body puts sea on the matching id and null on the rest', () => {

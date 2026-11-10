@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SCRUB_MAX_MIN, SCRUB_STEP_MIN, clampScrub, offsetText, scrubMoment, hourlyAt, previewWeather } from '../src/scrub.js';
+import { SCRUB_MAX_MIN, SCRUB_STEP_MIN, clampScrub, offsetText, scrubMoment, hourlyAt, previewWeather, rowAt, seaHourlyAt, previewSea } from '../src/scrub.js';
 import { EMPTY, fromEntry } from '../src/weather.js';
 import { wallToMs } from '../src/placeclock.js';
 import { readFileSync } from 'node:fs';
@@ -96,4 +96,58 @@ test('previewWeather returns the identical object when no row applies, and for E
 
 test('previewWeather is deterministic: the same inputs give deep-equal results', () => {
   assert.deepEqual(previewWeather(weather, at('15:00'), ZONE), previewWeather(weather, at('15:00'), ZONE));
+});
+
+const seaRows = [
+  { time: '2026-10-18T14:00', waveHeight: 1.2 },
+  { time: '2026-10-18T15:00', waveHeight: 6.5 },
+  { time: '2026-10-18T16:00', waveHeight: null },
+];
+const sea = { waveHeight: 4.2, wavePeriod: 14, waveDir: 300, daily: [], hourly: seaRows };
+const seaWeather = { ...weather, sea };
+
+test('rowAt picks the covering row from any list and is null on junk', () => {
+  assert.equal(rowAt(seaRows, at('14:30'), ZONE), seaRows[0]);
+  assert.equal(rowAt([], at('14:30'), ZONE), null);
+  assert.equal(rowAt('junk', at('14:30'), ZONE), null);
+  assert.equal(rowAt(seaRows, at('14:30'), 'Nowhere/Land'), null);
+});
+
+test('seaHourlyAt picks the covering row, skips a null height, and is null without rows', () => {
+  assert.equal(seaHourlyAt(sea, at('15:10'), ZONE), seaRows[1]);
+  assert.equal(seaHourlyAt(sea, at('16:00'), ZONE), null);
+  assert.equal(seaHourlyAt(sea, at('14:00') - 1, ZONE), null);
+  assert.equal(seaHourlyAt(sea, at('17:00') + 3600000, ZONE), null);
+  assert.equal(seaHourlyAt(null, at('15:00'), ZONE), null);
+  assert.equal(seaHourlyAt({ waveHeight: 4.2 }, at('15:00'), ZONE), null);
+  assert.equal(seaHourlyAt(sea, at('15:00'), 'Nowhere/Land'), null);
+});
+
+test('previewSea swaps only the wave height; identical when no row applies, and on null', () => {
+  const s = previewSea(sea, at('15:00'), ZONE);
+  assert.equal(s.waveHeight, 6.5);
+  assert.equal(s.wavePeriod, 14);
+  assert.equal(s.waveDir, 300);
+  assert.equal(s.daily, sea.daily);
+  assert.equal(s.hourly, sea.hourly);
+  assert.equal(previewSea(sea, at('16:00'), ZONE), sea);
+  assert.equal(previewSea(null, at('15:00'), ZONE), null);
+});
+
+test('previewWeather with a sea row only swaps the sea and leaves the six fields', () => {
+  const w = previewWeather({ ...seaWeather, hourly: [] }, at('15:00'), ZONE);
+  assert.equal(w.sea.waveHeight, 6.5);
+  assert.equal(w.temperature, weather.temperature);
+  assert.equal(w.code, weather.code);
+  assert.equal(w.kind, weather.kind);
+});
+
+test('previewWeather with both rows swaps both; with neither it is identical', () => {
+  const w = previewWeather(seaWeather, at('15:00'), ZONE);
+  assert.equal(w.sea.waveHeight, 6.5);
+  assert.equal(w.temperature, 16.2);
+  const none = { ...seaWeather, hourly: [], sea: { ...sea, hourly: [] } };
+  assert.equal(previewWeather(none, at('15:00'), ZONE), none);
+  assert.equal(previewWeather(EMPTY, at('15:00'), ZONE), EMPTY);
+  assert.deepEqual(previewWeather(seaWeather, at('14:00'), ZONE), previewWeather(seaWeather, at('14:00'), ZONE));
 });

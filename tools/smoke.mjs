@@ -70,7 +70,7 @@ const nazareFixture = JSON.parse(await readFile(new URL('../test/fixtures/weathe
 const marineFixture = JSON.parse(await readFile(new URL('../test/fixtures/marine.json', import.meta.url), 'utf8'));
 const [yl, ml, dl] = localDate(Date.now(), 'Europe/Lisbon').split('-').map(Number);
 const lisbonDays = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(yl, ml - 1, dl + i)).toISOString().slice(0, 10));
-const marineDated = { ...marineFixture, daily: { ...marineFixture.daily, time: lisbonDays } };
+const marineDated = { ...marineFixture, daily: { ...marineFixture.daily, time: lisbonDays }, hourly: hourlyOn(marineFixture.hourly, lisbonDays[0], lisbonDays[1]) };
 const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays }, hourly: hourlyOn(nazareFixture.hourly, lisbonDays[0], lisbonDays[1]) };
 const nazareCalm = { ...nazareDated, current: { ...nazareFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
 // The vendor's two-city answer through the real normaliser, as the function would send it.
@@ -372,6 +372,30 @@ try {
   const rollC = await jarHash(sea);
   check(rollA !== rollB, 'the sea rolls');
   check(rollA === rollC, 'nazare draws the same pixels at the same moment');
+  // the scrub: the wave follows the hour's forecast swell (fixture: 09:00 4.2 m, 14:00 1.2 m, 15:00 6.5 m)
+  // pin first: the feed counts staleness from the pinned moment, and the fixture is dated today
+  await pinAt(sea, wallToMs(`${lisbonDays[0]}T09:00`, 'Europe/Lisbon'));
+  await sea.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
+  await settled(sea);
+  const scrubAt = async (min) => sea.evaluate((m) => { window.__jar.scrub(m); return { scene: window.__jar.scene('nazare'), swell: window.__jar.labels.nazare[3] }; }, min);
+  const s0 = await scrubAt(0);
+  check(!!s0.scene && s0.scene.band === 'big' && s0.swell === '4.2 m · 14 s', `scrub at now keeps the big wave (${s0.scene && s0.scene.band} ${s0.swell})`);
+  const s5 = await scrubAt(300);
+  check(!!s5.scene && s5.scene.band === 'moderate' && s5.scene.waveSize < s0.scene.waveSize && s5.swell === '1.2 m · 14 s', `scrub +5 h shrinks the wave to the hourly swell (${s5.scene && s5.scene.band} ${s5.swell})`);
+  const s5Hash = await jarHash(sea);
+  const s6 = await scrubAt(360);
+  check(!!s6.scene && s6.scene.band === 'giant' && s6.scene.surfers === 2, `scrub +6 h makes the wave giant with the tow-in pair (${s6.scene && s6.scene.band})`);
+  const s6HashA = await jarHash(sea);
+  const s6HashB = await jarHash(sea);
+  check(s6HashA === s6HashB && s6HashA !== s5Hash, 'scrub draws the same wave at the same moment');
+  const sBack = await scrubAt(0);
+  check(!!sBack.scene && sBack.scene.band === 'big' && sBack.swell === '4.2 m · 14 s', `scrub back to now restores the wave (${sBack.scene && sBack.scene.band} ${sBack.swell})`);
+  await sea.evaluate((b) => window.__jar.applyWeather(b), seaBody(4.2));
+  const n0 = await scrubAt(0);
+  const n5 = await scrubAt(300);
+  check(!!n5.scene && n5.scene.band === 'big' && n5.scene.waveSize === n0.scene.waveSize, 'no hourly sea: the wave ignores the scrub');
+  await sea.evaluate(() => window.__jar.scrub(0));
+  await pinAt(sea, T_NOON);
   // the lighthouse: dark glass by day, a lit lantern by night
   const sky = [0.7, 0.12];
   const lanternBy = async () => luma(await patch(sea, 'nazare', 0.78, 0.165, 2)) - luma(await patch(sea, 'nazare', sky[0], sky[1], 2));
@@ -857,6 +881,10 @@ try {
   };
   const liftWarsaw = async (pg) => {
     await pinAt(pg, T9);
+    // The feed measures staleness against the pinned clock, so an answer fetched at the
+    // real time of day (say 00:06) is 45+ minutes old once the clock is pinned to 09:00.
+    // Hand it the same answer again, accepted now at the pinned moment.
+    await pg.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
     await pg.evaluate(() => window.__jar.lift('warsaw'));
     await viewIs(pg, 'jar');
     await settled(pg);
@@ -869,7 +897,10 @@ try {
   check(await sp2.evaluate(() => !document.getElementById('scrubrow').hidden), 'scrub row shows when a jar is lifted');
   const lab0 = await sp2.evaluate(() => window.__jar.labels.warsaw.slice());
   const nazare0 = await sp2.evaluate(() => window.__jar.labels.nazare.slice());
-  const hNow = await jarHash(sp2);
+  // Re-pin and hash in one step: the pin forces a render of the settled lift, so the
+  // hash is of the finished frame and not of whichever frame the loop last got to.
+  const hashNowAt = () => sp2.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T9);
+  const hNow = await hashNowAt();
   const got5 = await sp2.evaluate(() => { window.__jar.scrub(300); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview, n: window.__jar.labels.nazare.slice() }; });
   check(got5.l[1] === '18°' && got5.l[2] === '14:00 (+5 h)', `scrub +5 h shows the hourly temperature and the preview mark (${got5.l[1]} ${got5.l[2]})`);
   check(JSON.stringify(got5.n) === JSON.stringify(nazare0), 'shed and the other jar stay on now while scrubbing');
@@ -884,7 +915,7 @@ try {
   check(hA === hB && hA !== hNow, 'scrub draws the same pixels at the same moment');
   const snapped = await sp2.evaluate(() => { window.__jar.scrub(0); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
   check(JSON.stringify(snapped.l) === JSON.stringify(lab0) && snapped.p === null, 'scrub snaps back to now');
-  check((await jarHash(sp2)) === hNow, 'scrub back at now draws the picture it started from');
+  check((await hashNowAt()) === hNow, 'scrub back at now draws the picture it started from');
   await sp2.focus('#scrub');
   await sp2.keyboard.press('ArrowRight');
   const afterArrow = await sp2.evaluate(() => window.__jar.scrubMin);

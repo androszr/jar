@@ -27,11 +27,10 @@ export function scrubMoment(nowMs, min) {
   return nowMs + clampScrub(min) * 60000;
 }
 
-// The hourly row covering `atMs`: the latest whose wall time (in `zone`) is at
-// or before it and within 60 minutes of it; else null.
-export function hourlyAt(weather, atMs, zone) {
-  const rows = weather && Array.isArray(weather.hourly) ? weather.hourly : [];
-  if (!Number.isFinite(atMs)) return null;
+// The row covering `atMs`: of `rows` ({ time } in `zone`'s wall clock), the
+// latest at or before it and within 60 minutes of it; else null.
+export function rowAt(rows, atMs, zone) {
+  if (!Array.isArray(rows) || !Number.isFinite(atMs)) return null;
   let best = null;
   let bestMs = -Infinity;
   for (const row of rows) {
@@ -42,14 +41,38 @@ export function hourlyAt(weather, atMs, zone) {
   return best;
 }
 
-// `weather` as it will be at `atMs`: the same object when no hourly row applies,
-// else a copy whose six current fields (and kind, known) come from the row.
+// The hourly weather row covering `atMs`, or null.
+export function hourlyAt(weather, atMs, zone) {
+  return rowAt(weather && weather.hourly, atMs, zone);
+}
+
+// The hourly sea row covering `atMs` whose waveHeight is a finite number, or null.
+export function seaHourlyAt(sea, atMs, zone) {
+  const row = rowAt(sea && sea.hourly, atMs, zone);
+  return row && typeof row.waveHeight === 'number' && Number.isFinite(row.waveHeight) ? row : null;
+}
+
+// `sea` as it will be at `atMs`: the identical object when no hourly row
+// applies, else a copy with only the wave height swapped.
+export function previewSea(sea, atMs, zone) {
+  const row = seaHourlyAt(sea, atMs, zone);
+  return row ? { ...sea, waveHeight: row.waveHeight } : sea;
+}
+
+// `weather` as it will be at `atMs`: the same object when neither an hourly
+// weather row nor an hourly sea row applies, else a copy whose six current
+// fields (and kind, known) come from the weather row and whose sea comes from
+// previewSea, whichever apply.
 export function previewWeather(weather, atMs, zone) {
   const row = hourlyAt(weather, atMs, zone);
-  if (!row) return weather;
+  const sea = weather ? previewSea(weather.sea, atMs, zone) : weather;
+  const seaMoved = !!weather && sea !== weather.sea;
+  if (!row && !seaMoved) return weather;
+  const out = { ...weather, sea };
+  if (!row) return out;
   const code = typeof row.code === 'number' ? row.code : null;
   return {
-    ...weather,
+    ...out,
     temperature: row.temperature ?? null,
     code,
     cloudCover: row.cloudCover ?? null,
