@@ -13,6 +13,7 @@ import { css, mix, glow } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
 import { localDate } from '../../placeclock.js';
 import { WARSAW } from './palette.js';
+import { isUsable } from '../../weather.js';
 
 // The bands, top to bottom, as shares of the body height.
 export const FAR_BANK = 0.575; // the towers stand here
@@ -502,7 +503,62 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
   }
 }
 
-export function drawRiver(ctx, rect, phase, tint, weather, nowMs) {
+// Ice on the Vistula: below ICE.from degrees blocks drift right; full at ICE.full.
+export const ICE = { from: -5, full: -12, count: 34, rows: 4, margin: 60, wrap: 120 };
+
+// 0 (open water) at -5 and warmer or with no reading, 1 at -12 and colder.
+export function iceAmount(weather) {
+  return isUsable(weather) ? clamp((ICE.from - weather.temperature) / (ICE.from - ICE.full)) : 0;
+}
+
+// The floes at a moment: a plain function of the clock and the row, no randomness.
+export function iceFloes(L, nowMs, amount, reduced = false) {
+  const n = amount > 0 ? Math.min(ICE.count, Math.max(6, Math.floor(ICE.count * amount))) : 0;
+  const span = 340 + ICE.wrap;
+  const floes = [];
+  for (let i = 0; i < n; i++) {
+    const row = i % ICE.rows;
+    const speed = (6 + row * 3) * (reduced ? 0.4 : 1);
+    const v = (hash2(i, 1) * span + (speed * nowMs) / 1000) / span;
+    floes.push({
+      x: L.ox + (v - Math.floor(v)) * span * L.sx - ICE.margin * L.sx,
+      y: L.river.top + (0.006 + row * 0.009 + hash2(i, 2) * 0.003) * L.h,
+      w: (26 + 46 * hash2(i, 3)) * (0.7 + row * 0.15) * L.sx,
+      h: (2.4 + row * 0.6) * L.sy, // the river band is only about 20 px tall
+      row,
+      i,
+    });
+  }
+  return floes;
+}
+
+function drawIce(ctx, L, night, floes) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L.ox, L.river.top + 1, L.w, L.river.bottom - L.river.top - 1);
+  ctx.clip();
+  const shadow = css(WARSAW.iceShadow, 0.6);
+  const body = css(mix(WARSAW.iceFloe, WARSAW.riverNight, 0.55 * night));
+  for (const { x, y, w, h, i } of floes) {
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 0.7 * h, w / 2, 0.6 * h, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, y + 0.3 * h);
+    ctx.lineTo(x - 0.3 * w, y - 0.4 * h);
+    ctx.lineTo(x + 0.1 * w, y - 0.5 * h + hash2(i, 5) * 0.3 * h);
+    ctx.lineTo(x + w / 2, y);
+    ctx.lineTo(x + 0.3 * w, y + 0.6 * h);
+    ctx.lineTo(x - 0.2 * w, y + 0.65 * h);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = false) {
   const L = layout(rect.w, rect.h, rect.x, rect.y);
   const night = nightAmount(tint.light);
   const top = L.river.top;
@@ -510,6 +566,8 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs) {
   const wet = weather && (weather.kind === 'rain' || weather.kind === 'drizzle' || weather.kind === 'storm' || weather.kind === 'fog');
   let colour = tone(WARSAW.riverDay, WARSAW.riverNight, WARSAW.riverDeep, night);
   if (wet) colour = mix(colour, WARSAW.dull, 0.35 * clamp(tint.light + 0.2));
+  const ice = iceAmount(weather);
+  if (ice > 0) colour = mix(colour, WARSAW.iceWater, 0.3 * ice);
   const g = ctx.createLinearGradient(0, top, 0, bottom);
   g.addColorStop(0, css(mix(colour, tint.skyLow, 0.15)));
   g.addColorStop(1, css(colour));
@@ -543,6 +601,7 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs) {
     reflect(L.X(TOWER.spire.x) + 6 * L.sx, 8 * L.sx, WARSAW.reflectSpire, 0.6, 40);
     reflect(L.X(TOWER.zlota.x), 10 * L.sx, WARSAW.reflectZlota, 0.45, 50);
   }
+  if (ice > 0) drawIce(ctx, L, night, iceFloes(L, nowMs, ice, reduced));
   drawBoulevard(ctx, L, tint, night, weather);
   drawNearBank(ctx, L, phase, night, weather);
 }

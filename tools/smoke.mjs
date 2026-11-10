@@ -475,6 +475,20 @@ try {
   check(sunFace - shadeFace >= 20, `the Palace's sun side is brighter than its shade side in the morning (${sunFace} vs ${shadeFace})`);
   check(all(await patch(noct, 'warsaw', 0.2, 0.668, 2), (r, g, b) => b >= r + 20), 'river shows blue left of the bridge, above the label, by day');
   await noct.screenshot({ path: join(OUT, 'warsaw-morning.png') });
+  // ice on the river in a hard frost, none above the threshold
+  const pale = (r, g, b) => r >= 190 && g >= 200 && b >= 205;
+  const iceSeen = async () => {
+    for (let x = 0.05; x <= 0.28; x += 0.01) if (some(await patch(noct, 'warsaw', x, 0.66, 2), pale)) return true;
+    return false;
+  };
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5, -8));
+  await twoFrames(noct);
+  check(await iceSeen(), 'ice drifts on the river in a hard frost');
+  check(await noct.evaluate(() => window.__jar.cadence.cities.warsaw === 250), 'a frozen river asks for a tick');
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5, 21.4));
+  await twoFrames(noct);
+  check(!(await iceSeen()), 'no ice above the threshold');
+  check(await noct.evaluate(() => window.__jar.cadence.cities.warsaw === 0), 'a thawed river asks for none');
   const T_FLAG = Date.UTC(2026, 10, 11, 20, 0); // 21:00 in Warsaw on 11 November
   await noct.evaluate((t) => window.__jar.pin(t), T_FLAG);
   const white = (r, g, b) => r >= 200 && g >= 190 && b >= 180;
