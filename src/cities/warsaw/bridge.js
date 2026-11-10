@@ -4,6 +4,7 @@
 // the far side and a short back stay. Lamps along the deck and a red light on the
 // pylon's head come up with the dark. Shares of the 340 x 396 body box.
 import { css, mix, glow } from '../../look/index.js';
+import { hash2 } from '../../skyweather.js';
 import { layout, nightAmount, tone } from './scene.js';
 import { WARSAW } from './palette.js';
 
@@ -27,7 +28,32 @@ export function deckY(L, x) {
   return y0 + (y1 - y0) * t - Math.sin(t * Math.PI) * BRIDGE.sag * L.sy;
 }
 
-export function drawBridge(ctx, rect, phase, tint, weather) {
+// Night traffic: lights crawl along the deck, white ones inbound (rightwards),
+// red ones outbound (leftwards). Position is a pure function of nowMs.
+export const TRAFFIC = {
+  count: 9, // lights per direction
+  periodMs: 28000, // one light crosses the whole deck at base speed
+  spread: 0.6, // extra fraction of speed a light may have
+  laneIn: 0.6, // px below the deck's top edge, inbound lane
+  laneOut: 2.2, // outbound lane
+};
+
+export function trafficLights(L, nowMs, reduced = false) {
+  const x0 = L.X(BRIDGE.x0);
+  const x1 = L.X(1);
+  const out = [];
+  for (const dir of [1, -1]) {
+    for (let i = 0; i < TRAFFIC.count; i++) {
+      const v = hash2(i, dir + 2) + (dir * (reduced ? 0.4 : 1) * nowMs / TRAFFIC.periodMs) * (1 + TRAFFIC.spread * hash2(i, 3));
+      const s = v - Math.floor(v);
+      const x = x0 + s * (x1 - x0);
+      out.push({ x, y: deckY(L, x) + (dir > 0 ? TRAFFIC.laneIn : TRAFFIC.laneOut) * L.sy, dir });
+    }
+  }
+  return out;
+}
+
+export function drawBridge(ctx, rect, phase, tint, weather, nowMs = 0, reduced = false) {
   const L = layout(rect.w, rect.h, rect.x, rect.y);
   const night = nightAmount(tint.light);
   const snow = weather && weather.kind === 'snow';
@@ -102,6 +128,12 @@ export function drawBridge(ctx, rect, phase, tint, weather) {
       ctx.beginPath();
       ctx.arc(x, deckY(L, x) - 1.5 * L.sy, 1 * L.sx, 0, Math.PI * 2);
       ctx.fill();
+    }
+    for (const { x, y, dir } of trafficLights(L, nowMs, reduced)) {
+      const colour = dir > 0 ? WARSAW.headlight : WARSAW.taillight;
+      glow(ctx, x, y, 5 * L.sx, colour, 0.55 * night);
+      ctx.fillStyle = css(colour, night);
+      ctx.fillRect(x - 1.3 * L.sx, y - 0.8 * L.sy, 2.6 * L.sx, 1.6 * L.sy);
     }
   }
 }
