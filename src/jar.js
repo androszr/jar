@@ -5,7 +5,7 @@ import { JAR, LABEL } from './jar-geometry.js';
 import { localTimeText } from './placeclock.js';
 import { offsetText } from './scrub.js';
 import { placeName } from './cities/places.js';
-import { formatTemp, formatSwell } from './weather.js';
+import { formatTemp } from './weather.js';
 import { drawJarSky, drawFog } from './skyweather.js';
 import { skyGradient, glow, spill, glassBody, glassHighlights, lid, label, mix } from './look/index.js';
 
@@ -19,11 +19,9 @@ export function labelLines(city, weather, nowMs, preview = null) {
   const time = localTimeText(nowMs, city.location.zone);
   const ahead = preview && Number.isFinite(preview.offsetMin) && preview.offsetMin > 0;
   const lines = [placeName(city).toUpperCase(), formatTemp(weather && weather.temperature), ahead ? `${time} (${offsetText(preview.offsetMin)})` : time];
-  // A fourth line, the swell, only for a place with an offshore point and a reading.
-  if (city.location.sea && typeof city.location.sea === 'object') {
-    const swell = formatSwell(weather && weather.sea);
-    if (swell !== null) lines.push(swell);
-  }
+  // A fourth line is the city's own (Nazare's swell, El Chalten's view of the peak), or none.
+  const extra = typeof city.labelLine === 'function' ? city.labelLine(weather) : null;
+  if (typeof extra === 'string' && extra) lines.push(extra);
   return lines;
 }
 
@@ -64,7 +62,7 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
   glassBody(ictx, local, JAR.neck);
   ictx.clip();
   skyGradient(ictx, local, tint);
-  const sky = drawJarSky(ictx, local, phase, tint, weather, nowMs, opts);
+  const sky = drawJarSky(ictx, local, phase, tint, weather, nowMs, { ...opts, sun: !(city.sky && city.sky.sun === false) });
   const scene = city.paint(ictx, local, phase, tint, weather, plates, nowMs) ?? null;
   drawFog(ictx, local, weather, nowMs);
   // the lantern: a warm glow from inside the jar, always on

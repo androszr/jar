@@ -84,7 +84,7 @@ test('GET /api/weather answers the tidy body from one stubbed vendor call', asyn
     const weatherCalls = calls.filter((u) => !u.includes('marine-api'));
     assert.equal(weatherCalls.length, 1);
     assert.match(weatherCalls[0], /^https:\/\/api\.open-meteo\.com\//);
-    assert.match(weatherCalls[0], /latitude=52\.23,39\.6&longitude=21\.01,-9\.07/);
+    assert.match(weatherCalls[0], /latitude=52\.23,39\.6,-49\.33&longitude=21\.01,-9\.07,-72\.89/);
   } finally {
     await new Promise((done) => server.close(done));
   }

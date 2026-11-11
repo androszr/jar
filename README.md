@@ -12,12 +12,14 @@
   <img src="https://img.shields.io/badge/built%20with-Dark%20Army-8a2be2" alt="built with Dark Army">
 </p>
 
-**A garden shed at night, and a city in a jar.** On the potting table stand two
-glass jars glowing like lanterns. One holds a tiny **Warsaw**, the other the
-cliff and the giant wave of **Nazaré**. Each is lit for the real time of day
+**A garden shed at night, and a city in a jar.** On the potting table stand three
+glass jars glowing like lanterns. One holds a tiny **Warsaw**, another the
+cliff and the giant wave of **Nazaré**, the third **Fitz Roy** seen from the
+shore of the lake below El Chaltén. Each is lit for the real time of day
 there right now and drawn under the weather that place is really having. A label
 on each glass gives the city and country, the temperature and the local time,
-and on Nazaré's jar the swell as well.
+on Nazaré's jar the swell as well, and on El Chaltén's whether you can see
+Fitz Roy today.
 
 <img src="docs/images/table.jpg" alt="The shed: a moonlit window on the left and two glowing jars on the wooden table. Left, a corked jar with Warsaw in the rain, the floodlit Palace of Culture between the towers, labelled WARSAW, POLAND 12° 16:44. Right, a tin-lidded jar with the Nazaré cliff, its fort and red-roofed lighthouse above a breaking wave with small surfers, labelled NAZARÉ, PORTUGAL 18° 15:44 4.2 m · 14 s." width="880">
 
@@ -65,6 +67,28 @@ sit at the edges of the glass, so they never cover a tower.
     </td>
   </tr>
 </table>
+
+### The third jar: El Chaltén
+
+Not the town but the view from the east shore of Laguna de los Tres, looking
+west: the southern night sky, the blade of Poincenot and the fin of Fitz Roy
+with smaller needles stepping down to the right, the glacier, the big brown
+moraine, the turquoise lake and a gravel shore with a rock, a few shrubs and a
+hiker by day. It answers the question the whole town asks each morning, *can
+you see Fitz Roy today?*, from the real cloud, weather kind and wind, and the
+label's fourth line says which: `FITZ ROY · CLEAR`, `SMOKING` (cloud under
+60 % and wind from 25 km/h: a banner cloud streams off the summit the way the
+wind blows), `CAPPED` (cloud 60 % and over: a deck sits on the summits) or
+`HIDDEN` (cloud 85 % and over, or fog, drizzle, rain, snow, storm: the wall is
+gone). With no reading the peak is drawn clear with a short plume and there is
+no fourth line. First light lands on the summit and walks down the wall after
+sunrise and the lake mirrors it in still air; the sun sets behind the wall; a
+few headlamps wait on the shore in the last ninety minutes before sunrise; the
+seasons run the southern way round (a frozen white lake from June to August).
+The rock is faceted granite built once from a fixed seed and shaded by the
+hour. The jar keeps El Chaltén's own time (`America/Argentina/Rio_Gallegos`) and
+wears a cork lid. It has no screenshot among the pictures above yet; the smoke
+check writes `el-chalten-*.png` to `test-output/`.
 
 <table>
   <tr>
@@ -118,8 +142,9 @@ npm install
 npm run serve        # http://localhost:5173  (PORT=... to change it)
 ```
 
-**You'll see:** the shed, with the Warsaw and Nazaré jars glowing on the table.
-Open <http://localhost:5173/?jar=warsaw> or <http://localhost:5173/?jar=nazare>
+**You'll see:** the shed, with the Warsaw, Nazaré and El Chaltén jars glowing on the table.
+Open <http://localhost:5173/?jar=warsaw>, <http://localhost:5173/?jar=nazare> or
+<http://localhost:5173/?jar=el-chalten>
 to start with that jar already lifted.
 
 The local server also answers `GET /api/weather` with the real function. To
@@ -130,7 +155,7 @@ file (dev only):
 WEATHER_FIXTURE=test/fixtures/weather-storm.json npm run serve
 # also: weather-hail.json, weather-fog.json, weather-nowind.json, weather-cloudy-wind.json
 
-# both jars from one file (an array of two vendor bodies), and the sea on demand:
+# every jar from one file (an array with one vendor body per place, in registry order), and the sea on demand:
 WEATHER_FIXTURE=test/fixtures/weather-two-cities.json \
 MARINE_FIXTURE=test/fixtures/marine.json npm run serve
 ```
@@ -146,7 +171,7 @@ console:
 
 | Option | What it does |
 |---|---|
-| `?jar=warsaw`, `?jar=nazare` | Opens straight onto that jar, lifted. |
+| `?jar=warsaw`, `?jar=nazare`, `?jar=el-chalten` | Opens straight onto that jar, lifted. |
 | `?day=`, `?at=`, `?clock=` | Parsed by `readOptions` for a later card. The page always runs on the real clocks. |
 
 ## How work happens here
@@ -194,7 +219,11 @@ The smoke check drives a real page. It pins a Warsaw night and a Warsaw
 morning and samples pixels to check the gold Palace, the blue crown, the red
 light, the reflections, the Mermaid's rim and the morning rim. For Nazaré it
 checks both labels, both lifts, moving between jars by arrow and by swipe, the
-four wave sizes and their surfers, and the lighthouse beam at night. It also
+four wave sizes and their surfers, and the lighthouse beam at night. For El Chaltén
+it checks the label's four bands and the missing-weather three lines, the
+turquoise lake, the banner cloud, the deck, first light on the wall and its
+mirror, the headlamps, the bivouac light, the frozen July lake, that the facets
+are lit by the hour and that a pinned moment draws the same pixels. It also
 checks the forecast card's today mark, sunrise and sunset strip and sun arc,
 and that clouds hold their place when the wind changes. Its screenshots
 go to `test-output/`, which is where the pictures above come from. It needs a

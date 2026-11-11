@@ -2,6 +2,7 @@
 // do Norte wave, sized by the real swell off the coast. The wave and the beam
 // are functions of the clock, so this city asks the page for a ten-a-second tick.
 import { PLACES } from '../places.js';
+import { formatSwell } from '../../weather.js';
 import { waveHeightOf, waveBand, waveSize } from './sea.js';
 import {
   buildPlates, drawFarSea, drawHeadland, drawFort, drawWave, drawBeach, drawSpray, drawSurfers, drawBeam, drawVeil,
@@ -20,6 +21,8 @@ export default {
   lid: 'tin',
   label: { inks: { plate: 'plate', ink: 'labelInk' } },
   seed: 0x5ea,
+  // the fourth line of the label: the swell, none without a reading
+  labelLine: (weather) => formatSwell(weather && weather.sea),
   buildPlates,
   // ms between redraws the sea needs
   cadenceMs: (weather, opts = {}) => (opts.reduced ? 250 : 100),

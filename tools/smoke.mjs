@@ -80,12 +80,20 @@ const marineDated = {
   hourly: { ...marineFixture.hourly, time: marineFixture.hourly.time.map((t) => `${lisbonDays[marineFixture.daily.time.indexOf(t.slice(0, 10))]}${t.slice(10)}`) },
 };
 const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays }, hourly: hourlyOn(nazareFixture.hourly, lisbonDays[0], lisbonDays[1]) };
+// El Chalten's stand-in answer (cloud 20, 30 km/h from the south-west: a smoking day), re-dated to Rio Gallegos's today.
+const chaltenFixture = JSON.parse(await readFile(new URL('../test/fixtures/weather-el-chalten.json', import.meta.url), 'utf8'));
+const CHALTEN_ZONE = 'America/Argentina/Rio_Gallegos';
+const [yc, mc, dc] = localDate(Date.now(), CHALTEN_ZONE).split('-').map(Number);
+const chaltenDays = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(yc, mc - 1, dc + i)).toISOString().slice(0, 10));
+const chaltenDated = { ...chaltenFixture, daily: { ...chaltenFixture.daily, time: chaltenDays }, hourly: hourlyOn(chaltenFixture.hourly, chaltenDays[0], chaltenDays[1]) };
 const nazareCalm = { ...nazareDated, current: { ...nazareFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
-// The vendor's two-city answer through the real normaliser, as the function would send it.
-const twoCity = (payload, nazare = nazareDated) => [payload, nazare];
+// The vendor's three-city answer through the real normaliser, as the function would send it:
+// one body per place, in registry order (a missing body leaves its city at EMPTY).
+const chaltenCalm = { ...chaltenDated, current: { ...chaltenFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
+const threeCity = (payload, nazare = nazareDated, chalten = chaltenDated) => [payload, nazare, chalten];
 // Every stubbed answer carries this one fetch time, so the answer is the same on every run.
 const FETCHED = Date.UTC(2026, 5, 15, 10, 20);
-const bodyOf = (payload, { nazare = nazareDated, marine = marineDated } = {}) => JSON.stringify(normalise(twoCity(payload, nazare), PLACES, FETCHED, marine));
+const bodyOf = (payload, { nazare = nazareDated, marine = marineDated, chalten = chaltenDated } = {}) => JSON.stringify(normalise(threeCity(payload, nazare, chalten), PLACES, FETCHED, marine));
 const cloudyWind = JSON.parse(await readFile(new URL('../test/fixtures/weather-cloudy-wind.json', import.meta.url), 'utf8'));
 const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (route) => {
   if (mode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
@@ -97,7 +105,7 @@ const routeWeather = (page, mode = 'fixture') => page.route('**/api/weather', (r
   const calm = mode === 'cloudcalm';
   if (mode === 'nosun') payload = { ...dated, daily: { ...dated.daily, sunrise: undefined, sunset: undefined } };
   if (mode === 'nodaily') payload = { ...dated, daily: undefined };
-  return route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload, { nazare: calm ? nazareCalm : nazareDated, marine: mode === 'nosea' ? null : marineDated }) });
+  return route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload, { nazare: calm ? nazareCalm : nazareDated, chalten: calm ? chaltenCalm : chaltenDated, marine: mode === 'nosea' ? null : marineDated }) });
 });
 
 // A weather fixture file (vendor shape) served through the real normaliser.
@@ -111,6 +119,8 @@ const routeFile = async (page, name) => {
 const tidy = (code, cover, temperature = 9, more = {}) => ({ v: 1, cities: { warsaw: { temperature, code, cloudCover: cover, isDay: 1, windSpeed: 3, windDir: 180 }, ...more } });
 // Nazare, clear and light of wind, with a wave `h` metres high off the coast.
 const seaBody = (h) => tidy(0, 5, 9, { nazare: { temperature: 18, code: 0, cloudCover: 5, isDay: 1, windSpeed: 5, windDir: 300, sea: { waveHeight: h, wavePeriod: 12, waveDir: 300 } } });
+// El Chalten, as __jar.applyWeather takes it: cloud %, wind km/h from `dir` degrees, a vendor code, a temperature.
+const chaltenBody = ({ cloud = 10, wind = 5, dir = 225, code = 0, temperature = 8 } = {}) => tidy(0, 5, 9, { 'el-chalten': { temperature, code, cloudCover: cloud, isDay: 1, windSpeed: wind, windDir: dir } });
 // Mean luminance of the jar's body on the table, and of the strip under its foot.
 const jarLum = async (page) => {
   const d = await page.evaluate(() => window.__jar.dpr);
@@ -209,7 +219,7 @@ try {
   check(/^\d\d:\d\d$/.test(time) && okTimes.has(time), `warsaw label shows a Warsaw time (${time})`);
   check(await page.evaluate(() => window.__jar.labels.warsaw[0] === 'WARSAW, POLAND'), 'warsaw label carries the city and country');
   // the second jar: Nazare, in Lisbon time
-  check(await page.evaluate(() => Object.keys(window.__jar.labels).length === 2), 'table shows two jars');
+  check(await page.evaluate(() => Object.keys(window.__jar.labels).length === 3), 'table shows three jars');
   check(await labelIs(page, 1, '18°', 'nazare'), 'nazare label shows fixture temperature');
   const lisbonTime = await page.evaluate(() => window.__jar.labels.nazare[2]);
   const okLisbon = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Lisbon'), localTimeText(Date.now() + m * 60000, 'Europe/Lisbon')]));
@@ -343,6 +353,7 @@ try {
   const nAria = await deepN.evaluate(() => document.getElementById('view').getAttribute('aria-label'));
   check(JSON.stringify(nf0.forecast.tides.map((t) => t.kind)) === JSON.stringify(['high', 'low', 'high', 'low']) && nAria.includes('High tide ') && nAria.includes(' wind '), "nazare card shows today's tides and speaks them");
   check(nf0.forecast.tides.length > 0 && nf0.forecast.tides.every((t) => Number.isFinite(t.height)) && nAria.includes(' metres'), 'nazare card prints and speaks tide heights');
+  check(nAria.includes('swell '), "nazare's spoken description still names the swell");
   const [dayTNow, lisbonNow] = await deepN.evaluate(() => [window.__jar.forecast.dayT, Date.now()]);
   check(Number.isFinite(dayTNow) && Math.abs(dayTNow - dayFraction(lisbonNow, 'Europe/Lisbon')) < 0.01, 'nazare tide curve dot follows the Lisbon clock');
   check(!!(await deepN.evaluate(() => window.__jar.forecast)), 'nazare swell card is lifted');
@@ -459,6 +470,102 @@ try {
   check(await nos2.evaluate(() => window.__jar.forecast.tides.length === 0 && window.__jar.forecast.dayT !== undefined && !document.getElementById('view').getAttribute('aria-label').includes('tide')) && nos2Seen.errors.length === 0, 'missing sea leaves no tide line');
   const dflt = await sceneOf(nos2);
   check(!!dflt && dflt.band === 'moderate' && nos2Seen.errors.length === 0, 'missing sea draws the default swell');
+
+  // ---- El Chalten, the third jar: Fitz Roy over Laguna de los Tres ----------------
+  const deepC = await desk.newPage();
+  const deepCSeen = watch(deepC, origin);
+  await routeWeather(deepC);
+  await deepC.goto(`${origin}/?jar=el-chalten`);
+  await ready(deepC);
+  await labelIs(deepC, 1, '8°', 'el-chalten');
+  await settled(deepC);
+  const cf0 = await deepC.evaluate(() => ({ view: window.__jar.view, title: document.title, forecast: window.__jar.forecast }));
+  check(cf0.view === 'jar' && cf0.title === 'El Chaltén, Argentina, in a jar' && !!cf0.forecast && cf0.forecast.cells.length === 5 && !!cf0.forecast.sun, '?jar=el-chalten opens lifted with a five-day card and the sunrise strip');
+  const cAria = await deepC.evaluate(() => document.getElementById('view').getAttribute('aria-label'));
+  check(cAria.includes('FITZ ROY · SMOKING') && !cAria.includes('swell'), 'the spoken description reads El Chaltén\'s fourth line without calling it a swell');
+  await deepC.screenshot({ path: join(OUT, 'el-chalten-lifted.png') });
+  check(deepCSeen.errors.length === 0 && deepCSeen.off.length === 0, `no console errors or off-origin requests on the el-chalten link${deepCSeen.errors.length ? `: ${deepCSeen.errors.join(' | ') }` : ''}`);
+  await deepC.close();
+
+  // the bands, the clock, the seasons and the rock, with pixels sampled
+  // Share pairs read from buildPlates: Fitz Roy's fin at y 0.30 has a left-facing face at (0.50, 0.30) and a right-facing one at (0.61, 0.275), both clear of gullies, ridges and facet edges;
+  // the summit tip is (0.566, 0.22); the bivouac light (0.545, 0.345); the first headlamp (0.16, 0.705).
+  // Moments are in January (summer) and July, in the past: a pin ahead of the real clock would age the stub answer to stale.
+  const T_NOON_C = Date.UTC(2026, 0, 21, 16, 0); // 13:00 in El Chaltén, midsummer
+  const T_GLOW = Date.UTC(2026, 0, 21, 9, 34); // 06:34 local, 19 minutes after the 06:15 sunrise
+  const T_LAMPS = Date.UTC(2026, 0, 21, 8, 5); // 05:05 local, 70 minutes before sunrise
+  const T_NIGHT_C = Date.UTC(2026, 0, 22, 3, 0); // midnight local
+  const T_WINTER = Date.UTC(2026, 6, 15, 16, 0); // July, 13:00 local
+  const cp = await desk.newPage();
+  const cpSeen = watch(cp, origin);
+  await routeWeather(cp);
+  await cp.goto(`${origin}/`);
+  await ready(cp);
+  await labelIs(cp, 1, '8°', 'el-chalten');
+  const chaltenLabel = await cp.evaluate(() => window.__jar.labels['el-chalten']);
+  check(chaltenLabel[0] === 'EL CHALTÉN, ARGENTINA' && chaltenLabel[1] === '8°', 'el-chalten label carries the city, country and fixture temperature');
+  const okChalten = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, CHALTEN_ZONE), localTimeText(Date.now() + m * 60000, CHALTEN_ZONE)]));
+  check(okChalten.has(chaltenLabel[2]), `el-chalten label shows an El Chaltén time (${chaltenLabel[2]})`);
+  check(chaltenLabel[3] === 'FITZ ROY · SMOKING', `the fixture (cloud 20, 30 km/h from 225) reads smoking (${chaltenLabel[3]})`);
+  await cp.evaluate(() => window.__jar.lift('el-chalten'));
+  await viewIs(cp, 'jar');
+  await settled(cp);
+  const cs = () => cp.evaluate(() => window.__jar.scene('el-chalten'));
+  const at = async (ms, body) => {
+    if (body) await cp.evaluate((b) => window.__jar.applyWeather(b), body);
+    await pinAt(cp, ms);
+    return cs();
+  };
+  const lineOf = () => cp.evaluate(() => window.__jar.labels['el-chalten'][3]);
+  const turquoise = (r, g, b) => g > r + 30 && b > r + 30;
+  const warmer = (r, g, b) => r > b + 40;
+  const clear = await at(T_NOON_C, chaltenBody({ cloud: 10, wind: 5 }));
+  check(clear.band === 'clear' && clear.plume === 0 && clear.condor === true && clear.hiker === true && clear.season === 'summer' && clear.frozen === false, 'a clear midsummer noon: the wall stands, a condor and a hiker, no plume');
+  check((await lineOf()) === 'FITZ ROY · CLEAR', 'the label reads FITZ ROY · CLEAR');
+  check(all(await patch(cp, 'el-chalten', 0.2, 0.68, 2), turquoise), 'the lake is turquoise at noon');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-noon.png') });
+  // the rock is lit by the hour, not painted on
+  const left = luma(await patch(cp, 'el-chalten', 0.5, 0.3, 1));
+  const right = luma(await patch(cp, 'el-chalten', 0.61, 0.275, 1));
+  await at(T_NIGHT_C);
+  const nLeft = luma(await patch(cp, 'el-chalten', 0.5, 0.3, 1));
+  const nRight = luma(await patch(cp, 'el-chalten', 0.61, 0.275, 1));
+  check(Math.abs(right - left) >= 12 && Math.abs(nRight - nLeft) <= 6, `El Chaltén facets differ by the hour (noon ${Math.abs(right - left).toFixed(0)}, night ${Math.abs(nRight - nLeft).toFixed(0)})`);
+  const smoking = await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 60, dir: 225 }));
+  check(smoking.band === 'smoking' && smoking.plume > 0.2 && (await lineOf()) === 'FITZ ROY · SMOKING', 'a strong south-westerly smokes the summit');
+  check(await cp.evaluate(() => window.__jar.cadence.cities['el-chalten'] === 250), 'the plume asks for a 250 ms tick');
+  check(some(await patch(cp, 'el-chalten', 0.66, 0.24, 3), (r, g, b) => r > 150 && g > 150 && b > 150), 'the banner cloud streams to the right of the summit');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-smoking.png') });
+  await at(T_NOON_C);
+  const smokeA = await jarHash(cp);
+  await at(T_NOON_C);
+  check(smokeA === (await jarHash(cp)), 'el-chalten draws the same pixels at the same moment');
+  const capped = await at(T_NOON_C, chaltenBody({ cloud: 70, wind: 10 }));
+  check(capped.band === 'capped' && (await lineOf()) === 'FITZ ROY · CAPPED' && all(await patch(cp, 'el-chalten', 0.566, 0.25, 2), (r, g, b) => Math.abs(r - b) < 25), 'a cloud deck caps the peak');
+  const hidden = await at(T_NOON_C, chaltenBody({ cloud: 95, code: 61, wind: 40, dir: 315 }));
+  check(hidden.band === 'hidden' && (await lineOf()) === 'FITZ ROY · HIDDEN', 'rain hides the peak');
+  check(all(await patch(cp, 'el-chalten', 0.566, 0.25, 2), (r, g, b) => !warmer(r, g, b) && !turquoise(r, g, b)), 'the summit is neither warm rock nor lake colour when hidden');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-hidden.png') });
+  const glowing = await at(T_GLOW, chaltenBody({ cloud: 10, wind: 4 }));
+  check(glowing.glow > 0 && glowing.mirror > 0.8, 'first light glows and the still lake mirrors');
+  check(some(await patch(cp, 'el-chalten', 0.56, 0.27, 2), warmer), 'the top of the wall is red at sunrise');
+  const mirrorWarm = (rows) => rows.reduce((s, [r, , b]) => s + r - b, 0) / rows.length;
+  check(mirrorWarm(await patch(cp, 'el-chalten', 0.56, 0.56, 2)) > mirrorWarm(await patch(cp, 'el-chalten', 0.2, 0.68, 2)), 'the lake carries the red below the wall');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-alpenglow.png') });
+  const lamps = await at(T_LAMPS, chaltenBody({ cloud: 10, wind: 4 }));
+  check(lamps.headlamps >= 2 && (await cp.evaluate(() => window.__jar.cadence.cities['el-chalten'] === 400)), 'headlamps wait on the shore before dawn');
+  check(some(await patch(cp, 'el-chalten', 0.16, 0.705, 4), (r, g, b) => r > 170 && r >= b + 40), 'a headlamp shows warm on the shore');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-headlamps.png') });
+  const night = await at(T_NIGHT_C, chaltenBody({ cloud: 10, wind: 4 }));
+  check(night.headlamps === 0 && night.hiker === false && night.condor === false, 'at midnight no headlamps, hiker or condor');
+  check(luma(await patch(cp, 'el-chalten', 0.545, 0.345, 1)) > luma(await patch(cp, 'el-chalten', 0.5, 0.345, 1)) + 20, 'one bivouac light shows on the wall at night');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-night.png') });
+  const winter = await at(T_WINTER, chaltenBody({ cloud: 10, wind: 4 }));
+  check(winter.season === 'winter' && winter.frozen === true && winter.mirror === 0, 'in July the lake is frozen and mirrors nothing');
+  check(luma(await patch(cp, 'el-chalten', 0.2, 0.68, 2)) > 150, 'the frozen lake is white');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-winter.png') });
+  check(cpSeen.errors.length === 0 && cpSeen.off.length === 0, `no console errors or off-origin requests in the el-chalten run${cpSeen.errors.length ? `: ${cpSeen.errors.join(' | ')}` : ''}`);
+  await cp.close();
 
   // ---- Warsaw floodlit nocturne: pinned night and morning, pixels sampled ----
   const noct = await desk.newPage();
@@ -594,6 +701,7 @@ try {
   const hashes = await bp.evaluate(() => [window.__jar.hash(), window.__jar.blankHash()]);
   check(hashes[0] !== hashes[1], 'jar still draws');
   await bp.screenshot({ path: join(OUT, 'warsaw-no-weather.png') });
+  check(await bp.evaluate(() => window.__jar.labels['el-chalten'].length === 3), 'missing weather leaves the El Chaltén label at three lines');
   check(badSeen.off.length === 0, 'the degraded page stays on its own origin');
   await bp.evaluate(() => window.__jar.lift('warsaw'));
   await viewIs(bp, 'jar');
@@ -696,8 +804,8 @@ try {
   await pp.waitForFunction(() => Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).catch(() => {});
   await pp.evaluate(() => window.__jar.pin(Date.now()));
   await touch('touchStart', 350, 500);
-  for (let i = 1; i <= 6; i++) await touch('touchMove', 350 - i * 50, 500);
-  await touch('touchEnd', 50, 500);
+  for (let i = 1; i <= 4; i++) { await touch('touchMove', 350 - i * 30, 500); await pp.waitForTimeout(60); }
+  await touch('touchEnd', 230, 500);
   check(await pp.waitForFunction(() => window.__jar.index === 1 && Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).then(() => true, () => false), 'phone swipe reaches the second jar');
   const pn = await jarCentre(pp, 'nazare');
   await pp.touchscreen.tap(pn.x, pn.y);
@@ -727,6 +835,20 @@ try {
     await pn2.screenshot({ path: join(OUT, 'nazare-swell-card-phone.png') });
     check(pn2Seen.errors.length === 0 && pn2Seen.off.length === 0, 'no console errors on the phone nazare card');
     await pn2.close();
+  }
+  {
+    const pc = await phone.newPage();
+    const pcSeen = watch(pc, origin);
+    await routeWeather(pc);
+    await pc.goto(`${origin}/?jar=el-chalten`);
+    await ready(pc);
+    await labelIs(pc, 1, '8°', 'el-chalten');
+    await settled(pc);
+    const cv = await pc.evaluate(() => [window.__jar.forecast, document.getElementById('view').width, document.getElementById('view').height]);
+    check(!!cv[0] && cv[0].cells.length === 5 && inside(cv[0].rect, cv[1], cv[2]), 'phone el-chalten card fits');
+    await pc.screenshot({ path: join(OUT, 'phone', 'el-chalten-lifted.png') });
+    check(pcSeen.errors.length === 0 && pcSeen.off.length === 0, 'no console errors on the phone el-chalten link');
+    await pc.close();
   }
   await phone.close();
 
@@ -908,7 +1030,8 @@ try {
   // Only Warsaw's wind changes; Nazare keeps the answer it was served, so the
   // whole-canvas hash sees Warsaw's clouds alone.
   const cwNazare = JSON.parse(bodyOf(cloudyWind)).cities.nazare;
-  const eastBody = (speed, nazare = cwNazare) => ({ v: 1, cities: { warsaw: { temperature: 14, code: 3, cloudCover: 85, isDay: 1, windSpeed: speed, windDir: 90 }, nazare } });
+  const cwChalten = JSON.parse(bodyOf(cloudyWind)).cities['el-chalten'];
+  const eastBody = (speed, nazare = cwNazare, chalten = cwChalten) => ({ v: 1, cities: { warsaw: { temperature: 14, code: 3, cloudCover: 85, isDay: 1, windSpeed: speed, windDir: 90 }, nazare, 'el-chalten': chalten } });
   await pin(cw.pg, CT + CD);
   const wh1 = await jarHash(cw.pg);
   const wd1 = await readDrift(cw.pg);
@@ -920,7 +1043,7 @@ try {
   await pin(cw.pg, CT + 2 * CD);
   const wd3 = await readDrift(cw.pg);
   check(Math.abs(wd3 - wd2 - cloudDrift(12, 90, CD)) < 1e-7 && wd3 < wd2, 'the new reading sets the pace from then on');
-  await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(0, { ...cwNazare, windSpeed: 0 }));
+  await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(0, { ...cwNazare, windSpeed: 0 }, { ...cwChalten, windSpeed: 0, cloudCover: 0 }));
   // (Nazare calms too, so no wind anywhere asks the weather for a redraw.)
   const wd4 = await readDrift(cw.pg);
   await pin(cw.pg, CT + 3 * CD);

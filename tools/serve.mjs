@@ -103,8 +103,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   // storm or a fog can be seen on demand. Read once here from this process's
   // own environment; no request ever reaches it.
   // MARINE_FIXTURE=<path> likewise answers the sea call (the marine host), the
-  // weather fixture everything else. WEATHER_FIXTURE should be a two-element
-  // array to give Nazare a body too.
+  // weather fixture everything else. WEATHER_FIXTURE is one vendor body per
+  // place, in registry order, as an array, to give Nazare and El Chalten bodies too.
   let fetchImpl;
   if (process.env.WEATHER_FIXTURE || process.env.MARINE_FIXTURE) {
     const read = (p) => (p ? readFileSync(resolve(p), 'utf8') : null);

@@ -50,6 +50,19 @@ test('Nazare reads the swell (2.4 m · 12 s) as a fourth line; no reading, or no
   assert.equal(labelLines(warsaw, { temperature: 17, sea }, NOW).length, 3);
 });
 
+test('El Chalten reads the view of the peak as a fourth line; no reading keeps three', () => {
+  const chalten = findCity('el-chalten');
+  const at = (over) => ({ known: true, temperature: 8, code: 0, kind: 'clear', cloudCover: 20, windSpeed: 30, windDir: 225, ...over });
+  assert.equal(labelLines(chalten, at({}), NOW)[3], 'FITZ ROY · SMOKING');
+  assert.equal(labelLines(chalten, at({ windSpeed: 5, cloudCover: 10 }), NOW)[3], 'FITZ ROY · CLEAR');
+  assert.equal(labelLines(chalten, at({ cloudCover: 70, windSpeed: 5 }), NOW)[3], 'FITZ ROY · CAPPED');
+  assert.equal(labelLines(chalten, at({ cloudCover: 90 }), NOW)[3], 'FITZ ROY · HIDDEN');
+  assert.equal(labelLines(chalten, at({ kind: 'rain', code: 61, cloudCover: 40 }), NOW)[3], 'FITZ ROY · HIDDEN');
+  assert.equal(labelLines(chalten, EMPTY, NOW).length, 3);
+  assert.equal(labelLines(chalten, undefined, NOW).length, 3);
+  assert.equal(labelLines(chalten, at({}), NOW)[0], 'EL CHALTÉN, ARGENTINA');
+});
+
 test('a city with no country labels as the name alone', () => {
   assert.equal(labelLines({ title: 'Atlantis', location: { zone: 'UTC' } }, EMPTY, NOW)[0], 'ATLANTIS');
 });

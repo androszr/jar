@@ -151,7 +151,7 @@ function render(force = false) {
   const windy = weathers.some((w) => w.known && cloudAmount(w.cloudCover, w.kind) > 0.05 && cloudDrift(w.windSpeed, w.windDir, CLOUD_TICK_MS) !== 0);
   weatherCadence = animated ? 50 : windy ? CLOUD_TICK_MS : 0;
   // a scene may ask for a tick of its own (a rolling sea); the page ticks at the smallest
-  cityCadences = Object.fromEntries(CITIES.map((c, i) => [c.id, typeof c.cadenceMs === 'function' ? c.cadenceMs(weathers[i], { reduced: reduceMotion }) : 0]));
+  cityCadences = Object.fromEntries(CITIES.map((c, i) => [c.id, typeof c.cadenceMs === 'function' ? c.cadenceMs(weathers[i], { reduced: reduceMotion, nowMs: at[i] }) : 0]));
   const positive = [weatherCadence, ...Object.values(cityCadences)].filter((v) => v > 0);
   cadenceMs = positive.length ? Math.min(...positive) : 0;
   const minute = Math.floor(ms / 60000);
@@ -258,7 +258,7 @@ function syncAria() {
   const days = (sentence ? ` ${sentence}` : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '') + (tideText ? ` ${tideText}` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
-  const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : placeName(c);
+  const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, ${c.location.sea ? 'swell ' : ''}${l[3]}` : ''}` : placeName(c);
   let moonText = '';
   if (view === 'jar') {
     const at = scrubMin > 0 ? previewMs() : nowMs();

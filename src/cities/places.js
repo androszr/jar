@@ -6,6 +6,7 @@
 export const PLACES = [
   { id: 'warsaw', title: 'Warsaw', country: 'Poland', lat: 52.23, lon: 21.01, zone: 'Europe/Warsaw' },
   { id: 'nazare', title: 'Nazaré', country: 'Portugal', lat: 39.6, lon: -9.07, zone: 'Europe/Lisbon', sea: { lat: 39.62, lon: -9.12 } },
+  { id: 'el-chalten', title: 'El Chaltén', country: 'Argentina', lat: -49.33, lon: -72.89, zone: 'America/Argentina/Rio_Gallegos' },
 ];
 
 export const placeName = (p) => (p.country ? `${p.title}, ${p.country}` : p.title);
