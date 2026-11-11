@@ -106,3 +106,36 @@ test('the resting cards stay in the scene: row bottom above 1000, column within 
   const col = forecastPose(foot, false, 1).rect;
   assert.ok(col.y >= foot.y && col.y + col.h <= foot.y + foot.h);
 });
+
+// ---- room for the credit link ------------------------------------------------
+import { liftTarget, CREDIT_MARGIN } from '../src/lift.js';
+
+const screenTop = (t, ext, viewH) => viewH / 2 + (ext.y - t.cy) * t.scale;
+
+test('liftCamera without a credit box is the plain camera', () => {
+  const ext = liftExtent(jar, false);
+  const plain = liftCamera(1, jar, dview, ext);
+  const withNull = liftCamera(1, jar, { ...dview, credit: null, core: forecastExtent(jar, false) }, ext);
+  assert.deepEqual(withNull, plain);
+});
+
+test('a credit the lifted picture does not reach leaves the camera exactly where it was', () => {
+  const ext = liftExtent(jar, false);
+  const view = { ...dview, credit: { left: 1090, bottom: 31 }, core: forecastExtent(jar, false), bottomReserve: 66 };
+  const t = liftTarget(jar, { ...view, credit: { left: view.viewW + 100, bottom: 31 } }, ext);
+  assert.deepEqual(t, liftTarget(jar, dview, ext));
+});
+
+test('a credit the picture would reach pushes it below the credit and above the slider row', () => {
+  for (const [viewW, viewH, portrait] of [[1024, 768, false], [667, 375, false], [375, 667, true]]) {
+    const ext = liftExtent(jar, portrait);
+    const core = forecastExtent(jar, portrait);
+    const credit = { left: viewW - 194, bottom: 31 };
+    const view = { cx: 800, cy: 500, scale: 0.5, viewW, viewH, credit, core, bottomReserve: 66 };
+    const t = liftTarget(jar, view, ext);
+    assert.ok(screenTop(t, core, viewH) >= credit.bottom + CREDIT_MARGIN - 1e-6, `${viewW}x${viewH} top clears the credit`);
+    assert.ok(screenTop(t, core, viewH) + core.h * t.scale <= viewH - 66 + 1e-6, `${viewW}x${viewH} bottom clears the slider row`);
+    assert.ok(t.scale <= liftTarget(jar, { ...view, credit: null }, ext).scale + 1e-9, 'never larger than the plain camera');
+    assert.equal(liftCamera(0, jar, view, ext).scale, view.scale);
+  }
+});

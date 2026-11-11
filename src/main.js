@@ -8,8 +8,8 @@ import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
 import { Shelf, shelfMetrics, frameDt } from './shelf.js';
 import { fitScreen, SCENE } from './framing.js';
-import { Lift, liftCamera, pressLowers } from './lift.js';
-import { forecastPose, liftExtent } from './forecast.js';
+import { Lift, liftCamera, pressLowers, CREDIT_MARGIN } from './lift.js';
+import { forecastPose, forecastExtent, liftExtent } from './forecast.js';
 import { offsetText, previewWeather, clampScrub } from './scrub.js';
 import { ScrubBar } from './scrubbar.js';
 import { formatTemp, forecastCells, forecastSentence, sunTimesFor, tidesFor, tideSentence, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
@@ -78,9 +78,16 @@ function viewerAt(ms) {
   return placeGuess(Intl.DateTimeFormat().resolvedOptions().timeZone, new Date(ms).getTimezoneOffset());
 }
 
+// The Open-Meteo credit link's left and bottom edges in CSS px (measured when the screen is fitted),
+// and the slider row's height plus its inset from the foot: the lifted picture keeps clear of both.
+let creditBox = null;
+const SCRUB_ROW = 58;
+
 function fit() {
   W = Math.max(1, window.innerWidth);
   H = Math.max(1, window.innerHeight);
+  const cr = document.getElementById('credit')?.getBoundingClientRect();
+  creditBox = cr && cr.width > 0 ? { left: cr.left, bottom: cr.bottom } : null;
   dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
@@ -127,7 +134,8 @@ function currentCam(t) {
   const e = lift.progress(t);
   if (e > 0) {
     const jar = shelf.jarRect(focus);
-    return liftCamera(e, jar, { cx: c0.cx, cy: c0.cy, scale: c0.scale, viewH: H, viewW: W }, liftExtent(jar, c0.portrait));
+    const dview = { cx: c0.cx, cy: c0.cy, scale: c0.scale, viewH: H, viewW: W, credit: creditBox, core: forecastExtent(jar, c0.portrait), bottomReserve: SCRUB_ROW + CREDIT_MARGIN };
+    return liftCamera(e, jar, dview, liftExtent(jar, c0.portrait));
   }
   return { cx: c0.cx, cy: c0.cy, scale: c0.scale };
 }
@@ -511,6 +519,13 @@ window.__jar = {
   foot(id) {
     const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));
     return this.toCanvas(r.x + r.w / 2, r.y + r.h);
+  },
+  // The rect of jar `id` in canvas px, like forecast.rect (test surface only).
+  jarBox(id) {
+    const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));
+    const a = this.toCanvas(r.x, r.y);
+    const b = this.toCanvas(r.x + r.w, r.y + r.h);
+    return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
   },
   // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT } in canvas px.
   get forecast() {

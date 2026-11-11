@@ -84,7 +84,7 @@ are no runtime libraries; everything is drawn in code. One small Vercel Node
 function (`api/weather.js`) fetches the weather for every city from Open-Meteo,
 and the wave height for any city by the sea from Open-Meteo's marine service, in
 parallel. Neither needs a key, and a failed marine answer never fails the
-weather: the wave just falls back to two metres.
+weather: the wave just falls back to two metres. The data is Open-Meteo's, published under CC BY 4.0 as a free API for non-commercial use, which is why the page carries a small "Weather data by Open-Meteo" credit.
 
 ```mermaid
 flowchart LR
