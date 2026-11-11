@@ -84,6 +84,10 @@ export const WARSAW = {
   reflectVarso: [120, 214, 255],
   reflectSpire: [235, 245, 255],
   reflectZlota: [255, 230, 190],
+  reflectDayPalace: [240, 214, 166],
+  reflectDayVarso: [200, 212, 226],
+  reflectDayZlota: [210, 220, 232],
+  reflectDaySpire: [214, 224, 236],
   // the quay, the plinth and the Mermaid
   quayDay: [56, 66, 84],
   quayNight: [30, 26, 40],

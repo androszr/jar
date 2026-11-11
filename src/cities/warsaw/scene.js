@@ -571,6 +571,20 @@ function drawIce(ctx, L, night, floes) {
   ctx.restore();
 }
 
+// Short horizontal slivers down the river under a tower, jittered sideways by
+// the phase; the caller scales `a` by the daylight or the darkness.
+function reflection(ctx, L, phase, x, wid, c, a, seed, spread = 0.6) {
+  const top = L.river.top;
+  const n = Math.max(1, Math.floor((L.river.bottom - top - 4) / (3 * L.sy)));
+  for (let i = 0; i < n; i++) {
+    const y = top + 2 + i * 3 * L.sy;
+    const j = (hash2(seed, i) - 0.5) * wid * spread + osc(phase, 8, i * 0.2) * 2;
+    const bw = wid * (0.5 + 0.5 * hash2(seed + 1, i));
+    ctx.fillStyle = css(c, a * (1 - i / (n + 3)));
+    ctx.fillRect(x - bw / 2 + j, y, bw, 3 * L.sy);
+  }
+}
+
 export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = false) {
   const L = layout(rect.w, rect.h, rect.x, rect.y);
   const night = nightAmount(tint.light);
@@ -597,22 +611,21 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
     ctx.lineTo(L.ox + L.w * (0.3 + 0.4 * hash2(i, 42)) + shift, ry);
     ctx.stroke();
   }
+  // by day, faint wavy reflections of the Palace and the glass towers, handing over to the night set as the light goes
+  const day = 1 - night;
+  if (day > 0) {
+    const dim = wet ? 0.5 : 1;
+    reflection(ctx, L, phase, L.X(TOWER.pkin.x), 44 * L.sx, WARSAW.reflectDayPalace, 0.42 * day * dim, 60, 0.4);
+    reflection(ctx, L, phase, L.X(TOWER.varso.x), 17 * L.sx, WARSAW.reflectDayVarso, 0.32 * day * dim, 70, 0.4);
+    reflection(ctx, L, phase, L.X(TOWER.zlota.x), 24 * L.sx, WARSAW.reflectDayZlota, 0.28 * day * dim, 80, 0.4);
+    reflection(ctx, L, phase, L.X(TOWER.spire.x) + 6 * L.sx, 20 * L.sx, WARSAW.reflectDaySpire, 0.3 * day * dim, 90, 0.4);
+  }
   // at night, one long shimmering reflection under each lit tower, in its colour
   if (night > 0) {
-    const reflect = (x, wid, c, a, seed) => {
-      const n = Math.max(1, Math.floor((bottom - top - 4) / (3 * L.sy)));
-      for (let i = 0; i < n; i++) {
-        const y = top + 2 + i * 3 * L.sy;
-        const j = (hash2(seed, i) - 0.5) * wid * 0.6 + osc(phase, 8, i * 0.2) * 2;
-        const bw = wid * (0.5 + 0.5 * hash2(seed + 1, i));
-        ctx.fillStyle = css(c, a * night * (1 - i / (n + 3)));
-        ctx.fillRect(x - bw / 2 + j, y, bw, 3 * L.sy);
-      }
-    };
-    reflect(L.X(TOWER.pkin.x), 40 * L.sx, flagDay(nowMs) ? WARSAW.flagRed : WARSAW.reflectPalace, 0.85, 20);
-    reflect(L.X(TOWER.varso.x), 12 * L.sx, WARSAW.reflectVarso, 0.75, 30);
-    reflect(L.X(TOWER.spire.x) + 6 * L.sx, 8 * L.sx, WARSAW.reflectSpire, 0.6, 40);
-    reflect(L.X(TOWER.zlota.x), 10 * L.sx, WARSAW.reflectZlota, 0.45, 50);
+    reflection(ctx, L, phase, L.X(TOWER.pkin.x), 40 * L.sx, flagDay(nowMs) ? WARSAW.flagRed : WARSAW.reflectPalace, 0.85 * night, 20);
+    reflection(ctx, L, phase, L.X(TOWER.varso.x), 12 * L.sx, WARSAW.reflectVarso, 0.75 * night, 30);
+    reflection(ctx, L, phase, L.X(TOWER.spire.x) + 6 * L.sx, 8 * L.sx, WARSAW.reflectSpire, 0.6 * night, 40);
+    reflection(ctx, L, phase, L.X(TOWER.zlota.x), 10 * L.sx, WARSAW.reflectZlota, 0.45 * night, 50);
   }
   if (ice > 0) drawIce(ctx, L, night, iceFloes(L, nowMs, ice, reduced));
   drawBoulevard(ctx, L, tint, night, weather);
