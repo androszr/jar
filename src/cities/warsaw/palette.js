@@ -73,6 +73,8 @@ export const WARSAW = {
   deckNight: [26, 24, 34],
   deckLamp: [255, 214, 140],
   pylonLight: [255, 50, 40],
+  headlight: [255, 248, 226],
+  taillight: [255, 64, 52],
   // the river and what it reflects
   riverDay: [70, 98, 132],
   riverNight: [30, 30, 60],

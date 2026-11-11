@@ -5,7 +5,7 @@ import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, PALACE, RIM_DX, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, sunSide, drawMermaid, drawSkyline, flagDay,
 } from '../src/cities/warsaw/scene.js';
-import { BRIDGE, deckY, drawBridge } from '../src/cities/warsaw/bridge.js';
+import { BRIDGE, TRAFFIC, deckY, drawBridge, trafficLights } from '../src/cities/warsaw/bridge.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
 import { hash2 } from '../src/skyweather.js';
 import { EMPTY } from '../src/weather.js';
@@ -282,6 +282,56 @@ test('the bridge lights its pylon and deck at night only, and never touches Math
   assert.ok(startsWith(draw(PHASE.night).fills, light).length > 0);
   assert.equal(startsWith(draw(PHASE.noon).fills, light).length, 0);
   noRandom(() => drawBridge(recordingCtx(), rect, PHASE.noon, tint(sample(PHASE.noon)), { ...EMPTY, kind: 'snow' }));
+});
+
+test('traffic lights are a pure function of the clock, move the right way and stay on the deck', () => {
+  const L = layout(340, 396);
+  const lo = L.X(BRIDGE.x0);
+  const hi = L.X(1);
+  const at = (t, reduced) => noRandom(() => trafficLights(L, t, reduced));
+  const a = at(0);
+  assert.deepEqual(a, at(0));
+  assert.deepEqual(a, noRandom(() => trafficLights(L, 0)), 'reduced defaults to false');
+  assert.equal(a.length, 2 * TRAFFIC.count);
+  const b = at(1000);
+  a.forEach((l, i) => {
+    assert.equal(b[i].dir, l.dir);
+    const d = b[i].x - l.x;
+    const wrapped = Math.abs(d) > (hi - lo) / 2;
+    assert.ok(wrapped || d * l.dir > 0, `light ${i} moves ${l.dir > 0 ? 'right' : 'left'}`);
+  });
+  for (const t of [0, 1000, 123456, 9e6]) {
+    for (const l of at(t)) {
+      assert.ok(l.x >= lo && l.x <= hi, `x ${l.x} within the deck`);
+      const top = deckY(L, l.x);
+      assert.ok(l.y >= top && l.y <= top + 4 * L.sy, 'y within the deck thickness');
+    }
+  }
+  const slow = at(1000, true);
+  a.forEach((l, i) => {
+    if (Math.abs(b[i].x - l.x) > (hi - lo) / 2) return; // wrapped
+    assert.ok(Math.abs(slow[i].x - l.x) < Math.abs(b[i].x - l.x), 'reduced motion moves less far');
+  });
+});
+
+test('traffic lights show on the bridge at night only and the clock is wired through paint', () => {
+  const draw = (phase, nowMs) => {
+    const ctx = recordingCtx();
+    noRandom(() => drawBridge(ctx, rect, phase, tint(sample(phase)), EMPTY, nowMs));
+    return ctx;
+  };
+  for (const c of [WARSAW.headlight, WARSAW.taillight]) {
+    assert.ok(startsWith(draw(PHASE.night, 123456).fills, rgbaOf(c)).length > 0);
+    assert.equal(startsWith(draw(PHASE.noon, 123456).fills, rgbaOf(c)).length, 0);
+  }
+  const xs = (nowMs) => {
+    const ctx = recordingCtx();
+    noRandom(() => warsaw.paint(ctx, rect, PHASE.night, tint(sample(PHASE.night)), EMPTY, buildPlates(340, 396), nowMs));
+    return ctx.calls.filter(([m, , f]) => m === 'fillRect' && typeof f === 'string' && f.startsWith(rgbaOf(WARSAW.headlight))).map(([, a]) => a[0]);
+  };
+  const x0 = xs(0);
+  assert.ok(x0.length > 0);
+  assert.notDeepEqual(x0, xs(5000));
 });
 
 test('the Mermaid is outlined on both sides at night, inside the limits', () => {

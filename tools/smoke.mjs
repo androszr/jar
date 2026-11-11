@@ -484,6 +484,24 @@ try {
   check(some(await patch(noct, 'warsaw', 0.4, 0.665, 3), warm), 'the Palace reflects in the river above the label');
   check(some(await patch(noct, 'warsaw', 0.235, 0.665, 3), bluish), 'Varso reflects in the river');
   check(some(await patch(noct, 'warsaw', 0.8, 0.296, 3), red), 'red light on the bridge pylon');
+  // the deck's top edge in body shares, mirroring deckY in src/cities/warsaw/bridge.js
+  const deckShare = (x) => {
+    const y0 = 0.64 - 2 / 396;
+    const y1 = 0.702;
+    const t = (x - 0.3) / 0.7;
+    return y0 + (y1 - y0) * t - (Math.sin(t * Math.PI) * 4) / 396;
+  };
+  // stops short of the right glass streak (0.945-0.975), which is white by day too
+  // every pixel along both traffic lanes (the lights are 1.6 px tall, lanes 0.6 and 2.2 px below the top edge)
+  const deckScan = async (page) => {
+    const rows = [];
+    for (let x = 0.33; x <= 0.93; x += 0.01) rows.push(...(await patch(page, 'warsaw', x, deckShare(x) + 1.4 / 396, 2)));
+    return rows;
+  };
+  // the headlight is (255, 248, 226): warm, so pure white (a streak or a glint, b = 255) and cool near-whites (b > g) do not match
+  const headlight = (r, g, b) => r >= 240 && g >= 235 && g <= 252 && b >= 200 && b <= 240 && b < g - 8;
+  const nightDeck = await deckScan(noct);
+  check(some(nightDeck, headlight) && some(nightDeck, red), 'headlights and tail lights run along the bridge deck at night');
   check(some(await patch(noct, 'warsaw', 0.156, 0.596, 3), rim), 'the Mermaid stands rim-lit on the far quay');
   check(some(await patch(noct, 'warsaw', 0.141, 0.596, 3), rim), 'the Mermaid is outlined on her left too');
   check(all(await patch(noct, 'warsaw', 0.12, 0.675, 1), (r, g, b) => b >= r + 15 && b >= 40), 'the river is blue water at night, unlike the wall below it');
@@ -499,6 +517,8 @@ try {
   check(!!fd && !!fd.sun && Math.abs(fd.sunT - 0.327) < 0.01, 'forecast card sun arc puts the dot a third of the way at 10:30 in Warsaw');
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 30), 'Palace is warm sandstone by day');
   check(!some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'no aviation light by day');
+  const dayDeck = await deckScan(noct);
+  check(!some(dayDeck, headlight) && !some(dayDeck, red), 'no traffic lights on the deck by day');
   const sunFace = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
   const shadeFace = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
   check(sunFace - shadeFace >= 20, `the Palace's sun side is brighter than its shade side in the morning (${sunFace} vs ${shadeFace})`);
