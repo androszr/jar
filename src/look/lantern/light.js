@@ -153,6 +153,11 @@ export function reflection(ctx, cx, y, w, h, colour, alpha) {
   g.addColorStop(0, css(colour, alpha));
   g.addColorStop(1, css(colour, 0));
   ctx.fillStyle = g;
-  ctx.fillRect(cx - w / 2, y, w, h);
+  // laid in upright strips that fade to nothing at both sides, so the light has no box edge
+  const n = 24;
+  for (let i = 0; i < n; i++) {
+    ctx.globalAlpha = Math.sin((Math.PI * (i + 0.5)) / n) ** 2;
+    ctx.fillRect(cx - w / 2 + (i * w) / n, y, w / n, h);
+  }
   ctx.restore();
 }

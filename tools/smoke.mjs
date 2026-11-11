@@ -150,7 +150,7 @@ async function creditClear(page, label) {
     let card = null;
     if (window.__jar.view === 'jar') {
       const d = window.__jar.dpr;
-      const id = ['warsaw', 'nazare'][window.__jar.index];
+      const id = ['warsaw', 'nazare', 'el-chalten'][window.__jar.index];
       const j = window.__jar.jarBox(id);
       jar = { x: j.x / d, y: j.y / d, w: j.w / d, h: j.h / d };
       const c = window.__jar.forecast.rect;
@@ -325,10 +325,10 @@ try {
   const top = lumaOf(await rgbAt(page, 1380, 930, 0));
   const face = lumaOf(await rgbAt(page, 1380, 965, 0));
   check(lip > face + 6 && lip > top + 6, 'the table front has a lit lip over a darker face');
-  // x 1275 is bare board between two vessels; the strip is scene y 418..420, one canvas px row
-  const board = lumaOf(await rgbAt(page, 1275, 419, 0));
-  const below = lumaOf(await rgbAt(page, 1275, 421, 0));
-  check(board > below + 12, 'the shelf board has a lit top edge');
+  // x 1492 is bare board right of the last vessel and clear of the third jar (1080..1420); the strip is scene y 418..420, one canvas px row
+  const board = lumaOf(await rgbAt(page, 1492, 419, 0));
+  const below = lumaOf(await rgbAt(page, 1492, 421, 0));
+  check(board > below + 12, `the shelf board has a lit top edge (${board.toFixed(0)} over ${below.toFixed(0)})`);
   const n1 = await jarHash(page);
   await pinAt(page, hours.darkest.t);
   check(n1 === (await jarHash(page)), 'the lamplit night draws the same pixels');
@@ -968,8 +968,9 @@ try {
     await ready(pw);
     await pinAt(pw, hours.darkest.t);
     const pcx = await pw.evaluate(() => window.__jar.framing.cx);
-    const pwall = await rgbAt(pw, pcx, 160);
-    check(pwall.r - pwall.b >= 8, 'the phone sees the warm wall too');
+    // y 60 is plank wall above the window (120..480): with three jars the first one stands in front of the pane
+    const pwall = await rgbAt(pw, pcx, 60);
+    check(pwall.r - pwall.b >= 8, `the phone sees the warm wall too (red over blue ${(pwall.r - pwall.b).toFixed(0)})`);
     await pw.close();
   }
   {

@@ -87,12 +87,20 @@ function viewerAt(ms) {
 // and the slider row's height plus its inset from the foot: the lifted picture keeps clear of both.
 let creditBox = null;
 const SCRUB_ROW = 58;
+let scrubReserve = SCRUB_ROW; // grows to the row's measured reach from the foot (a phone's bottom inset)
+function measureScrub() {
+  const row = document.getElementById('scrubrow');
+  const reach = row && !row.hidden ? H - row.getBoundingClientRect().top : 0;
+  const next = Math.max(SCRUB_ROW, Math.ceil(reach));
+  if (next !== scrubReserve) { scrubReserve = next; lastKey = ''; }
+}
 
 function fit() {
   W = Math.max(1, window.innerWidth);
   H = Math.max(1, window.innerHeight);
   const cr = document.getElementById('credit')?.getBoundingClientRect();
   creditBox = cr && cr.width > 0 ? { left: cr.left, bottom: cr.bottom } : null;
+  measureScrub();
   dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
@@ -139,7 +147,7 @@ function currentCam(t) {
   const e = lift.progress(t);
   if (e > 0) {
     const jar = shelf.jarRect(focus);
-    const dview = { cx: c0.cx, cy: c0.cy, scale: c0.scale, viewH: H, viewW: W, credit: creditBox, core: forecastExtent(jar, c0.portrait), bottomReserve: SCRUB_ROW + CREDIT_MARGIN };
+    const dview = { cx: c0.cx, cy: c0.cy, scale: c0.scale, viewH: H, viewW: W, credit: creditBox, core: forecastExtent(jar, c0.portrait), bottomReserve: scrubReserve + CREDIT_MARGIN };
     return liftCamera(e, jar, dview, liftExtent(jar, c0.portrait));
   }
   return { cx: c0.cx, cy: c0.cy, scale: c0.scale };
@@ -264,6 +272,7 @@ function syncChrome() {
   const showNav = !lifted && CITIES.length > 1;
   if (navEl.hidden === showNav) navEl.hidden = !showNav;
   if (scrubRow.hidden === lifted) scrub.show(lifted);
+  if (lifted) measureScrub();
 }
 
 // The label is only canvas pixels, so the canvas's accessible name carries it.

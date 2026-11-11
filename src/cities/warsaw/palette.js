@@ -62,7 +62,7 @@ export const WARSAW = {
   boulevardNight: [46, 42, 52],
   quayLamp: [255, 214, 140],
   // the near (Praga) bank: forest only, its canopy following Warsaw's seasons
-  // (each season a range the canopy drifts through along the bank; summer is the original green)
+  // (each season a range the canopy drifts through along the bank; summer drifts around the original green)
   canopy: {
     spring: [[110, 166, 78], [150, 196, 100]],
     summer: [[52, 84, 56], [64, 98, 62]],
