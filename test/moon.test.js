@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { moonAgeMs, moonPhase, moonGlow, SYNODIC_MS, REFERENCE_NEW_MOON_MS } from '../src/moon.js';
 import { moonDisc, css, PALETTE, tint } from '../src/look/index.js';
-import { drawWindowSky } from '../src/shed.js';
+import { drawWindowSky, WINDOW } from '../src/shed.js';
 import { drawJarSky } from '../src/skyweather.js';
 import { sample } from '../src/clock.js';
 
@@ -130,4 +130,22 @@ test('the jar sky reports the moon it drew', () => {
   assert.equal(sky(0.92, T_DARK).moon.name, 'new');
   assert.equal(sky(0.4, T_FULL).moon, null);
   assert.ok(full.x >= 0 && full.x <= 1 && full.y >= 0 && full.y <= 1);
+});
+
+test('the window moon keeps clear of the curtain', () => {
+  const phases = [];
+  for (let p = 0.7; p <= 1.0001; p += 0.005) phases.push(p % 1);
+  for (let p = 0; p <= 0.3001; p += 0.005) phases.push(p);
+  let seen = 0;
+  for (const phase of phases) {
+    const ctx = recordingCtx();
+    drawWindowSky(ctx, tint(sample(phase)), phase, T_FULL);
+    for (const [, [x, , r]] of arcs(ctx)) {
+      if (r !== 14) continue;
+      seen++;
+      assert.ok(x >= WINDOW.x + 0.32 * WINDOW.w - 1e-9, `moon x ${x} at ${phase}`);
+      assert.ok(x - 14 >= 306 + 8 - 1e-9, `moon edge ${x - 14} at ${phase}`);
+    }
+  }
+  assert.ok(seen > 0, 'the moon was drawn at least once');
 });

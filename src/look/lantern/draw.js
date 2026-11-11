@@ -237,3 +237,160 @@ export function moonDisc(ctx, x, y, r, moon, alpha = 1) {
   ctx.closePath();
   ctx.fill();
 }
+
+// The table top: a gradient that brightens with the room's light.
+export function tableBoards(ctx, x, y, w, h, lit) {
+  const top = ctx.createLinearGradient(0, y, 0, y + h);
+  top.addColorStop(0, css(mix(PALETTE.tableEdge, PALETTE.tableTop, 0.4 + lit * 0.4)));
+  top.addColorStop(1, css(PALETTE.tableTop));
+  ctx.fillStyle = top;
+  ctx.fillRect(x, y, w, h);
+}
+
+// The table's front face, darkening downward, under a thin lit lip.
+export function tableFront(ctx, x, y, w, h) {
+  const face = ctx.createLinearGradient(0, y, 0, y + h);
+  face.addColorStop(0, css(PALETTE.tableEdge));
+  face.addColorStop(1, css(mix(PALETTE.tableEdge, PALETTE.shadow, 0.45)));
+  ctx.fillStyle = face;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = css(mix(PALETTE.tableTop, PALETTE.lamp, 0.35), 0.5);
+  ctx.fillRect(x, y - 2, w, 3);
+}
+
+// A linen curtain gathered at the window's left, hung from a thin rod, in
+// soft folds with a scalloped hem. `win` is the pane, `frame` the frame width.
+export function curtain(ctx, win, frame, lit) {
+  const cTop = win.y - frame - 10;
+  const cBot = win.y + win.h + frame + 34;
+  const cx0 = win.x - frame - 30;
+  const cw = 150;
+  const n = 6;
+  const linen = mix(PALETTE.linenDark, PALETTE.linenLight, 0.22 + 0.6 * lit);
+  ctx.save();
+  ctx.fillStyle = css(mix(PALETTE.frame, PALETTE.brass, 0.35));
+  ctx.beginPath();
+  ctx.roundRect(cx0 - 14, cTop - 8, win.w + 2 * frame + 84, 6, 3);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx0, cTop);
+  ctx.lineTo(cx0 + cw, cTop);
+  ctx.bezierCurveTo(cx0 + cw + 8, cTop + 160, cx0 + cw - 16, cBot - 140, cx0 + cw - 4, cBot - 6);
+  for (let k = 0; k < n; k++) {
+    const xa = cx0 + cw - 4 - ((k + 0.5) * (cw - 4)) / n;
+    const xb = cx0 + cw - 4 - ((k + 1) * (cw - 4)) / n;
+    ctx.quadraticCurveTo(xa, cBot + 9, xb, cBot - 6 + (k % 2 ? 4 : 0));
+  }
+  ctx.closePath();
+  ctx.clip();
+  ctx.fillStyle = css(linen, 0.96);
+  ctx.fillRect(cx0 - 6, cTop, cw + 24, cBot - cTop + 14);
+  for (let k = 0; k < n; k++) {
+    const fx = cx0 + (k * cw) / n;
+    const fw = cw / n + 3;
+    const fg = ctx.createLinearGradient(fx, 0, fx + fw, 0);
+    fg.addColorStop(0, css(PALETTE.shadow, 0.26));
+    fg.addColorStop(0.5, css(PALETTE.linenGlint, 0.09));
+    fg.addColorStop(1, css(PALETTE.shadow, 0.04));
+    ctx.fillStyle = fg;
+    ctx.fillRect(fx, cTop, fw, cBot - cTop + 14);
+  }
+  const hg = ctx.createLinearGradient(0, cTop, 0, cTop + 26);
+  hg.addColorStop(0, css(PALETTE.shadow, 0.3));
+  hg.addColorStop(1, css(PALETTE.shadow, 0));
+  ctx.fillStyle = hg;
+  ctx.fillRect(cx0 - 6, cTop, cw + 24, 26);
+  ctx.restore();
+}
+
+// The back shelf's vessels as [x, width, height, kind]: 0 flowerpot, 1 jug, 2 crock.
+export const SHELF_VESSELS = [[1004, 62, 58, 0], [1096, 74, 84, 1], [1204, 56, 50, 0], [1290, 66, 70, 2], [1392, 70, 60, 0]];
+
+// The back shelf: a rounded board on two curved brackets with a shadow on
+// the wall behind it, holding five drawn vessels. Fixed numbers, no hash.
+export function backShelf(ctx, lit) {
+  ctx.save();
+  const ws = ctx.createLinearGradient(0, 432, 0, 474);
+  ws.addColorStop(0, css(PALETTE.shadow, 0.32));
+  ws.addColorStop(1, css(PALETTE.shadow, 0));
+  ctx.fillStyle = ws;
+  ctx.fillRect(976, 432, 528, 42);
+  ctx.strokeStyle = css(mix(PALETTE.tableEdge, PALETTE.shadow, 0.25));
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  [1050, 1430].forEach((bx) => {
+    ctx.beginPath();
+    ctx.moveTo(bx, 434);
+    ctx.lineTo(bx, 476);
+    ctx.moveTo(bx, 472);
+    ctx.quadraticCurveTo(bx + 30, 466, bx + 34, 436);
+    ctx.stroke();
+  });
+  SHELF_VESSELS.forEach(([px, pw, ph, kind]) => {
+    const by = 420;
+    const cxp = px + pw / 2;
+    ctx.save();
+    ctx.translate(cxp + 6, by);
+    ctx.scale(1, 0.12);
+    const sg = ctx.createRadialGradient(0, 0, 4, 0, 0, pw * 0.75);
+    sg.addColorStop(0, css(PALETTE.shadow, 0.45));
+    sg.addColorStop(1, css(PALETTE.shadow, 0));
+    ctx.fillStyle = sg;
+    ctx.fillRect(-pw, -pw, pw * 2, pw * 2);
+    ctx.restore();
+    const pg = ctx.createLinearGradient(px, 0, px + pw, 0);
+    pg.addColorStop(0, css(mix(PALETTE.pot, PALETTE.lamp, 0.16 + 0.12 * lit)));
+    pg.addColorStop(0.45, css(PALETTE.pot));
+    pg.addColorStop(1, css(mix(PALETTE.pot, PALETTE.shadow, 0.42)));
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    if (kind === 1) {
+      ctx.moveTo(px + 10, by);
+      ctx.bezierCurveTo(px - 12, by - ph * 0.35, px - 2, by - ph * 0.78, cxp - 12, by - ph * 0.86);
+      ctx.lineTo(cxp - 12, by - ph);
+      ctx.lineTo(cxp + 12, by - ph);
+      ctx.lineTo(cxp + 12, by - ph * 0.86);
+      ctx.bezierCurveTo(px + pw + 2, by - ph * 0.78, px + pw + 12, by - ph * 0.35, px + pw - 10, by);
+    } else if (kind === 2) {
+      ctx.moveTo(px + 6, by);
+      ctx.quadraticCurveTo(px - 2, by - ph * 0.5, px + 6, by - ph);
+      ctx.lineTo(px + pw - 6, by - ph);
+      ctx.quadraticCurveTo(px + pw + 2, by - ph * 0.5, px + pw - 6, by);
+    } else {
+      ctx.moveTo(px + 9, by);
+      ctx.quadraticCurveTo(px + 4, by - ph * 0.5, px + 1, by - ph);
+      ctx.lineTo(px + pw - 1, by - ph);
+      ctx.quadraticCurveTo(px + pw - 4, by - ph * 0.5, px + pw - 9, by);
+    }
+    ctx.closePath();
+    ctx.fill();
+    if (kind !== 1) {
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.roundRect(px - 3, by - ph - 5, pw + 6, 12, 5);
+      ctx.fill();
+      ctx.fillStyle = css(mix(PALETTE.pot, PALETTE.lamp, 0.2), 0.7);
+      ctx.beginPath();
+      ctx.roundRect(px - 1, by - ph - 4, pw * 0.55, 2, 1);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = css(mix(PALETTE.pot, PALETTE.shadow, 0.2));
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(px + pw + 2, by - ph * 0.62, 14, -1.2, 1.3);
+      ctx.stroke();
+    }
+  });
+  const bg = ctx.createLinearGradient(0, 418, 0, 434);
+  bg.addColorStop(0, css(mix(PALETTE.tableTop, PALETTE.tableEdge, 0.25)));
+  bg.addColorStop(1, css(mix(PALETTE.tableEdge, PALETTE.shadow, 0.3)));
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.roundRect(972, 418, 536, 16, 5);
+  ctx.fill();
+  ctx.fillStyle = css(mix(PALETTE.tableTop, PALETTE.lamp, 0.3), 0.45);
+  ctx.beginPath();
+  ctx.roundRect(976, 418, 528, 2, 1);
+  ctx.fill();
+  ctx.restore();
+}
