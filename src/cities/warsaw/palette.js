@@ -15,6 +15,7 @@ export const WARSAW = {
   crownTop: [150, 230, 255],
   crownBase: [60, 160, 230],
   crownGlow: [110, 210, 255],
+  mastLit: [170, 205, 245], // the needle's own faint light at night
   aviation: [255, 70, 60],
   aviationGlow: [255, 60, 50],
   // the Spire's edge, Zlota's sail, the supporting towers' floors

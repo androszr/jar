@@ -74,6 +74,9 @@ export const MERMAID = { x: 0.15, base: 0.626, u: 0.055, plinth: { hw: 0.016, to
 // The two rim passes of the Mermaid at night, as px offsets (right, then left).
 export const RIM_DX = [1.2, -1.2];
 
+// Soft points of light along Varso's lit needle at night.
+export const MAST_GLOWS = 4;
+
 export const STREAK_CLEAR = [[0.02, 0.065], [0.945, 0.975]];
 
 export const nightAmount = (light) => clamp((LAMP_THRESHOLD + 0.1 - light) / 0.3);
@@ -356,6 +359,16 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
     ctx.fillRect(L.ox, L.Y(vs.crown), L.w, (vs.crown - vs.roof) * L.h + 6 * L.sy);
     ctx.restore();
     glow(ctx, cx('varso'), L.gy - 166 * L.sy, 26 * L.sx, WARSAW.crownGlow, 0.5 * night);
+    // the needle's own faint light, drawn before the red dot so the dot stays unmixed
+    ctx.strokeStyle = css(WARSAW.mastLit, 0.55 * night);
+    ctx.lineWidth = 1.6 * L.sx;
+    ctx.beginPath();
+    ctx.moveTo(cx('varso'), L.Y(vs.crown));
+    ctx.lineTo(cx('varso'), L.Y(vs.top) + 3 * L.sy);
+    ctx.stroke();
+    for (let k = 0; k < MAST_GLOWS; k++) {
+      glow(ctx, cx('varso'), L.Y(vs.crown) + (L.Y(vs.top) - L.Y(vs.crown)) * ((k + 0.5) / MAST_GLOWS), 5 * L.sx, WARSAW.crownGlow, 0.3 * night);
+    }
     ctx.fillStyle = css(WARSAW.aviation, night);
     ctx.beginPath();
     ctx.arc(cx('varso'), L.Y(vs.top), 2 * L.sx, 0, Math.PI * 2);

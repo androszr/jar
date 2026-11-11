@@ -481,6 +481,9 @@ try {
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), gold), 'Palace glows gold at night');
   check(some(await patch(noct, 'warsaw', 0.235, 0.17, 2), blue), 'Varso crown glows blue');
   check(some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'red aviation light at the needle tip');
+  const needle = luma(await patch(noct, 'warsaw', 0.235, 0.085, 1));
+  const besideNeedle = luma(await patch(noct, 'warsaw', 0.275, 0.085, 1));
+  check(needle > besideNeedle + 15, `Varso's needle is lit at night (${needle} vs ${besideNeedle})`);
   check(some(await patch(noct, 'warsaw', 0.4, 0.665, 3), warm), 'the Palace reflects in the river above the label');
   check(some(await patch(noct, 'warsaw', 0.235, 0.665, 3), bluish), 'Varso reflects in the river');
   check(some(await patch(noct, 'warsaw', 0.8, 0.296, 3), red), 'red light on the bridge pylon');
@@ -519,6 +522,9 @@ try {
   check(!some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'no aviation light by day');
   const dayDeck = await deckScan(noct);
   check(!some(dayDeck, headlight) && !some(dayDeck, red), 'no traffic lights on the deck by day');
+  const dayNeedle = luma(await patch(noct, 'warsaw', 0.235, 0.085, 1));
+  const dayBeside = luma(await patch(noct, 'warsaw', 0.275, 0.085, 1));
+  check(!(dayNeedle > dayBeside + 15), `no lit needle by day (${dayNeedle} vs ${dayBeside})`);
   const sunFace = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
   const shadeFace = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
   check(sunFace - shadeFace >= 20, `the Palace's sun side is brighter than its shade side in the morning (${sunFace} vs ${shadeFace})`);
