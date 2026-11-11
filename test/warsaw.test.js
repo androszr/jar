@@ -4,6 +4,7 @@ import warsaw from '../src/cities/warsaw/index.js';
 import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
+  SEASONS, seasonWeights, canopyColour, tone,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, deckY, drawBridge, trafficLights } from '../src/cities/warsaw/bridge.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
@@ -24,8 +25,8 @@ function recordingCtx() {
   const strokes = new Set();
   const calls = [];
   const target = {
-    createLinearGradient: () => ({ addColorStop() {} }),
-    createRadialGradient: () => ({ addColorStop() {} }),
+    createLinearGradient: () => ({ addColorStop(o, c) { fills.add(c); } }),
+    createRadialGradient: () => ({ addColorStop(o, c) { fills.add(c); } }),
   };
   return new Proxy(target, {
     get(t, k) {
@@ -522,4 +523,116 @@ test('reflections by day follow the phase, not the clock', () => {
   const a = grab(0);
   assert.ok(a.length > 0);
   assert.deepEqual(a, grab(99999));
+});
+
+// ---- the forest follows the seasons ----
+
+const only = (s) => ({ spring: 0, summer: 0, autumn: 0, winter: 0, [s]: 1 });
+const T = {
+  spring: Date.UTC(2026, 3, 20, 10),
+  summer: Date.UTC(2026, 5, 15, 8, 30),
+  autumn: Date.UTC(2026, 9, 20, 10),
+  winter: Date.UTC(2026, 0, 15, 11),
+};
+
+test('seasonWeights: full seasons, half-and-half at a boundary, summer when the date cannot be read', () => {
+  assert.equal(seasonWeights(Date.UTC(2026, 10, 8, 12)).autumn, 1);
+  assert.equal(seasonWeights(Date.UTC(2026, 6, 1, 12)).summer, 1);
+  assert.equal(seasonWeights(Date.UTC(2026, 0, 15, 12)).winter, 1);
+  assert.equal(seasonWeights(Date.UTC(2026, 3, 20, 12)).spring, 1);
+  const sep = seasonWeights(Date.UTC(2026, 8, 1, 12));
+  assert.ok(Math.abs(sep.summer - 0.5) < 0.05 && Math.abs(sep.autumn - 0.5) < 0.05);
+  assert.equal(seasonWeights(Date.UTC(2026, 7, 21, 12)).summer, 1);
+  assert.equal(seasonWeights(Date.UTC(2026, 8, 12, 12)).autumn, 1);
+  const dec = seasonWeights(Date.UTC(2026, 11, 1, 12));
+  assert.ok(Math.abs(dec.autumn - 0.5) < 0.05 && Math.abs(dec.winter - 0.5) < 0.05);
+  const mar = seasonWeights(Date.UTC(2027, 1, 28, 23, 30));
+  assert.ok(Math.abs(mar.winter - 0.5) < 0.05 && Math.abs(mar.spring - 0.5) < 0.05);
+  assert.deepEqual(seasonWeights(NaN), only('summer'));
+  for (let d = 0; d < 800; d += 3) {
+    const w = seasonWeights(Date.UTC(2026, 0, 1 + d, 12));
+    let sum = 0;
+    for (const s of SEASONS) {
+      assert.ok(w[s] >= 0 && w[s] <= 1, `${s} in range`);
+      sum += w[s];
+    }
+    assert.ok(Math.abs(sum - 1) < 1e-9, 'weights sum to 1');
+  }
+});
+
+test('canopyColour: autumn is warm and smooth along the bank, winter grey-brown, spring light green, summer today\'s green', () => {
+  const luma = (c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+  let prev = null;
+  for (let k = 0; k < 50; k++) {
+    const [r, g, b] = canopyColour(k, only('autumn'));
+    assert.ok(r > g + 10 && r > b + 40, `autumn column ${k} is warm`);
+    if (prev) for (let i = 0; i < 3; i++) assert.ok(Math.abs([r, g, b][i] - prev[i]) <= 12, `autumn column ${k} is smooth`);
+    prev = [r, g, b];
+  }
+  let spring = 0;
+  let summer = 0;
+  for (let k = 0; k < 50; k++) {
+    const [r, g] = canopyColour(k, only('winter'));
+    assert.ok(Math.abs(r - g) <= 24 && g <= r + 4, `winter column ${k} has no green lead`);
+    const sp = canopyColour(k, only('spring'));
+    assert.ok(sp[1] > sp[0] + 20, 'spring is green');
+    spring += luma(sp);
+    summer += luma(canopyColour(k, only('summer')));
+  }
+  assert.ok((spring - summer) / 50 >= 30, 'spring is lighter than summer');
+  assert.deepEqual(WARSAW.canopy.summer[0], WARSAW.treeDay);
+  for (let k = 0; k < 50; k++) {
+    const c = canopyColour(k, only('summer'));
+    for (let i = 0; i < 3; i++) assert.ok(c[i] >= WARSAW.canopy.summer[0][i] - 1e-9 && c[i] <= WARSAW.canopy.summer[1][i] + 1e-9);
+  }
+});
+
+const redLead = (ctx) => [...ctx.fills].filter((f) => {
+  const m = /rgba\((\d+), (\d+), (\d+)/.exec(f);
+  return m && Number(m[1]) > Number(m[2]) + 10;
+});
+
+test('the near-bank forest paints autumn canopy colours in autumn', () => {
+  const autumn = redLead(paint(PHASE.noon, EMPTY, T.autumn)).length;
+  const summer = redLead(paint(PHASE.noon, EMPTY, T.summer)).length;
+  assert.ok(autumn >= 20);
+  assert.ok(autumn >= summer + 20, `autumn has far more warm fills (${autumn}) than summer (${summer})`);
+});
+
+test('winter twigs appear in winter and not in summer', () => {
+  const twig = rgbaOf(WARSAW.twig);
+  assert.ok(startsWith(paint(PHASE.noon, EMPTY, T.winter).fills, twig).length > 0);
+  assert.equal(startsWith(paint(PHASE.noon, EMPTY, T.summer).fills, twig).length, 0);
+});
+
+test('the seasonal forest is deterministic: same moment, same picture, no Math.random', () => {
+  for (const t of [T.winter, T.autumn, T.spring, NaN]) {
+    const a = paint(PHASE.noon, EMPTY, t);
+    const b = paint(PHASE.noon, EMPTY, t);
+    assert.equal(JSON.stringify(a.calls), JSON.stringify(b.calls));
+    assert.deepEqual([...a.fills], [...b.fills]);
+  }
+});
+
+test('seasonWeights: a date that cannot be read paints the summer forest, never an empty one', () => {
+  assert.deepEqual(seasonWeights(NaN), only('summer'));
+  const ctx = paint(PHASE.noon, EMPTY, NaN);
+  const summerGreen = [...ctx.fills].filter((f) => {
+    const m = /rgba\((\d+), (\d+), (\d+)/.exec(f);
+    return m && Number(m[2]) >= Number(m[1]) + 10;
+  });
+  assert.ok(summerGreen.length > 0, 'the forest still paints green');
+  assert.equal(startsWith(ctx.fills, rgbaOf(WARSAW.twig)).length, 0, 'and has no twigs');
+});
+
+test('winter twigs are never lighter than the canopy beneath them at dusk', () => {
+  const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const night = nightAmount(sample(PHASE.dusk).light);
+  assert.ok(night > 0, 'dusk is dark enough to matter');
+  const rgb = (f) => /rgba\((\d+), (\d+), (\d+)/.exec(f).slice(1, 4).map(Number);
+  const tw = tone(WARSAW.twig, WARSAW.treeDusk, WARSAW.treeNight, night);
+  assert.ok(luma(tw) <= luma(tone(WARSAW.canopy.winter[0], WARSAW.treeDusk, WARSAW.treeNight, night)) + 1e-9);
+  const fill = [...paint(PHASE.dusk, EMPTY, T.winter).fills].find((f) => f.includes(`${Math.round(tw[0])}, ${Math.round(tw[1])}, ${Math.round(tw[2])},`));
+  assert.ok(fill, 'the dusk twig fill is drawn through the dusk tone');
+  assert.ok(luma(rgb(fill)) <= luma(tone(WARSAW.canopy.winter[0], WARSAW.treeDusk, WARSAW.treeNight, night)) + 1);
 });

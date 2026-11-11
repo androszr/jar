@@ -61,7 +61,15 @@ export const WARSAW = {
   boulevardDay: [188, 178, 158],
   boulevardNight: [46, 42, 52],
   quayLamp: [255, 214, 140],
-  // the near (Praga) bank: forest only
+  // the near (Praga) bank: forest only, its canopy following Warsaw's seasons
+  // (each season a range the canopy drifts through along the bank; summer is the original green)
+  canopy: {
+    spring: [[110, 166, 78], [150, 196, 100]],
+    summer: [[52, 84, 56], [64, 98, 62]],
+    autumn: [[184, 140, 64], [170, 108, 50], [142, 80, 42], [112, 74, 48]],
+    winter: [[118, 106, 98], [146, 128, 118]],
+  },
+  twig: [76, 66, 60],
   treeDay: [52, 84, 56],
   treeDusk: [30, 40, 40],
   treeNight: [8, 12, 14],

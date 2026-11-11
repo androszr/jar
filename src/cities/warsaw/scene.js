@@ -8,7 +8,7 @@
 // night, white over red on 3 May and 11 November. Every light is scaled by one
 // continuous darkness measure (nightAmount), so dusk is a blend, never a switch.
 // Shapes were drawn in a 340 x 396 px box (the jar's body) and are shares of it.
-import { LAMP_THRESHOLD, osc, clamp, wrap } from '../../clock.js';
+import { LAMP_THRESHOLD, osc, clamp, wrap, smoothstep } from '../../clock.js';
 import { css, mix, glow } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
 import { localDate } from '../../placeclock.js';
@@ -101,6 +101,78 @@ export const tone = (day, dusk, night, n) => mix(mix(day, dusk, Math.min(1, n * 
 export function flagDay(nowMs) {
   const d = localDate(nowMs, 'Europe/Warsaw');
   return typeof d === 'string' && (d.endsWith('-05-03') || d.endsWith('-11-11'));
+}
+
+// The forest's seasons, from the city's own date: full strength through the middle of
+// each season and a three-week fade across the starts of March, June, September and December.
+export const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+export const SEASON_STARTS = { spring: [3, 1], summer: [6, 1], autumn: [9, 1], winter: [12, 1] };
+export const SEASON_FADE_DAYS = 21;
+const DAY_MS = 86400000;
+
+export function seasonWeights(nowMs) {
+  const d = localDate(nowMs, 'Europe/Warsaw');
+  const m = typeof d === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(d) : null;
+  if (!m) return { spring: 0, summer: 1, autumn: 0, winter: 0 };
+  const y = Number(m[1]);
+  const dn = Date.UTC(y, Number(m[2]) - 1, Number(m[3])) / DAY_MS;
+  const starts = [];
+  for (let yy = y - 1; yy <= y + 1; yy++) {
+    for (const s of SEASONS) starts.push({ s, b: Date.UTC(yy, SEASON_STARTS[s][0] - 1, SEASON_STARTS[s][1]) / DAY_MS });
+  }
+  starts.sort((a, b) => a.b - b.b);
+  let i = 0;
+  while (i + 1 < starts.length && starts[i + 1].b <= dn) i++;
+  const out = { spring: 0, summer: 0, autumn: 0, winter: 0 };
+  const half = SEASON_FADE_DAYS / 2;
+  const next = starts[i + 1];
+  const here = starts[i];
+  if (next && dn >= next.b - half) {
+    const t = smoothstep((dn - next.b) / SEASON_FADE_DAYS + 0.5);
+    out[here.s] = 1 - t;
+    out[next.s] = t;
+  } else if (dn < here.b + half && i > 0) {
+    const t = smoothstep((dn - here.b) / SEASON_FADE_DAYS + 0.5);
+    out[starts[i - 1].s] = 1 - t;
+    out[here.s] = t;
+  } else {
+    out[here.s] = 1;
+  }
+  return out;
+}
+
+// value noise over the column index: neighbours move together, so the colour drifts rather than blotches
+const CANOPY_SEED = 93;
+const CANOPY_FREQ_DIV = 10; // columns per noise cell: neighbours differ by at most ~11 per channel in autumn
+const smoothNoise = (x, seed) => {
+  const i = Math.floor(x);
+  return hash2(i, seed) + (hash2(i + 1, seed) - hash2(i, seed)) * smoothstep(x - i);
+};
+// piecewise-linear through a season's colour stops
+function ramp(stops, u) {
+  if (stops.length === 1) return stops[0];
+  const f = clamp(u) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(f));
+  return mix(stops[i], stops[i + 1], f - i);
+}
+
+// The canopy's daytime colour at column k under the season weights.
+export function canopyColour(k, weights) {
+  const u = smoothNoise(k / CANOPY_FREQ_DIV, CANOPY_SEED);
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let total = 0;
+  for (const s of SEASONS) {
+    const w = weights[s] || 0;
+    if (w <= 0) continue;
+    const c = ramp(WARSAW.canopy[s], u);
+    r += c[0] * w;
+    g += c[1] * w;
+    b += c[2] * w;
+    total += w;
+  }
+  return total > 0 ? [r / total, g / total, b / total] : WARSAW.canopy.summer[0];
 }
 
 // Every pixel box derived from the shares above, for a body of w x h at (ox, oy).
@@ -647,7 +719,7 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
   }
   if (ice > 0) drawIce(ctx, L, night, iceFloes(L, nowMs, ice, reduced));
   drawBoulevard(ctx, L, tint, night, weather);
-  drawNearBank(ctx, L, phase, night, weather);
+  drawNearBank(ctx, L, phase, night, weather, nowMs);
 }
 
 // The far bank's boulevard: a paved walk along the water under the low city,
@@ -673,7 +745,7 @@ function drawBoulevard(ctx, L, tint, night, weather) {
 
 // The near (Praga) bank: no wall and no path, only the riverside forest, its
 // jagged canopy running straight down to the water.
-function drawNearBank(ctx, L, phase, night, weather) {
+function drawNearBank(ctx, L, phase, night, weather, nowMs) {
   const snow = weather && weather.kind === 'snow';
   const bottom = L.oy + L.h;
   const treeTop = (k) => L.quayTop + (hash2(k, 90) * 5 - 1 - 3 * Math.sin(k * 0.9)) * L.sy;
@@ -685,8 +757,41 @@ function drawNearBank(ctx, L, phase, night, weather) {
   for (let k = 0; k <= n; k++) ctx.lineTo(L.ox + k * step, treeTop(k));
   ctx.lineTo(L.ox + L.w, bottom);
   ctx.closePath();
-  ctx.fillStyle = css(tone(WARSAW.treeDay, WARSAW.treeDusk, WARSAW.treeNight, night));
+  const w = seasonWeights(nowMs);
+  const shade = (c) => tone(c, WARSAW.treeDusk, WARSAW.treeNight, night);
+  const baseC = shade(canopyColour(0, w));
+  const baseG = ctx.createLinearGradient(0, L.quayTop, 0, bottom);
+  baseG.addColorStop(0, css(baseC));
+  baseG.addColorStop(1, css(mix(baseC, WARSAW.treeNight, 0.3)));
+  ctx.fillStyle = baseG;
   ctx.fill();
+  // each column takes its own colour from the season's range, a little darker toward the water
+  for (let k = 0; k < n; k++) {
+    const c = shade(canopyColour(k, w));
+    const g = ctx.createLinearGradient(0, L.quayTop, 0, bottom);
+    g.addColorStop(0, css(c));
+    g.addColorStop(1, css(mix(c, WARSAW.treeNight, 0.3)));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(L.ox + k * step, bottom);
+    ctx.lineTo(L.ox + k * step, treeTop(k));
+    ctx.lineTo(L.ox + (k + 1) * step + 0.5, treeTop(k + 1));
+    ctx.lineTo(L.ox + (k + 1) * step + 0.5, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // winter: a scatter of dark twigs over the bare canopy, fading with the winter weight
+  if (w.winter > 0) {
+    ctx.fillStyle = css(tone(WARSAW.twig, WARSAW.treeDusk, WARSAW.treeNight, night), 0.9 * w.winter);
+    for (let k = 0; k < n; k++) {
+      for (let j = 0; j < 4; j++) {
+        if (hash2(k, 95 + j) <= 0.8) continue;
+        const x = L.ox + k * step + hash2(j, 96 + k) * step;
+        const y = treeTop(k) + 2 * L.sy + hash2(k + 7, j) * 0.6 * (bottom - treeTop(k));
+        ctx.fillRect(x, y, 1 * L.sx, 3 * L.sy);
+      }
+    }
+  }
   if (snow) {
     ctx.fillStyle = css(mix(WARSAW.snowCap, WARSAW.treeNight, 0.5 * night + 0.05));
     for (let k = 0; k <= n; k++) ctx.fillRect(L.ox + k * step - 2.5 * L.sx, treeTop(k) - 1, 5 * L.sx, 2 * L.sy);
