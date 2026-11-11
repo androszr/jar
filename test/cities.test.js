@@ -10,7 +10,7 @@ const DIR = new URL('../src/cities/', import.meta.url).pathname;
 
 test('every city meets the contract', () => {
   assert.ok(CITIES.length >= 1);
-  assert.equal(CITIES.length, 2, 'Warsaw and Nazare; one jar is one city, so a second view of a city is a scene change, not a third jar');
+  assert.equal(CITIES.length, 3, 'Warsaw, Nazare and El Chalten; one jar is one city, so a second view of a city is a scene change, not a fourth jar');
   for (const c of CITIES) {
     assert.equal(typeof c.id, 'string');
     assert.equal(typeof c.title, 'string');
@@ -75,6 +75,34 @@ test('Nazare asks the page for a tick of its own; Warsaw ticks for its bridge tr
   assert.equal(w.cadenceMs(EMPTY, {}), 200);
   assert.equal(w.cadenceMs(EMPTY, { reduced: true }), 400);
   assert.equal(w.cadenceMs({ ...EMPTY, temperature: -8, known: true }, {}), 200);
+});
+
+test('El Chalten is the third jar, in Rio Gallegos time, with a cork lid and a tick of its own', () => {
+  const c = findCity('el-chalten');
+  assert.equal(CITIES[2], c);
+  assert.equal(c.title, 'El Chaltén');
+  assert.equal(c.country, 'Argentina');
+  assert.equal(c.location.zone, 'America/Argentina/Rio_Gallegos');
+  assert.equal(c.lid, 'cork');
+  assert.equal(c.location.sea, undefined, 'no offshore point, so no marine request');
+  assert.deepEqual(c.sky, { sun: false });
+  assert.deepEqual(c.buildPlates(340, 396), c.buildPlates(340, 396));
+  const T_NOON = Date.UTC(2026, 11, 21, 16, 0);
+  const T_LAMPS = Date.UTC(2026, 11, 21, 7, 30);
+  const still = { ...EMPTY, known: true, windSpeed: 4, cloudCover: 10, code: 0, kind: 'clear' };
+  assert.equal(c.cadenceMs(still, { nowMs: T_NOON }), 0, 'a still clear noon asks for no tick');
+  assert.equal(c.cadenceMs({ ...still, windSpeed: 30 }, { nowMs: T_NOON }), 250, 'a plume moves');
+  assert.equal(c.cadenceMs(still, { nowMs: T_LAMPS }), 400, 'headlamps flicker before dawn');
+  assert.equal(c.cadenceMs(still, {}), 0, 'a missing moment means no headlamps');
+  assert.equal(c.cadenceMs({ ...still, windSpeed: 30 }, { reduced: true, nowMs: T_NOON }), 500);
+});
+
+test('a city may take the moment in cadenceMs; Nazare and Warsaw ignore it', () => {
+  for (const id of ['nazare', 'warsaw']) {
+    const c = findCity(id);
+    assert.equal(c.cadenceMs(EMPTY, { nowMs: 0 }), c.cadenceMs(EMPTY, {}));
+    assert.equal(c.cadenceMs(EMPTY, { reduced: true, nowMs: 12345 }), c.cadenceMs(EMPTY, { reduced: true }));
+  }
 });
 
 test('every place carries a country', () => {

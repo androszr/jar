@@ -124,6 +124,33 @@ export function drawDew(ctx, rect, amount) {
   }
 }
 
+// The lightning flash of a thunderstorm over `rect`; nothing in any other weather.
+// A city whose scene covers the sky may call it again after painting.
+export function drawStormFlash(ctx, rect, weather, nowMs, opts = {}) {
+  if (!(weather && weather.known && weather.kind === 'storm')) return;
+  const f = flashIntensity(weather.code, nowMs, { reduced: !!opts.reduced });
+  if (f > 0) {
+    glow(ctx, rect.x + rect.w * 0.5, rect.y + rect.h * 0.3, rect.w * 0.9, PALETTE.flash, f);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = css(PALETTE.flash, 0.35 * f);
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.restore();
+  }
+}
+
+// Rain, drizzle and snow falling through `rect`, leaning with the wind; nothing
+// for an unknown reading or any other kind. A city whose scene covers the sky
+// may call it again after painting, so the weather still falls in front of it.
+export function drawPrecipitation(ctx, rect, weather, nowMs) {
+  const known = !!(weather && weather.known);
+  const kind = known ? weather.kind : 'cloud';
+  const slant = known ? windSlant(weather.windSpeed, weather.windDir, kind) : 0;
+  if (kind === 'rain' || kind === 'storm') streaks(ctx, rect, 70, 22, 2000, nowMs, 0.55, slant);
+  if (kind === 'drizzle') streaks(ctx, rect, 40, 12, 2400, nowMs, 0.4, slant);
+  if (kind === 'snow') flakes(ctx, rect, 70, 6000, nowMs, slant);
+}
+
 // Paint the sky layers into `rect` (the jar's interior, local px). `opts`:
 // `reduced` (prefers-reduced-motion) and `dew` (0..1, from the feed).
 export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
@@ -138,7 +165,7 @@ export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
 
   // sun by day (glow), moon and stars at night
   const alt = sunAltitude(phase);
-  if (!night && alt > -0.05 && known && (clear || kind === 'cloud')) {
+  if (!(opts.sun === false) && !night && alt > -0.05 && known && (clear || kind === 'cloud')) {
     const sp = sunPos(phase);
     const sx = rect.x + rect.w * Math.max(0.12, Math.min(0.88, (sp.x - 250) / 800));
     const sy = rect.y + rect.h * (0.55 - 0.42 * Math.max(0, alt));
@@ -169,21 +196,8 @@ export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
     clouds(ctx, rect, amount, phase, tint, nowMs, wind);
   }
 
-  const slant = known && weather ? windSlant(weather.windSpeed, weather.windDir, kind) : 0;
-  if (kind === 'rain' || kind === 'storm') streaks(ctx, rect, 70, 22, 2000, nowMs, 0.55, slant);
-  if (kind === 'drizzle') streaks(ctx, rect, 40, 12, 2400, nowMs, 0.4, slant);
-  if (kind === 'snow') flakes(ctx, rect, 70, 6000, nowMs, slant);
-  if (kind === 'storm') {
-    const f = flashIntensity(weather.code, nowMs, { reduced: !!opts.reduced });
-    if (f > 0) {
-      glow(ctx, rect.x + rect.w * 0.5, rect.y + rect.h * 0.3, rect.w * 0.9, PALETTE.flash, f);
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = css(PALETTE.flash, 0.35 * f);
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.restore();
-    }
-  }
+  drawPrecipitation(ctx, rect, weather, nowMs);
+  drawStormFlash(ctx, rect, weather, nowMs, opts);
   // dew is what a fog leaves behind; while the fog is there the glass is misted instead
   if (kind !== 'fog' && opts.dew > 0) drawDew(ctx, rect, opts.dew);
   // fog is drawn last in the jar (see paintFog), on the inside of the glass

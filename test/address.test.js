@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { jarSearch, tableSearch, entryFor, leaveAction } from '../src/address.js';
 import { Lift, liftCamera, liftEase } from '../src/lift.js';
 
+test('a hyphenated city id round-trips through the address', () => {
+  assert.equal(jarSearch('', 'el-chalten'), '?jar=el-chalten');
+  assert.equal(new URLSearchParams(jarSearch('?x=1', 'el-chalten')).get('jar'), 'el-chalten');
+  assert.equal(tableSearch('?x=1&jar=el-chalten'), '?x=1');
+});
+
 test('jarSearch sets ?jar and keeps the rest; tableSearch removes it', () => {
   assert.equal(jarSearch('', 'warsaw'), '?jar=warsaw');
   assert.equal(jarSearch('?x=1&jar=old', 'warsaw'), '?x=1&jar=warsaw');

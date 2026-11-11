@@ -11,6 +11,20 @@ const dayIndexOf = (y, m, d) => Date.UTC(y, m, d) / DAY_MS;
 const hhmm = (h) => h * 60; // hours -> minutes
 const ZAGREB = { lat: 45.8, lon: 16.0, offsetMinutes: -120 }; // CEST
 
+test('El Chaltén, the first city south of the equator: a long December day, a short June one, its own zone', async () => {
+  const { placeAt, therePhase } = await import('../src/placeclock.js');
+  const dec = sunTimes(dayIndexOf(2026, 11, 21), -49.33, -72.89);
+  const jun = sunTimes(dayIndexOf(2026, 5, 21), -49.33, -72.89);
+  const decH = dec.set - dec.rise;
+  assert.ok(decH >= 16 && decH <= 17, `December day ${decH} h`);
+  assert.ok(jun.set - jun.rise <= 9, `June day ${jun.set - jun.rise} h`);
+  const location = { lat: -49.33, lon: -72.89, zone: 'America/Argentina/Rio_Gallegos' };
+  const ms = Date.UTC(2026, 11, 21, 9);
+  assert.equal(placeAt(ms, location).offsetMinutes, 180);
+  const phase = therePhase(ms, location, ZAGREB);
+  assert.ok(phase > 0.08 && phase < 0.12, `just after sunrise, phase ${phase}`);
+});
+
 test('placeGuess: an exact zone, an unknown zone and no zone at all', () => {
   const z = placeGuess('Europe/Zagreb', -120);
   assert.equal(z.lat, 45.8);
