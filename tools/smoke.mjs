@@ -555,6 +555,27 @@ try {
   // bare water is about -62 in red minus blue; a faint sandstone sliver lifts it well past -45
   check(some(await patch(noct, 'warsaw', 0.4, 0.662, 2), (r, g, b) => r - b >= -45), 'the Palace leaves a warm reflection on the river by day');
   await noct.screenshot({ path: join(OUT, 'warsaw-morning.png') });
+  // the near-bank forest follows Warsaw's seasons (clear midday pins; summer is the deep green of T_DAY)
+  const T_SPRING = Date.UTC(2026, 3, 20, 10);
+  const T_AUTUMN = Date.UTC(2026, 9, 20, 10);
+  const T_WINTER = Date.UTC(2026, 0, 15, 11);
+  const forest = (pg) => patch(pg, 'warsaw', 0.12, 0.715, 2);
+  const summerForest = await forest(noct);
+  check(all(summerForest, (r, g, b) => g >= r + 10), 'the forest is deep green in summer');
+  await noct.evaluate((t) => window.__jar.pin(t), T_AUTUMN);
+  await twoFrames(noct);
+  check(all(await forest(noct), (r, g, b) => r >= g + 10 && r >= b + 40), 'the forest is gold and rust in autumn');
+  await noct.screenshot({ path: join(OUT, 'warsaw-autumn.png') });
+  await noct.evaluate((t) => window.__jar.pin(t), T_WINTER);
+  await twoFrames(noct);
+  check(all(await forest(noct), (r, g, b) => Math.abs(r - g) <= 30 && g <= r + 8), 'the forest is bare grey-brown in winter');
+  await noct.screenshot({ path: join(OUT, 'warsaw-winter.png') });
+  await noct.evaluate((t) => window.__jar.pin(t), T_SPRING);
+  await twoFrames(noct);
+  const springForest = await forest(noct);
+  check(all(springForest, (r, g, b) => g >= r + 15) && luma(springForest) >= luma(summerForest) + 20, 'the forest is a fresh lighter green in spring');
+  await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
+  await twoFrames(noct);
   // ice on the river in a hard frost, none above the threshold
   const pale = (r, g, b) => r >= 190 && g >= 200 && b >= 205;
   const iceSeen = async () => {
