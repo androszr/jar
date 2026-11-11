@@ -118,6 +118,49 @@ export function text(ctx, str, x, y, size, colour, align = 'center') {
   ctx.fillText(str, x, y);
 }
 
+// Chalk lettering on the table: a faint dusty off-white with a darker underlay
+// and a few deterministic specks. Does nothing at alpha <= 0.
+export function chalk(ctx, str, x, y, size, alpha) {
+  if (!(alpha > 0)) return;
+  ctx.save();
+  ctx.font = `500 ${size}px ${MONO}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const w = ctx.measureText(str).width;
+  // A small framed slate, the kind a gardener labels seed trays with, lying
+  // on the table a touch askew; the words are chalked on it, not on the wood.
+  const bw = w + size * 1.7;
+  const bh = size * 1.9;
+  ctx.translate(x, y);
+  ctx.rotate(-0.035);
+  ctx.fillStyle = css(PALETTE.seam, alpha * 0.45);
+  ctx.beginPath();
+  ctx.roundRect(-bw / 2 + 3, -bh / 2 + 4, bw, bh, 3);
+  ctx.fill();
+  ctx.fillStyle = css(PALETTE.slateFrame, alpha);
+  ctx.beginPath();
+  ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 3);
+  ctx.fill();
+  ctx.fillStyle = css(PALETTE.slate, alpha);
+  ctx.fillRect(-bw / 2 + 4, -bh / 2 + 4, bw - 8, bh - 8);
+  // a few specks of dust, placed by a fixed hash so they never move, whatever the camera does
+  ctx.fillStyle = css(PALETTE.chalk, alpha * 0.48);
+  ctx.fillText(str, 0, 1);
+  ctx.fillStyle = css(PALETTE.chalk, alpha * 0.16);
+  for (let i = 0; i < 6; i++) {
+    const px = -w / 2 + hash(i, 5) * w;
+    const py = -size / 2 + hash(i + 17, 5) * size;
+    ctx.fillRect(px, py, 2, 2);
+  }
+  ctx.restore();
+}
+
+// The width chalk lettering takes, so a caller never names a font.
+export function chalkWidth(ctx, str, size) {
+  ctx.font = `500 ${size}px ${MONO}`;
+  return ctx.measureText(str).width;
+}
+
 // The size at which str fits in maxW, never below 0.7 of size.
 export function fitSize(ctx, str, size, maxW) {
   ctx.font = `500 ${size}px ${MONO}`;

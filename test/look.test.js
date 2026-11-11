@@ -5,7 +5,7 @@ import { KEYFRAMES, sample } from '../src/clock.js';
 import { TINTS } from '../src/look/lantern/palette.js';
 
 const REQUIRED = ['PALETTE', 'CSS_VARS', 'tint', 'skyGradient', 'glow', 'bloom', 'spill', 'vignette',
-  'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet', 'moonDisc'];
+  'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet', 'moonDisc', 'chalk'];
 
 test('LOOK is one of the three directions, and Lantern is chosen', () => {
   assert.ok(['lantern', 'toybox', 'pixel'].includes(look.LOOK));
@@ -21,6 +21,7 @@ test('the active look exports the whole required surface', () => {
 test('the weather nuances have their colours and a droplet primitive in the look', () => {
   assert.equal(typeof look.droplet, 'function');
   for (const n of ['flash', 'dew', 'dewHighlight']) assert.equal(look.PALETTE[n].length, 3, n);
+  assert.equal(look.PALETTE.chalk.length, 3, 'chalk');
 });
 
 test('TINTS has all nine keyframe names, each with every channel', () => {

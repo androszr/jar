@@ -13,7 +13,7 @@
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
 // four swell bands and their surfers, the lighthouse beam at night, and the real moon phase (a new moon and a full
 // moon night over Nazare: the moon reported, its brightness on the glass and
-// the spoken sentence).
+// the spoken sentence), and the chalk hint ("tap a jar" / "click a jar") on the table until the first lift.
 // Writes screenshots to test-output/.
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -219,6 +219,15 @@ try {
   check(await page.evaluate(() => { const l = window.__jar.labels; return l.warsaw[0] !== l.nazare[0] && l.warsaw[1] !== l.nazare[1]; }), 'two labels differ');
   await page.screenshot({ path: join(OUT, 'table.png') });
 
+  // the chalk hint: worded for the pointer, spoken, drawn on the wood
+  const hintDesk = await page.evaluate(() => [window.__jar.hint, document.getElementById('view').getAttribute('aria-label')]);
+  check(!!hintDesk[0] && hintDesk[0].text === 'click a jar' && hintDesk[0].alpha === 1 && hintDesk[1].endsWith('Click a jar to lift it.'), 'chalk hint reads click a jar on the laptop and in the accessible name');
+  const hr = hintDesk[0] ? hintDesk[0].rect : { x: 0, y: 0, w: 1, h: 1 };
+  const bareAt = await page.evaluate(() => window.__jar.toCanvas(1380, 834));
+  const onChalk = await strip(page, hr.x, hr.y, Math.max(1, Math.round(hr.w)), Math.max(1, Math.round(hr.h)));
+  const bareWood = await strip(page, bareAt.x, bareAt.y - hr.h / 2, Math.max(1, Math.round(hr.w)), Math.max(1, Math.round(hr.h)));
+  check(onChalk > bareWood + 1, `chalk hint is drawn on the table (${onChalk.toFixed(1)} vs ${bareWood.toFixed(1)})`);
+
   // light on the table: the strip just below the jar's foot is brighter than one far from any jar
   const foot = await page.evaluate(() => window.__jar.foot('warsaw'));
   const far = await page.evaluate(() => window.__jar.toCanvas(1380, 760));
@@ -242,6 +251,8 @@ try {
   await page.mouse.click(c.x, c.y);
   check((await viewIs(page, 'jar')) && page.url().includes('?jar=warsaw'), 'jar lifts on click');
   await settled(page);
+  const afterLift = await page.evaluate(() => [window.__jar.hint, document.getElementById('view').getAttribute('aria-label')]);
+  check(afterLift[0] === null && !afterLift[1].includes('to lift it.'), 'chalk hint fades out with the first lift');
   await page.screenshot({ path: join(OUT, 'warsaw-rain.png') });
   // The page's own clock, read beside the card: a Warsaw midnight between the
   // route and the check drops the first fixture row, exactly as the page does.
@@ -283,6 +294,8 @@ try {
   await page.keyboard.press('Escape');
   check((await viewIs(page, 'table')) && !page.url().includes('jar='), 'escape lowers the jar');
   await twoFrames(page);
+  check((await page.evaluate(() => window.__jar.hint)) === null, 'chalk hint stays gone after the jar is set down');
+  await twoFrames(page);
   check((await live(page)) === '', 'live region is cleared on the table');
   check(await page.evaluate(() => window.__jar.forecast === null), 'forecast card is absent on the table');
   await page.mouse.click(c.x, c.y);
@@ -323,6 +336,7 @@ try {
   await deep.goto(`${origin}/?jar=warsaw`);
   await ready(deep);
   check(await deep.evaluate(() => window.__jar.view === 'jar'), '?jar=warsaw opens lifted');
+  check((await deep.evaluate(() => window.__jar.hint)) === null, 'chalk hint is absent on a deep link');
   await labelIs(deep, 1, '21°');
   await settled(deep);
   await deep.screenshot({ path: join(OUT, 'warsaw-lifted.png') });
@@ -648,6 +662,8 @@ try {
   await pp.goto(`${origin}/`);
   await ready(pp);
   await labelIs(pp, 1, '12°');
+  const hintPhone = await pp.evaluate(() => [window.__jar.hint, document.getElementById('view').getAttribute('aria-label')]);
+  check(!!hintPhone[0] && hintPhone[0].text === 'tap a jar' && hintPhone[1].endsWith('Tap a jar to lift it.'), 'chalk hint reads tap a jar on the phone');
   const fit = await pp.evaluate(() => {
     const r = document.getElementById('view').getBoundingClientRect();
     const el = document.scrollingElement;
@@ -673,10 +689,12 @@ try {
     await touch('touchEnd', 350, 500);
     await pp.waitForFunction(() => window.__jar.index === 0 && Number.isInteger(window.__jar.pos), null, { timeout: 3000 }).catch(() => {});
   }
+  check((await pp.evaluate(() => window.__jar.hint)) !== null, 'chalk hint survives a swipe');
   const pc = await jarCentre(pp);
   await pp.touchscreen.tap(pc.x, pc.y);
   check(await viewIs(pp, 'jar'), 'phone tap lifts');
   await settled(pp);
+  check((await pp.evaluate(() => window.__jar.hint)) === null, 'chalk hint fades on the phone too');
   await pp.screenshot({ path: join(OUT, 'phone', 'lifted.png') });
   const [pf, pNow, paria] = await pp.evaluate(() => [window.__jar.forecast, Date.now(), document.getElementById('view').getAttribute('aria-label')]);
   const pfoot = await pp.evaluate(() => window.__jar.foot('warsaw'));

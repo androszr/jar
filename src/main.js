@@ -3,7 +3,8 @@ import { readOptions, sample, isNight, moonPos } from './clock.js';
 import { moonPhase } from './moon.js';
 import { placeGuess, realPhase } from './realclock.js';
 import { therePhase, localDate, sunFraction, localTimeText, dayFraction } from './placeclock.js';
-import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
+import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard, chalk, chalkWidth } from './look/index.js';
+import { hintWording, hintSentence, initialHint, hintOnLift, hintAfter, hintAlpha, hintPose } from './hint.js';
 import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
 import { Shelf, shelfMetrics, frameDt } from './shelf.js';
@@ -34,6 +35,8 @@ const ctx = canvas.getContext('2d', { willReadFrequently: navigator.webdriver ==
 for (const [k, v] of Object.entries(CSS_VARS)) document.documentElement.style.setProperty(k, v);
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const coarsePointer = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+const hintText = hintWording(coarsePointer); // read once at boot, never in a draw
 const feed = new WeatherFeed({ now: () => nowMs(), visible: () => document.visibilityState === 'visible' });
 const lift = new Lift(reduceMotion ? 0 : undefined);
 const shelf = new Shelf(CITIES.length, shelfMetrics(SCENE.w));
@@ -68,6 +71,7 @@ let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
 let plates = [];
 let ready = false;
+let hint = 'shown'; // the chalk hint: shown | fading | none, session memory only
 
 const make = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
 const nowMs = () => (pinned !== null ? pinned : Date.now());
@@ -155,11 +159,14 @@ function render(force = false) {
   const positive = [weatherCadence, ...Object.values(cityCadences)].filter((v) => v > 0);
   cadenceMs = positive.length ? Math.min(...positive) : 0;
   const minute = Math.floor(ms / 60000);
+  const liftP = lift.progress(t); // settles lift.state first
+  hint = hintAfter(hint, liftP, lift.state);
+  const hintA = hintAlpha(hint, liftP);
   cam = currentCam(t);
   const key = [view, lift.state, Math.round(lift.progress(t) * 1000), Math.round(shelf.pos * 1000), minute,
     feed.revision, feed.isStale(), W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
     cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0, scrubbing ? scrubMin : 0,
-    flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(',')].join('|');
+    flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(','), hint, Math.round(hintA * 64)].join('|');
   if (!force && key === lastKey) return false;
   lastKey = key;
 
@@ -177,6 +184,10 @@ function render(force = false) {
   scratch.bloomCtx.setTransform(k / 4, 0, 0, k / 4, tx / 4, ty / 4);
 
   drawShed(ctx, art, shedTint, null, shedPhase, ms);
+  if (hintA > 0) {
+    const hp = hintPose(fitScreen(W, H, shelf.centreX).cx);
+    chalk(ctx, hintText, hp.x, hp.y, hp.size, hintA);
+  }
   let bloomStrength = 0;
   const nextLabels = {};
   const nextDrawn = {};
@@ -273,7 +284,7 @@ function syncAria() {
   syncValueText();
   const text = view === 'jar'
     ? `${view === 'jar' && scrubMin > 0 ? `Previewing ${offsetText(scrubMin)}: ` : ''}${facts}. The jar is lifted.${moonText}${days} Press Escape to put it back on the table.`
-    : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.`;
+    : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.${hint !== 'none' ? ` ${hintSentence(hintText)}` : ''}`;
   if (text !== ariaText) {
     ariaText = text;
     canvas.setAttribute('aria-label', text);
@@ -309,6 +320,7 @@ function doLift(i) {
   shelf.go(i);
   shelf.pos = shelf.target;
   view = 'jar';
+  hint = hintOnLift(hint);
   setScrub(0);
   lift.open(perf());
   setTitle();
@@ -520,6 +532,16 @@ window.__jar = {
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
     return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
+  // The chalk hint: null once gone, else { text, state, alpha, rect } with the lettering's box in canvas px.
+  get hint() {
+    if (hint === 'none') return null;
+    const p = lift.progress(perf());
+    const hp = hintPose(fitScreen(W, H, shelf.centreX).cx);
+    const half = chalkWidth(ctx, hintText, hp.size) / 2;
+    const a = this.toCanvas(hp.x - half, hp.y - hp.size / 2);
+    const b = this.toCanvas(hp.x + half, hp.y + hp.size / 2);
+    return { text: hintText, state: hint, alpha: hintAlpha(hint, p), rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
+  },
   get dpr() { return dpr; },
   get framing() { return fitScreen(W, H, shelf.centreX); },
 };
@@ -528,6 +550,7 @@ fit();
 feed.start();
 if (opts.jar && CITIES.some((c) => c.id === opts.jar)) {
   const i = CITIES.findIndex((c) => c.id === opts.jar);
+  hint = initialHint(true);
   history.replaceState(entryFor('jar', opts.jar, false), '', location.pathname + location.search);
   doLift(i);
   lift.snap(true);

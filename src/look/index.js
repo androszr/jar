@@ -13,7 +13,7 @@
 //
 // A look must export: PALETTE, CSS_VARS, tint(sample), skyGradient, glow, moonDisc,
 // bloom, spill, vignette, plank, glassBody, glassHighlights, lid, label, text,
-// forecastCard, weatherIcon, droplet
+// forecastCard, weatherIcon, droplet, chalk
 // (test/look.test.js checks the list). To switch looks, add src/look/<name>/
 // and change the constant and the export line below - nothing else.
 export const LOOK = 'lantern';

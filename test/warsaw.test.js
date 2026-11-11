@@ -2,14 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import warsaw from '../src/cities/warsaw/index.js';
 import {
-  SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
+  SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, deckY, drawBridge, trafficLights } from '../src/cities/warsaw/bridge.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
 import { hash2 } from '../src/skyweather.js';
 import { EMPTY } from '../src/weather.js';
-import { css, tint, STREAKS } from '../src/look/index.js';
+import { css, mix, tint, STREAKS } from '../src/look/index.js';
 import { sample } from '../src/clock.js';
 import { LABEL } from '../src/jar-geometry.js';
 import { bodyRect } from '../src/jar.js';
@@ -394,6 +394,27 @@ test('the low city is plaster, brick and concrete, never blue, and mixes several
   for (const [r, , b] of WARSAW.facades) assert.ok(r >= b, `façade ${r},${b} leans blue`);
   const picked = new Set(FRONT_ROW.map((_, i) => Math.floor(hash2(i, 64) * WARSAW.facades.length)));
   assert.ok(picked.size >= 4, `only ${picked.size} façade colours in use`);
+});
+
+test('no sky under the buildings: roofs run unbroken from edge to edge down to the river, in building colours', () => {
+  assert.equal(INFILL_ROW[0].x0, 0);
+  assert.equal(INFILL_ROW.at(-1).x1, 1);
+  INFILL_ROW.forEach((b, i) => {
+    if (i > 0) assert.equal(b.x0, INFILL_ROW[i - 1].x1);
+    assert.ok(b.top <= FAR_BANK && b.top > FAR_BANK - 0.06, `roof ${i} at ${b.top}`);
+  });
+  const L = layout(340, 396);
+  const sky = tint(sample(PHASE.noon)).skyLow;
+  const styles = new Set(INFILL_ROW.map((_, i) => css(mix(mix(WARSAW.facades[Math.floor(hash2(i, 67) * WARSAW.facades.length)], WARSAW.backBlockDay, 0.6), sky, 0.18))));
+  const rects = paint(PHASE.noon).calls.filter(([m, a, style]) => m === 'fillRect' && styles.has(style) && Math.abs(a[1] + a[3] - L.river.top) < 1e-6);
+  // every column of the body, from the towers' feet to the river, is under one of them
+  for (let x = 0.5; x < 340; x += 1) {
+    assert.ok(rects.some(([, [rx, ry, rw]]) => rx <= x && x <= rx + rw && ry <= L.gy + 1e-6), `sky shows at x ${x}`);
+  }
+  for (const i of INFILL_ROW.keys()) {
+    const [r, , b] = mix(WARSAW.facades[Math.floor(hash2(i, 67) * WARSAW.facades.length)], WARSAW.backBlockDay, 0.6);
+    assert.ok(r >= b, `roof ${i} leans blue`);
+  }
 });
 
 test('lamps light the far bank\'s boulevard at night; the near bank is forest with no lamp or path', () => {

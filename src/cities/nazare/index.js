@@ -6,6 +6,7 @@ import { waveHeightOf, waveBand, waveSize } from './sea.js';
 import {
   buildPlates, drawFarSea, drawHeadland, drawFort, drawWave, drawBeach, drawSpray, drawSurfers, drawBeam, drawVeil,
 } from './scene.js';
+import { drawCliffLife, drawSeaLife } from './cliff.js';
 
 const place = PLACES.find((p) => p.id === 'nazare');
 
@@ -29,13 +30,16 @@ export default {
     drawWave(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawHeadland(ctx, rect, phase, tint, weather, plates);
     drawFort(ctx, rect, phase, tint, weather, plates);
+    // scrub, the path, wet rock, the boards, the door and the crowd on the roof
+    const spectators = drawCliffLife(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawBeach(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     // spray climbs in front of the rock, where the wave meets it
     drawSpray(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     const surfers = drawSurfers(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
+    const life = drawSeaLife(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawBeam(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawVeil(ctx, rect, phase, tint, weather);
     const metres = waveHeightOf(weather);
-    return { band: waveBand(metres), waveSize: waveSize(metres), surfers };
+    return { band: waveBand(metres), waveSize: waveSize(metres), surfers, spectators, gulls: life.gulls, rescue: life.rescue };
   },
 };

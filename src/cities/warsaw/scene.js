@@ -56,6 +56,16 @@ export const FRONT_ROW = Array.from({ length: 30 }, (_, i) => ({
   top: RIVER_TOP - 0.042 - 0.05 * hash2(i, 63),
 }));
 
+// The city behind the low row: an unbroken run of roofs from edge to edge, so
+// no sky shows between the front blocks or under the towers' feet. Left and
+// right edges (shares of the width), top (share of the body height from the
+// top), never lower than the far bank the towers stand on.
+export const INFILL_ROW = Array.from({ length: 26 }, (_, i) => ({
+  x0: i / 26,
+  x1: (i + 1) / 26,
+  top: FAR_BANK - 0.03 * hash2(i, 66),
+}));
+
 // The Palace, in px of the reference box above the far bank: [half width, top]
 // of each mass from the wings up, then the needle's tip. The combs are the rows
 // of pinnacles along a setback: [mass index, count, spike height px].
@@ -472,8 +482,15 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
   }
   if (night > 0) glow(ctx, px, clockY, 12 * L.sx, WARSAW.clockGlow, 0.6 * night);
 
-  // the low city in front: each block its own façade (plaster, brick, concrete),
+  // the low city in front: first the unbroken roofs behind, muted toward the
+  // background grey, then each block its own façade (plaster, brick, concrete),
   // hazed a little toward the sky, a grid of windows by day, lit ones at night
+  INFILL_ROW.forEach((b, i) => {
+    const top = L.oy + b.top * L.h;
+    const day = mix(WARSAW.facades[Math.floor(hash2(i, 67) * WARSAW.facades.length)], WARSAW.backBlockDay, 0.6);
+    ctx.fillStyle = css(mix(tone(day, WARSAW.carpetDusk, WARSAW.carpetNight, night), tint.skyLow, 0.18));
+    ctx.fillRect(L.X(b.x0), top, L.X(b.x1) - L.X(b.x0) + 0.5, L.river.top - top); // half a px over the seam
+  });
   FRONT_ROW.forEach((b, i) => {
     const x0 = L.X(b.x - b.hw);
     const x1 = L.X(b.x + b.hw);

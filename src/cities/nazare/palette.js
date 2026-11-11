@@ -30,6 +30,20 @@ export const NAZARE = {
   lanternLight: [255, 214, 120],
   beam: [255, 232, 170],
   villageWindow: [255, 200, 120],
+  // life on the headland: scrub, the path and its lamps, wet rock, the fort's
+  // door and its row of boards, the crowd on the roof, the gulls
+  scrubDay: [92, 118, 70],
+  scrubDusk: [48, 56, 58],
+  scrubNight: [14, 20, 24],
+  pathDay: [206, 188, 158],
+  pathLamp: [255, 214, 140],
+  rockWet: [26, 22, 26],
+  rockSheen: [214, 232, 240],
+  fortDoor: [255, 196, 110],
+  boards: [[232, 96, 60], [246, 206, 84], [70, 150, 190], [240, 240, 232], [96, 176, 130]],
+  jackets: [[206, 70, 56], [52, 110, 168], [238, 196, 72], [230, 230, 224], [64, 138, 104]],
+  gull: [58, 64, 76],
+  rescueTrim: [238, 176, 40],
   // the beach
   sandDay: [214, 190, 150],
   sandWet: [150, 136, 112],

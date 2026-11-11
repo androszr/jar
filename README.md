@@ -25,7 +25,9 @@ and on Nazaré's jar the swell as well.
 
 **The moon is the real one.** The moon in the jars and in the window shows its phase for the moment, from a thin crescent to full, and on a new moon night it is almost gone.
 
-**Click or tap a jar and it lifts closer.** A card beside it shows the next
+**Click or tap a jar and it lifts closer.** Until you lift one for the first
+time, a small chalked slate lying on the table says so ("tap a jar" on a phone,
+"click a jar" on a laptop). A card beside it shows the next
 five days: today is marked with a band and an underline (and named *today* for
 screen readers), each day gives its chance of rain and its strongest wind with
 an arrow for the way it blows, and a strip along the bottom gives today's
@@ -108,8 +110,9 @@ flowchart LR
 - **The same moment draws the same picture.** Draw code never calls
   `Math.random` or reads the wall clock, and the smoke check hashes a pinned
   frame twice to prove it.
-- The clock logic is adapted from Memory Lane (`../vir-sunset`) and credited
-  in the file headers. None of the visual code comes from there.
+- The clock logic is adapted from Memory Lane, an earlier project by the same
+  author, and credited in the file headers. None of the visual code comes from
+  there.
 
 ## Quick start
 
@@ -148,39 +151,6 @@ console:
 |---|---|
 | `?jar=warsaw`, `?jar=nazare` | Opens straight onto that jar, lifted. |
 | `?day=`, `?at=`, `?clock=` | Parsed by `readOptions` for a later card. The page always runs on the real clocks. |
-
-## How work happens here
-
-This project is built with **[Dark Army](https://github.com/androszr/dark-army)**,
-which provides the board, the agents and the skills. Every change starts as a
-card and ends as a reviewed commit. Agents do the typing; a person makes three
-calls: what to build, when to start, and whether it's done.
-
-```mermaid
-flowchart LR
-  P["Prep<br/>an idea on a card"] -->|"Refine → /ship"| B["Backlog<br/>a written plan"]
-  B -->|"START"| I["In progress<br/>/ship implement"]
-  I --> D["Done<br/>Work done report"]
-  subgraph run ["one implement run"]
-    direction LR
-    c["Cipher<br/>implementer"] --> l["Ledger<br/>blind verifier"] --> h["Hex<br/>bug auditor"] --> w["Watch<br/>domain reviewers"]
-  end
-  I -.-> run
-```
-
-| Skill | What it does |
-|---|---|
-| `/ship <idea>` | Asks a few questions, writes a plan to `plans/` and files it as a Backlog card. |
-| `/ship implement <plan>` | Implements the plan, then runs a blind verify, a bug scan and the domain reviews, and ends with a `## Work done` report. |
-| `/review` | Reviews a change in plain language and gives a SHIP or STOP verdict. |
-| `/security-pass` | Audits dependencies, scans for secrets, and checks the bundle and headers. |
-| `/deploy-web` | The runbook for CI, previews and production deploys. |
-
-The agent briefs live in `.claude/agents/` (`jar-planner`, `jar-implementer`,
-`jar-verifier`, `jar-bug-auditor`, `jar-integration-reviewer`,
-`jar-security-reviewer`). The working agreement every assistant follows is
-`AGENTS.md`. The architecture, the gates and the house rules are in
-[`docs/context.md`](docs/context.md).
 
 ## Gates
 
@@ -242,3 +212,21 @@ and the function is the only thing that calls Open-Meteo. `/api/*` is cached for
 
 You need to create the Vercel project and its three secrets yourself:
 `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`.
+
+## What's in the repo
+
+| Folder | What it is |
+|---|---|
+| `src/` | The page: everything a visitor's browser loads. |
+| `api/` | The one weather function. |
+| `test/`, `tools/` | The unit tests, the lint, the local server and the smoke check. |
+| `docs/` | The architecture notes ([`docs/context.md`](docs/context.md)) and the pictures above. |
+| `.claude/`, `.agents/`, `.codex/`, `.grok/`, `profile/`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` | Instructions for the coding assistants that work on this project. You can ignore all of it to read, run or change the page. |
+
+## How it's built
+
+The page is written by coding assistants working through
+**[Dark Army](https://github.com/androszr/dark-army)**, a board where every
+change starts as a card with a written plan and ends as a reviewed commit. A
+person decides what to build, when to start and whether it is done. The
+working agreement the assistants follow is [`AGENTS.md`](AGENTS.md).
