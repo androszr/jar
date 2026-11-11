@@ -65,7 +65,7 @@ test('Nazare is the second jar, in Lisbon time, with a tin lid unlike Warsaw\'s 
   assert.deepEqual(n.buildPlates(340, 396), n.buildPlates(340, 396));
 });
 
-test('Nazare asks the page for a tick of its own; Warsaw ticks for its bridge traffic', () => {
+test('Nazare asks the page for a tick of its own; Warsaw ticks for its bridge traffic, which carries the ice', () => {
   const n = findCity('nazare');
   assert.equal(typeof n.cadenceMs, 'function');
   assert.equal(n.cadenceMs(EMPTY, {}), 100);
@@ -74,6 +74,7 @@ test('Nazare asks the page for a tick of its own; Warsaw ticks for its bridge tr
   assert.equal(typeof w.cadenceMs, 'function');
   assert.equal(w.cadenceMs(EMPTY, {}), 200);
   assert.equal(w.cadenceMs(EMPTY, { reduced: true }), 400);
+  assert.equal(w.cadenceMs({ ...EMPTY, temperature: -8, known: true }, {}), 200);
 });
 
 test('every place carries a country', () => {

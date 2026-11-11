@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import warsaw from '../src/cities/warsaw/index.js';
 import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, PALACE, RIM_DX, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
-  buildPlates, layout, nightAmount, sunSide, drawMermaid, drawSkyline, flagDay,
+  buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, deckY, drawBridge, trafficLights } from '../src/cities/warsaw/bridge.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
@@ -379,4 +379,60 @@ test('lamps light the far bank\'s boulevard at night; the near bank is forest wi
   for (const [, [, y]] of lamps) assert.ok(y < L.river.top, `lamp at y ${y} is on the far side of the river`);
   assert.equal(WARSAW.promenadeLamp, undefined);
   assert.equal(WARSAW.wallDay, undefined);
+});
+
+test('ice amount: none above -5 or without a reading, rising to full at -12', () => {
+  assert.equal(iceAmount(EMPTY), 0);
+  assert.equal(iceAmount({ ...EMPTY, temperature: -3 }), 0);
+  assert.equal(iceAmount({ ...EMPTY, temperature: 0 }), 0);
+  assert.equal(iceAmount({ ...EMPTY, temperature: -5 }), 0);
+  assert.equal(iceAmount({ ...EMPTY, temperature: NaN }), 0);
+  assert.ok(Math.abs(iceAmount({ ...EMPTY, temperature: -8.5 }) - 0.5) < 1e-9);
+  assert.equal(iceAmount({ ...EMPTY, temperature: -12 }), 1);
+  assert.equal(iceAmount({ ...EMPTY, temperature: -30 }), 1);
+});
+
+test('ice floes: more as it gets colder, inside the river band, deterministic', () => {
+  const L = layout(340, 396, 0, 0);
+  assert.equal(iceFloes(L, 0, 1).length, ICE.count);
+  assert.ok(iceFloes(L, 0, 0.5).length < ICE.count);
+  assert.equal(iceFloes(L, 0, 0).length, 0);
+  assert.ok(iceFloes(L, 0, 0.01).length >= 6);
+  for (const f of iceFloes(L, 12345, 1)) {
+    assert.ok(f.y - f.h / 2 >= L.river.top, `floe ${f.i} top`);
+    assert.ok(f.y + f.h <= L.river.bottom + 1, `floe ${f.i} bottom`);
+  }
+  assert.deepEqual(iceFloes(L, 777, 1), iceFloes(L, 777, 1));
+});
+
+test('ice floes drift to the right, slower under reduced motion', () => {
+  const L = layout(340, 396, 0, 0);
+  const a = iceFloes(L, 0, 1);
+  const b = iceFloes(L, 1000, 1);
+  const r = iceFloes(L, 1000, 1, true);
+  a.forEach((f, k) => {
+    const speed = (6 + f.row * 3) * L.sx;
+    const moved = b[k].x - f.x;
+    assert.ok(Math.abs(moved - speed) < 1e-6 || moved < 0, `floe ${k} moves right or wraps`);
+    if (moved > 0 && r[k].x - f.x > 0) assert.ok(Math.abs(r[k].x - f.x - 0.4 * speed) < 1e-6, `floe ${k} reduced`);
+  });
+});
+
+test('ice on the river appears only in a frost', () => {
+  const frost = paint(PHASE.noon, { ...EMPTY, temperature: -8, known: true });
+  assert.ok(startsWith(frost.fills, rgbaOf(WARSAW.iceShadow)).length > 0);
+  assert.ok(startsWith(frost.fills, rgbaOf(WARSAW.iceFloe)).length > 0);
+  const clips = (c) => c.calls.filter(([k]) => k === 'clip').length;
+  for (const w of [EMPTY, { ...EMPTY, temperature: -3, known: true }]) {
+    const open = paint(PHASE.noon, w);
+    assert.equal(startsWith(open.fills, rgbaOf(WARSAW.iceShadow)).length, 0);
+    assert.equal(startsWith(open.fills, rgbaOf(WARSAW.iceFloe)).length, 0);
+    assert.equal(clips(open) + 1, clips(frost), 'the river clip appears only in a frost');
+  }
+});
+
+test('Warsaw\'s traffic tick is fast enough for the ice in a frost', () => {
+  const frost = { ...EMPTY, temperature: -8, known: true };
+  assert.ok(warsaw.cadenceMs(frost, {}) > 0 && warsaw.cadenceMs(frost, {}) <= 250);
+  assert.ok(warsaw.cadenceMs(frost, { reduced: true }) > 0 && warsaw.cadenceMs(frost, { reduced: true }) <= 500);
 });
