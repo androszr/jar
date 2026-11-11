@@ -332,3 +332,16 @@ test('stale: a clock that runs backwards never makes an answer stale, and fog me
   assert.equal(f.get('warsaw'), EMPTY);
   assert.equal(f.dewSince('warsaw', clock), STALE_MS + 1);
 });
+
+test('hourly rows reach get(id).hourly, default [], and an hourly-only change bumps revision', () => {
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 5 });
+  const row = (t) => ({ time: '2026-10-18T15:00', temperature: t, code: 61 });
+  f.applyResponse(body(1));
+  assert.deepEqual(f.get('warsaw').hourly, []);
+  const r0 = f.revision;
+  assert.equal(f.applyResponse({ v: 1, cities: { warsaw: { temperature: 1, code: 61, cloudCover: 50, isDay: 1, hourly: [row(16)] } } }), true);
+  assert.equal(f.revision, r0 + 1);
+  assert.equal(f.get('warsaw').hourly[0].temperature, 16);
+  assert.equal(f.applyResponse({ v: 1, cities: { warsaw: { temperature: 1, code: 61, cloudCover: 50, isDay: 1, hourly: [row(17)] } } }), true);
+  assert.equal(f.revision, r0 + 2);
+});

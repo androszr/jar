@@ -11,6 +11,7 @@ export const CARD = {
   arc: { column: 14, row: 12 },
   gap: 14,
   drop: 36,
+  scrubBand: 72, // scene units left free under the lifted extent for the slider row
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -49,4 +50,11 @@ export function forecastExtent(jar, portrait) {
   const x1 = Math.max(jar.x + jar.w, rect.x + rect.w);
   const y1 = Math.max(jar.y + jar.h, rect.y + rect.h);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+// What the lifted camera keeps in view: the jar and card, plus a free band
+// under them for the scrub slider (both layouts).
+export function liftExtent(jar, portrait) {
+  const e = forecastExtent(jar, portrait);
+  return { x: e.x, y: e.y, w: e.w, h: e.h + CARD.scrubBand };
 }

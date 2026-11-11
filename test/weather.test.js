@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell, windCompass, tidesFor, tideSentence, formatTideStrip, formatTideHeight, tideCurve, formatRainChance, formatWindSpeed } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, normaliseHourly, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell, normaliseSeaHourly, windCompass, tidesFor, tideSentence, formatTideStrip, formatTideHeight, tideCurve, formatRainChance, formatWindSpeed } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -184,10 +184,18 @@ test('normaliseDaily keeps HH:MM sun times and nulls junk', () => {
 
 test('the sea reading (swell): EMPTY has none, fromEntry folds it and tolerates junk', () => {
   assert.equal(EMPTY.sea, null);
-  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null, daily: [] });
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2 } }).sea, { waveHeight: 4.2, wavePeriod: null, waveDir: null, daily: [], hourly: [] });
   assert.equal(fromEntry({}).sea, null);
   assert.equal(fromEntry({ sea: 'junk' }).sea, null);
   assert.equal(fromEntry({ sea: { waveHeight: 'x' } }).sea.waveHeight, null);
+});
+
+test('normaliseSeaHourly: junk is [], caps at 25, drops a bad time; fromEntry keeps the rows', () => {
+  for (const v of [undefined, null, 'junk', 3, {}]) assert.deepEqual(normaliseSeaHourly(v), [], String(v));
+  const rows = Array.from({ length: 30 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, waveHeight: i }));
+  assert.equal(normaliseSeaHourly(rows).length, 25);
+  assert.deepEqual(normaliseSeaHourly([{ time: 'bad', waveHeight: 1 }, { time: '2026-10-18T05:00', waveHeight: 'x' }, null]), [{ time: '2026-10-18T05:00', waveHeight: null }]);
+  assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2, hourly: [{ time: '2026-10-18T05:00', waveHeight: 2 }] } }).sea.hourly, [{ time: '2026-10-18T05:00', waveHeight: 2 }]);
 });
 
 test('swell: formatSwell gives height and period, height alone, nothing', () => {
@@ -215,6 +223,30 @@ test('the sea daily rows: folded by fromEntry, junk gives [], the swell joins fo
 test('forecastSentence says the swell after a day that has one', () => {
   const cs = [{ day: 'MON', high: '18°', low: '12°', today: true, swell: { height: '4.2 m', period: '14 s' } }, { day: 'TUE', high: '17°', low: '11°', today: false, swell: null }];
   assert.equal(forecastSentence(cs), 'Next five days: today MON 18° to 12° swell 4.2 m, TUE 17° to 11°.');
+});
+
+test('fromEntry reads hourly rows, folds kind per row, and defaults to []', () => {
+  const w = fromEntry({ temperature: 1, hourly: [
+    { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200 },
+    { time: 'junk', temperature: 3 },
+    { time: '2026-10-18T16:00', temperature: '5', code: 0 },
+  ] });
+  assert.equal(w.hourly.length, 2);
+  assert.deepEqual(w.hourly[0], { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200, kind: 'rain' });
+  assert.equal(w.hourly[1].temperature, null);
+  assert.equal(w.hourly[1].kind, 'clear');
+  assert.deepEqual(fromEntry({ temperature: 1 }).hourly, []);
+});
+
+test('normaliseHourly: junk gives [], at most 25 rows', () => {
+  for (const j of [undefined, null, 'x', 5, {}, [null, 1, 'a', {}]]) assert.deepEqual(normaliseHourly(j), []);
+  const many = Array.from({ length: 40 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, code: 3 }));
+  assert.equal(normaliseHourly(many).length, 25);
+});
+
+test('EMPTY.hourly is an empty, frozen list', () => {
+  assert.deepEqual(EMPTY.hourly, []);
+  assert.ok(Object.isFrozen(EMPTY.hourly));
 });
 
 test('normaliseDaily keeps rain and wind through num and defaults them to null', () => {

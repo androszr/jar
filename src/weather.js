@@ -7,7 +7,7 @@ import { clamp, smoothstep } from './clock.js';
 export const KINDS = ['clear', 'cloud', 'fog', 'drizzle', 'rain', 'snow', 'storm'];
 
 // What a jar draws from before any answer has arrived, or after a bad one.
-export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]), sea: null });
+export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]), hourly: Object.freeze([]), sea: null });
 
 // WMO code -> kind. Unknown and null fall back to 'cloud'.
 export function weatherKind(code) {
@@ -60,6 +60,21 @@ export function normaliseDaily(list) {
     const code = num(r.code);
     const hm = (v) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
     rows.push({ date: r.date, code, high: num(r.high), low: num(r.low), sunrise: hm(r.sunrise), sunset: hm(r.sunset), rainChance: num(r.rainChance), windMax: num(r.windMax), windMaxDir: num(r.windMaxDir), kind: weatherKind(code) });
+  }
+  return rows;
+}
+
+// The body's hourly rows (the next day, hour by hour) as the page draws from
+// them; junk gives []. `time` is the city's local wall clock "YYYY-MM-DDTHH:MM"
+// and is only ever read through wallToMs(time, zone).
+export function normaliseHourly(list) {
+  if (!Array.isArray(list)) return [];
+  const rows = [];
+  for (const r of list) {
+    if (rows.length >= 25) break;
+    if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
+    const code = num(r.code);
+    rows.push({ time: r.time, temperature: num(r.temperature), code, cloudCover: num(r.cloudCover), isDay: num(r.isDay), windSpeed: num(r.windSpeed), windDir: num(r.windDir), kind: weatherKind(code) });
   }
   return rows;
 }
@@ -128,6 +143,19 @@ export function normaliseSeaDaily(list) {
         .slice(0, MAX_TIDES)
       : [];
     rows.push({ date: r.date, waveHeightMax: num(r.waveHeightMax), wavePeriodMax: num(r.wavePeriodMax), tides });
+  }
+  return rows;
+}
+
+// The sea's hourly rows ({ time, waveHeight }, at most 25) as the page draws
+// from them; junk gives [].
+export function normaliseSeaHourly(list) {
+  if (!Array.isArray(list)) return [];
+  const rows = [];
+  for (const r of list) {
+    if (rows.length >= 25) break;
+    if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
+    rows.push({ time: r.time, waveHeight: num(r.waveHeight) });
   }
   return rows;
 }
@@ -251,7 +279,7 @@ export function forecastCells(weather, today = null) {
 // The sea reading of an entry, or null when it is not an object.
 function fromSea(s) {
   if (!s || typeof s !== 'object') return null;
-  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir), daily: normaliseSeaDaily(s.daily) };
+  return { waveHeight: num(s.waveHeight), wavePeriod: num(s.wavePeriod), waveDir: num(s.waveDir), daily: normaliseSeaDaily(s.daily), hourly: normaliseSeaHourly(s.hourly) };
 }
 
 // The spoken five-day sentence; "today" goes before any cell flagged today,
@@ -276,6 +304,7 @@ export function fromEntry(e) {
     kind: weatherKind(code),
     known: code !== null,
     daily: normaliseDaily(e.daily),
+    hourly: normaliseHourly(e.hourly),
     sea: fromSea(e.sea),
   };
 }

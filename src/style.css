@@ -40,6 +40,7 @@ html, body {
 }
 
 #back,
+#now,
 #shelfnav button {
   position: fixed;
   min-height: 32px;
@@ -55,6 +56,40 @@ html, body {
 #back {
   top: calc(12px + env(safe-area-inset-top, 0px));
   left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+#scrubrow {
+  position: fixed;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: min(72vw, 440px);
+  color: var(--tag-ink, inherit);
+  font: 500 12px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+#scrublabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#scrub {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  accent-color: var(--tag-edge, currentColor);
+}
+
+#now {
+  position: static;
 }
 
 #shelfnav button {
@@ -73,8 +108,15 @@ html, body {
     min-width: 44px;
     min-height: 44px;
   }
+
+  #scrub,
+  #now {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto; }
+  #scrub,
+  #now { transition: none; }
 }

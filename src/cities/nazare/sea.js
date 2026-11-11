@@ -35,12 +35,16 @@ export function waveSize(h) {
   return SIZES[SIZES.length - 1][1];
 }
 
-// One roll of the wave, in ms: the swell period, 8..18 s (12 s unknown), 2.5x
-// slower under reduced motion.
+// Waves come less often than the swell period says: every roll is stretched by
+// this factor.
+export const ROLL_STRETCH = 1.5;
+
+// One roll of the wave, in ms: the swell period, 8..18 s (12 s unknown), times
+// ROLL_STRETCH, a further 2.5x slower under reduced motion.
 export function rollMs(weather, reduced = false) {
   const p = weather && weather.sea ? weather.sea.wavePeriod : null;
   const s = typeof p === 'number' && Number.isFinite(p) ? clamp(p, 8, 18) : 12;
-  return (1000 * s) / (reduced ? REDUCED_DRIFT : 1);
+  return (1000 * s * ROLL_STRETCH) / (reduced ? REDUCED_DRIFT : 1);
 }
 
 export const wavePhase = (nowMs, roll) => wrap(nowMs / roll);

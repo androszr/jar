@@ -11,7 +11,15 @@ const FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wi
 const MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
 const MARINE_FIELDS = 'wave_height,wave_period,wave_direction';
 const MARINE_DAILY = 'wave_height_max,wave_period_max';
+// One hourly list over all five days: the sea level (the tide times are its
+// extremes) and the wave height (the lifted jar's scrub). No forecast_hours: it
+// would cut today's earlier tides.
+const MARINE_HOURLY = 'wave_height,sea_level_height_msl';
 const FORECAST_DAYS = 5;
+// The next day hour by hour (the lifted jar's scrub): the same six fields as
+// `current`, 25 rows so a full day ahead has both ends.
+const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m';
+const FORECAST_HOURS = 25;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
 export function openMeteoUrl(places) {
@@ -20,7 +28,7 @@ export function openMeteoUrl(places) {
   // Each location's own zone, so daily.time is that city's local date. (current.time
   // is therefore local too; it is not read.)
   const zones = places.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
+  return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&hourly=${HOURLY_FIELDS}&forecast_hours=${FORECAST_HOURS}&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
 }
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -36,7 +44,7 @@ export function marineUrl(places) {
   const lon = sea.map((p) => p.sea.lon).join(',');
   // Each sea place's own zone, so daily.time is that city's local date.
   const zones = sea.map((p) => encodeURIComponent(p.zone)).join(',');
-  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&hourly=sea_level_height_msl&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
+  return `${MARINE_ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${MARINE_FIELDS}&daily=${MARINE_DAILY}&hourly=${MARINE_HOURLY}&forecast_days=${FORECAST_DAYS}&timezone=${zones}&cell_selection=sea`;
 }
 
 // Hourly sea level (the city's local wall clock) -> { [date]: [{ time, kind, height }] },
@@ -87,15 +95,34 @@ export function marineDailyRows(d, tidesByDate = {}) {
   return rows;
 }
 
+// The marine hourly block (parallel arrays) -> at most 25 { time, waveHeight },
+// from the hour containing `from` (the entry's `current.time`, local ISO; without
+// it, from the first row). `time` is the vendor's local ISO "YYYY-MM-DDTHH:MM",
+// kept as a string and compared as a string (same zone, fixed width); bad rows dropped.
+export function marineHourlyRows(h, from = null) {
+  if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return [];
+  const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
+  const m = typeof from === 'string' && /^(\d{4}-\d{2}-\d{2}T\d{2}):\d{2}/.exec(from);
+  const start = m ? `${m[1]}:00` : null;
+  const rows = [];
+  for (let i = 0; i < h.time.length && rows.length < FORECAST_HOURS; i++) {
+    const time = h.time[i];
+    if (typeof time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(time)) continue;
+    if (start !== null && time < start) continue;
+    rows.push({ time, waveHeight: at(h.wave_height, i) });
+  }
+  return rows;
+}
+
 // The marine body (an object for one point, an array for several) ->
-// { [id]: { waveHeight, wavePeriod, waveDir, daily } }. Junk gives nulls, never a throw.
+// { [id]: { waveHeight, wavePeriod, waveDir, daily, hourly } }. Junk gives nulls, never a throw.
 export function normaliseMarine(payload, sea) {
   const list = Array.isArray(payload) ? payload : [payload];
   const out = {};
   sea.forEach((p, i) => {
     const cur = list[i] && typeof list[i] === 'object' ? list[i].current : null;
     out[p.id] = cur && typeof cur === 'object'
-      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily, tideExtremes(list[i].hourly)) }
+      ? { waveHeight: num(cur.wave_height), wavePeriod: num(cur.wave_period), waveDir: num(cur.wave_direction), daily: marineDailyRows(list[i].daily, tideExtremes(list[i].hourly)), hourly: marineHourlyRows(list[i].hourly, cur.time) }
       : null;
   });
   return out;
@@ -121,10 +148,34 @@ function dailyRows(d) {
   return rows;
 }
 
+// The vendor's hourly block (parallel arrays) -> at most 25
+// { time, temperature, code, cloudCover, isDay, windSpeed, windDir }. `time` is
+// the vendor's local ISO "YYYY-MM-DDTHH:MM", kept as a string; bad rows dropped.
+export function hourlyRows(h) {
+  if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return [];
+  const at = (a, i) => (Array.isArray(a) ? num(a[i]) : null);
+  const rows = [];
+  for (let i = 0; i < h.time.length && rows.length < FORECAST_HOURS; i++) {
+    const time = h.time[i];
+    if (typeof time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(time)) continue;
+    rows.push({
+      time,
+      temperature: at(h.temperature_2m, i),
+      code: at(h.weather_code, i),
+      cloudCover: at(h.cloud_cover, i),
+      isDay: at(h.is_day, i),
+      windSpeed: at(h.wind_speed_10m, i),
+      windDir: at(h.wind_direction_10m, i),
+    });
+  }
+  return rows;
+}
+
 // The vendor body (an object for one place, an array for several) ->
 // { v, fetchedAt, ok, cities }. Six numeric fields (wind in km/h and degrees
 // the wind comes from) and the daily rows are kept, plus `sea` (the wave
-// reading, or null) from the optional marine body.
+// reading, or null) from the optional marine body, and `hourly` (the next 25
+// hours, [] when the vendor leaves it out).
 export function normalise(payload, places, nowMs = Date.now(), marinePayload = null) {
   const list = Array.isArray(payload) ? payload : [payload];
   const seas = marinePayload ? normaliseMarine(marinePayload, seaPlaces(places)) : {};
@@ -140,6 +191,7 @@ export function normalise(payload, places, nowMs = Date.now(), marinePayload = n
       windSpeed: num(cur.wind_speed_10m),
       windDir: num(cur.wind_direction_10m),
       daily: dailyRows(list[i].daily),
+      hourly: hourlyRows(list[i].hourly),
       sea: seas[p.id] || null,
     };
   });

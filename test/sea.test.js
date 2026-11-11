@@ -55,12 +55,12 @@ test('surfers are sampled from the clock: same moment, same place; later, elsewh
   }
 });
 
-test('the roll takes the swell period, clamped 8..18 s, 2.5x slower reduced', () => {
-  assert.equal(rollMs(EMPTY), 12000);
-  assert.equal(rollMs({ sea: { wavePeriod: 3 } }), 8000);
-  assert.equal(rollMs({ sea: { wavePeriod: 40 } }), 18000);
-  assert.equal(rollMs({ sea: { wavePeriod: 13.5 } }), 13500);
-  assert.ok(Math.abs(rollMs(EMPTY, true) - 30000) < 1e-9);
+test('the roll takes the swell period, clamped 8..18 s, stretched 1.5x, 2.5x slower reduced', () => {
+  assert.equal(rollMs(EMPTY), 18000);
+  assert.equal(rollMs({ sea: { wavePeriod: 3 } }), 12000);
+  assert.equal(rollMs({ sea: { wavePeriod: 40 } }), 27000);
+  assert.equal(rollMs({ sea: { wavePeriod: 13.5 } }), 20250);
+  assert.ok(Math.abs(rollMs(EMPTY, true) - 45000) < 1e-9);
 });
 
 test('wavePhase starts at 0 and wraps', () => {

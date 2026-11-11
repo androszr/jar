@@ -135,7 +135,7 @@ test('two waves are on the water, half a roll apart, the farther drawn first', (
 test('the riders ride just ahead of the break and run left with it', () => {
   const L = layout(340, 396);
   const weather = { ...EMPTY, sea: { waveHeight: 4, wavePeriod: 12, waveDir: null } };
-  const roll = 12000;
+  const roll = 18000; // a 12 s swell, stretched 1.5x
   const plan = surferPlan('big', 1);
   for (const t0 of [0, 5 * roll]) {
     const a = waveState(L, weather, t0 + 0.5 * roll, false);
@@ -306,7 +306,7 @@ test('no gap between the wave and the cliff: the wave always runs on behind the 
   // is right of the face, it stays below the cliff top
   const L = layout(340, 396);
   const weather = { ...EMPTY, sea: { waveHeight: 10, wavePeriod: 12, waveDir: null } };
-  for (let t = 0; t < 12000; t += 120) {
+  for (let t = 0; t < 18000; t += 120) {
     for (const s of waveStates(L, weather, t, false)) {
       for (let xs = WAVE.rock; xs <= WAVE.x1 + 1e-9; xs += 0.005) {
         const top = waveTopAt(L, s, xs) / L.h;
