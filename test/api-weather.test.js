@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { openMeteoUrl, hourlyRows, marineHourlyRows, marineUrl, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
+import handler, { openMeteoUrl, hourlyRows, marineHourlyRows, marineUrl, tideExtremes, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
 import { PLACES } from '../src/cities/places.js';
 import { readFileSync } from 'node:fs';
 
@@ -19,7 +19,7 @@ test('openMeteoUrl builds one request for one place', () => {
   assert.equal(u.searchParams.get('longitude'), '21.01');
   assert.equal(u.searchParams.get('current'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m');
   assert.equal(u.searchParams.get('timezone'), 'Europe/Warsaw');
-  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset');
+  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant');
   assert.equal(u.searchParams.get('forecast_days'), '5');
 });
 
@@ -132,7 +132,10 @@ const cur = { temperature_2m: 1, weather_code: 0, cloud_cover: 0, is_day: 0 };
 test('normalise: five daily rows from the fixture', () => {
   const r = normalise(fixture('weather.json'), [warsaw], NOW);
   assert.equal(r.cities.warsaw.daily.length, 5);
-  assert.deepEqual(r.cities.warsaw.daily[0], { date: '2026-10-18', code: 61, high: 14.2, low: 8.7, sunrise: '07:05', sunset: '17:32' });
+  assert.deepEqual(r.cities.warsaw.daily[0], { date: '2026-10-18', code: 61, high: 14.2, low: 8.7, sunrise: '07:05', sunset: '17:32', rainChance: 40, windMax: 23.4, windMaxDir: 315 });
+  assert.deepEqual(r.cities.warsaw.daily.map((x) => x.rainChance), [40, 85, 5, 60, 95]);
+  assert.equal(r.cities.warsaw.daily[3].windMaxDir, null, 'a null direction stays null');
+  assert.equal(r.cities.warsaw.daily[3].windMax, 15.2);
   assert.equal(r.cities.warsaw.daily[3].low, -2.4);
 });
 
@@ -152,8 +155,8 @@ test('normalise: arrays of unequal length give nulls, not a crash', () => {
   const daily = { time: ['2026-10-18', '2026-10-19'], weather_code: [1], temperature_2m_max: [5, 6], temperature_2m_min: null };
   const rows = normalise({ current: cur, daily }, [warsaw], NOW).cities.warsaw.daily;
   assert.deepEqual(rows, [
-    { date: '2026-10-18', code: 1, high: 5, low: null, sunrise: null, sunset: null },
-    { date: '2026-10-19', code: null, high: 6, low: null, sunrise: null, sunset: null },
+    { date: '2026-10-18', code: 1, high: 5, low: null, sunrise: null, sunset: null, rainChance: null, windMax: null, windMaxDir: null },
+    { date: '2026-10-19', code: null, high: 6, low: null, sunrise: null, sunset: null, rainChance: null, windMax: null, windMaxDir: null },
   ]);
 });
 
@@ -203,8 +206,9 @@ test('normalise: a non-finite wind speed is null', () => {
 
 test('openMeteoUrl asks for sunrise and sunset in the one daily list', () => {
   const u = new URL(openMeteoUrl([warsaw]));
-  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset');
+  assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant');
   assert.equal(openMeteoUrl([warsaw]).split('sunrise,sunset').length - 1, 1);
+  assert.equal(openMeteoUrl([warsaw]).split('precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant').length - 1, 1);
 });
 
 test('normalise: sunrise and sunset come through as HH:MM', () => {
@@ -261,14 +265,14 @@ test('normaliseMarine daily: five rows from the fixture, [] without daily or on 
   assert.deepEqual(normaliseMarine(noDaily, [nazare]).nazare.daily, []);
   assert.deepEqual(normaliseMarine({ ...noDaily, daily: 'junk' }, [nazare]).nazare.daily, []);
   const short = normaliseMarine({ ...noDaily, daily: { time: ['2026-10-18', 'x'], wave_height_max: [1], wave_period_max: 'junk' } }, [nazare]).nazare.daily;
-  assert.deepEqual(short, [{ date: '2026-10-18', waveHeightMax: 1, wavePeriodMax: null }]);
+  assert.deepEqual(short, [{ date: '2026-10-18', waveHeightMax: 1, wavePeriodMax: null, tides: tideExtremes(fixture('marine.json').hourly)['2026-10-18'] }]);
 });
 
-test('marineUrl asks hourly=wave_height once and forecast_hours=25', () => {
+test('marineUrl asks one hourly list with the wave height, and no forecast_hours', () => {
   const u = new URL(marineUrl([nazare]));
   assert.equal(u.searchParams.getAll('hourly').length, 1);
-  assert.equal(u.searchParams.get('hourly'), 'wave_height');
-  assert.equal(u.searchParams.get('forecast_hours'), '25');
+  assert.ok(u.searchParams.get('hourly').split(',').includes('wave_height'));
+  assert.equal(u.searchParams.get('forecast_hours'), null, 'it would cut today\'s earlier tides');
 });
 
 test('marineHourlyRows: 25 rows from the fixture, [] on junk, nulls when short, bad time dropped', () => {
@@ -282,7 +286,21 @@ test('marineHourlyRows: 25 rows from the fixture, [] on junk, nulls when short, 
   assert.deepEqual(marineHourlyRows({ time: ['2026-10-18T00:00', '2026-10-18T01:00'], wave_height: [1] }), [{ time: '2026-10-18T00:00', waveHeight: 1 }, { time: '2026-10-18T01:00', waveHeight: null }]);
   assert.deepEqual(marineHourlyRows({ time: ['bad', '2026-10-18T01:00'], wave_height: [1, 2] }), [{ time: '2026-10-18T01:00', waveHeight: 2 }]);
   assert.equal(marineHourlyRows({ time: Array.from({ length: 40 }, (_, i) => `2026-10-18T${String(i % 24).padStart(2, '0')}:00`), wave_height: [] }).length, 25);
-  assert.equal(normaliseMarine(fixture('marine.json'), [nazare]).nazare.hourly.length, 25);
+  assert.equal(normaliseMarine(fixture("marine.json"), [nazare]).nazare.hourly.length, 25);
+});
+
+test('marineHourlyRows starts at the hour of current.time and normaliseMarine passes it', () => {
+  const h = fixture('marine.json').hourly;
+  const rows = marineHourlyRows(h, '2026-10-18T11:20');
+  assert.equal(rows.length, 25);
+  assert.equal(rows[0].time, '2026-10-18T11:00');
+  assert.equal(rows[0].waveHeight, h.wave_height[11]);
+  assert.equal(rows[24].time, '2026-10-19T11:00');
+  assert.equal(marineHourlyRows(h, 'junk')[0].time, '2026-10-18T00:00');
+  assert.equal(marineHourlyRows(h, '2026-10-22T20:00').length, 4);
+  const n = normaliseMarine(fixture('marine.json'), [nazare]).nazare;
+  assert.equal(n.hourly[0].time, '2026-10-18T11:00');
+  assert.equal(n.daily[0].tides.length, 4, 'the tides still read the whole five days');
 });
 
 test('normaliseMarine reads the fixture, junk and a short array', () => {
@@ -406,4 +424,55 @@ test('hourlyRows: unequal arrays give nulls, a bad time drops the row, 25 at mos
   ]);
   const long = Array.from({ length: 40 }, (_, i) => `2026-10-${String(1 + Math.floor(i / 24)).padStart(2, '0')}T${String(i % 24).padStart(2, '0')}:00`);
   assert.equal(hourlyRows({ time: long }).length, 25);
+});
+
+test('marineUrl asks for the hourly sea level exactly once', () => {
+  const u = marineUrl([nazare]);
+  assert.equal(u.split('hourly=').length - 1, 1);
+  assert.equal(new URL(u).searchParams.get('hourly'), 'wave_height,sea_level_height_msl');
+});
+
+test('weather.json: rain and wind default to null when the vendor leaves them out', () => {
+  const r = normalise(fixture('weather-two.json'), two, NOW).cities.paris.daily;
+  assert.ok(r.length > 0);
+  for (const d of r) {
+    assert.equal(d.rainChance, null);
+    assert.equal(d.windMax, null);
+    assert.equal(d.windMaxDir, null);
+  }
+});
+
+const toMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+
+test('tideExtremes: the fixture gives two highs and two lows, alternating, at the analytic peaks', () => {
+  const t = tideExtremes(fixture('marine.json').hourly);
+  const day = t['2026-10-18'];
+  assert.deepEqual(day.map((e) => e.kind), ['high', 'low', 'high', 'low']);
+  const want = ['03:12', '09:25', '15:37', '21:50'];
+  day.forEach((e, i) => assert.ok(Math.abs(toMin(e.time) - toMin(want[i])) <= 2, `${e.time} vs ${want[i]}`));
+  assert.ok(day.every((e) => /^\d{2}:\d{2}$/.test(e.time) && Number.isFinite(e.height)));
+  assert.deepEqual(day.map((e) => e.time), [...day.map((e) => e.time)].sort());
+});
+
+test('tideExtremes: junk or missing hourly is {}, and a null sample breaks the triple', () => {
+  for (const h of [undefined, null, 'x', {}, { time: [] }, { time: 'x', sea_level_height_msl: [] }, { time: ['2026-10-18T00:00'], sea_level_height_msl: 'x' }]) {
+    assert.deepEqual(tideExtremes(h), {}, JSON.stringify(h));
+  }
+  const time = ['2026-10-18T00:00', '2026-10-18T01:00', '2026-10-18T02:00', '2026-10-18T03:00', '2026-10-18T04:00'];
+  assert.equal(tideExtremes({ time, sea_level_height_msl: [0, 1, 0, -1, 0] })['2026-10-18'].length, 2);
+  assert.deepEqual(tideExtremes({ time, sea_level_height_msl: [0, 1, null, -1, 0] }), {});
+});
+
+test('tideExtremes: a refined time across midnight lands on the neighbouring date', () => {
+  const time = ['2026-10-18T21:00', '2026-10-18T22:00', '2026-10-18T23:00', '2026-10-19T00:00', '2026-10-19T01:00'];
+  const t = tideExtremes({ time, sea_level_height_msl: [0, 1, 1.8, 1.9, 1.7] });
+  assert.deepEqual(t, { '2026-10-18': [{ time: '23:50', kind: 'high', height: 1.9 }] });
+});
+
+test('normaliseMarine folds tides onto each daily row, [] without hourly', () => {
+  const d = normaliseMarine(fixture('marine.json'), [nazare]).nazare.daily;
+  assert.equal(d[0].tides.length, 4);
+  assert.deepEqual(d[0].tides.map((e) => e.kind), ['high', 'low', 'high', 'low']);
+  const { hourly, ...noHourly } = fixture('marine.json');
+  assert.ok(normaliseMarine(noHourly, [nazare]).nazare.daily.every((r) => Array.isArray(r.tides) && r.tides.length === 0));
 });

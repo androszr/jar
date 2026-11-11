@@ -2,7 +2,8 @@
 // five days of icon, high and low in monospace, and the seven weather glyphs.
 // Colours only from PALETTE, text only through text().
 import { PALETTE, css } from './palette.js';
-import { text } from './draw.js';
+import { text, fitSize } from './draw.js';
+import { formatTideStrip, formatTideHeight, tideCurve } from '../../weather.js';
 import { CARD } from '../../forecast.js';
 
 function cloudShape(ctx, x, y, s, colour) {
@@ -83,16 +84,23 @@ export function weatherIcon(ctx, kind, x, y, size) {
   ctx.restore();
 }
 
-// The card on `rect`: `cells` is five { day, kind, high, low }; `layout` is
-// 'column' (five rows) or 'row' (five columns). A cell with `today` gets a
-// brass band, a brighter day name and a short underline under that name; `sun` ({ sunrise, sunset } or null) adds
-// one strip along the bottom edge.
-export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) {
+// The card on `rect`: `cells` is five { day, kind, high, low, swell, rain, wind,
+// windArrow }; `layout` is 'column' (five rows) or 'row' (five columns). A cell
+// with `today` gets a brass band, a brighter day name and a short underline
+// under that name; `sun` ({ sunrise, sunset } or null) adds one strip along the
+// bottom edge and `tides` (today's { time, kind } entries, [] for none) a
+// second strip under it. A missing rain or wind figure leaves its line empty.
+// Text never drops under FLOOR px (12.5 in the row, 12 in the column).
+export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null) {
   const { x, y, w } = rect;
   const key = layout === 'row' ? 'row' : 'column';
+  const floor = layout === 'row' ? 12.5 : 12;
   const strip = sun ? CARD.strip[key] : 0;
   const arcH = sun ? CARD.arc[key] : 0;
-  const h = rect.h - strip - arcH;
+  const strips = formatTideStrip(tides);
+  const tideH = strips ? CARD.tide[key] : 0;
+  const curveH = strips ? CARD.curve[key] : 0;
+  const h = rect.h - strip - arcH - tideH - curveH;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
   ctx.beginPath();
@@ -104,7 +112,13 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) 
   const n = cells.length || 1;
   const swell = cells.some((c) => c && c.swell);
   const swellText = (c) => (c.swell ? c.swell.height : '—');
+  const windText = (c) => (c.wind ? (c.windArrow ? `${c.wind} ${c.windArrow}` : c.wind) : null);
   if (layout === 'row') {
+    // A line grid: day, icon (1.6 pitches), high, low, [swell], rain, wind.
+    const lines = 5 + (swell ? 1 : 0) + 1;
+    const p = h / (lines - 1 + 1.6);
+    const big = Math.max(floor, p * 0.62);
+    const small = Math.max(floor, p * 0.56);
     const cw = w / n;
     cells.forEach((c, i) => {
       const cx = x + cw * (i + 0.5);
@@ -113,26 +127,28 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) 
         ctx.fillRect(x + cw * i, y, cw, h);
       }
       const dayInk = c.today ? PALETTE.labelInk : PALETTE.labelDim;
-      if (swell) {
-        text(ctx, c.day, cx, y + h * 0.12, h * 0.12, dayInk);
-        if (c.today) {
-          ctx.fillStyle = css(PALETTE.labelInk, 0.9);
-          ctx.fillRect(cx - cw * 0.21, y + h * 0.21, cw * 0.42, Math.max(1, h * 0.015));
-        }
-        weatherIcon(ctx, c.kind, cx, y + h * 0.36, Math.min(cw * 0.7, h * 0.3));
-        text(ctx, c.high, cx, y + h * 0.6, h * 0.14, PALETTE.labelInk);
-        text(ctx, c.low, cx, y + h * 0.75, h * 0.12, PALETTE.labelDim);
-        text(ctx, swellText(c), cx, y + h * 0.91, h * 0.12, PALETTE.labelDim);
-      } else {
-        text(ctx, c.day, cx, y + h * 0.14, h * 0.13, dayInk);
-        if (c.today) {
-          ctx.fillStyle = css(PALETTE.labelInk, 0.9);
-          ctx.fillRect(cx - cw * 0.21, y + h * 0.235, cw * 0.42, Math.max(1, h * 0.015));
-        }
-        weatherIcon(ctx, c.kind, cx, y + h * 0.43, Math.min(cw * 0.7, h * 0.34));
-        text(ctx, c.high, cx, y + h * 0.69, h * 0.15, PALETTE.labelInk);
-        text(ctx, c.low, cx, y + h * 0.88, h * 0.13, PALETTE.labelDim);
+      let row = 0.5;
+      const at = () => y + p * row;
+      text(ctx, c.day, cx, at(), big, dayInk);
+      if (c.today) {
+        ctx.fillStyle = css(PALETTE.labelInk, 0.9);
+        ctx.fillRect(cx - cw * 0.21, y + p * 0.5 + big * 0.6, cw * 0.42, Math.max(1, p * 0.07));
       }
+      weatherIcon(ctx, c.kind, cx, y + p * 1.8, Math.min(cw * 0.7, p * 1.5));
+      row = 3.1;
+      text(ctx, c.high, cx, at(), big, PALETTE.labelInk);
+      row += 1;
+      text(ctx, c.low, cx, at(), small, PALETTE.labelDim);
+      if (swell) {
+        row += 1;
+        text(ctx, swellText(c), cx, at(), small, PALETTE.labelDim);
+      }
+      row += 1;
+      if (c.rain) text(ctx, c.rain, cx, at(), small, PALETTE.rain);
+      row += 1;
+      // Tight columns: the unit and arrow close up so the figure never touches its neighbour.
+      const wt = c.wind ? `${c.wind.replace(' ', '')}${c.windArrow || ''}` : null;
+      if (wt) text(ctx, wt, cx, at(), Math.max(floor, fitSize(ctx, wt, small, cw * 0.96)), PALETTE.labelDim);
     });
   } else {
     const rh = h / n;
@@ -143,22 +159,32 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) 
         ctx.fillRect(x, y + rh * i, w, rh);
       }
       const dayInk = c.today ? PALETTE.labelInk : PALETTE.labelDim;
-      // The today underline is drawn after the day name, so text() cannot repaint it.
-      const underline = (uy) => {
+      const l1 = cy - rh * 0.18;
+      const l2 = cy + rh * 0.24;
+      text(ctx, c.day, x + w * 0.1, l1, Math.max(floor, rh * 0.26), dayInk, 'left');
+      if (c.today) {
+        // Drawn after the day name, so text() cannot repaint it.
         ctx.fillStyle = css(PALETTE.labelInk, 0.9);
-        ctx.fillRect(x + w * 0.1, uy, w * 0.2, Math.max(1, rh * 0.025));
-      };
-      if (swell) {
-        text(ctx, c.day, x + w * 0.1, cy - rh * 0.14, rh * 0.24, dayInk, 'left');
-        if (c.today) underline(cy + rh * 0.01);
-        text(ctx, swellText(c), x + w * 0.1, cy + rh * 0.2, rh * 0.2, PALETTE.labelDim, 'left');
-      } else {
-        text(ctx, c.day, x + w * 0.1, cy, rh * 0.26, dayInk, 'left');
-        if (c.today) underline(cy + rh * 0.2);
+        ctx.fillRect(x + w * 0.1, l1 + rh * 0.15, w * 0.2, Math.max(1, rh * 0.025));
       }
-      weatherIcon(ctx, c.kind, x + w * 0.45, cy, rh * 0.44);
-      text(ctx, c.high, x + w * 0.73, cy, rh * 0.26, PALETTE.labelInk, 'right');
-      text(ctx, c.low, x + w * 0.95, cy, rh * 0.22, PALETTE.labelDim, 'right');
+      weatherIcon(ctx, c.kind, x + w * 0.42, l1, rh * 0.44);
+      text(ctx, c.high, x + w * 0.73, l1, Math.max(floor, rh * 0.26), PALETTE.labelInk, 'right');
+      text(ctx, c.low, x + w * 0.95, l1, Math.max(floor, rh * 0.22), PALETTE.labelDim, 'right');
+      const size2 = Math.max(floor, rh * 0.2);
+      if (c.swell) text(ctx, swellText(c), x + w * 0.1, l2, size2, PALETTE.labelDim, 'left');
+      else if (swell) text(ctx, '—', x + w * 0.1, l2, size2, PALETTE.labelDim, 'left');
+      const wt = windText(c);
+      const parts = [c.rain, wt].filter(Boolean);
+      if (parts.length) {
+        const str = parts.join('  ');
+        const sz = Math.max(floor, fitSize(ctx, str, size2, w * 0.55));
+        // Rain in its own ink, wind after it: two texts, the wind right-aligned.
+        if (wt) text(ctx, wt, x + w * 0.95, l2, sz, PALETTE.labelDim, 'right');
+        if (c.rain) {
+          const rx = wt ? x + w * 0.95 - wt.length * sz * 0.62 - sz : x + w * 0.95;
+          text(ctx, c.rain, rx, l2, sz, PALETTE.rain, 'right');
+        }
+      }
     });
   }
   if (sun) {
@@ -168,12 +194,61 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null) 
     ctx.moveTo(x + w * 0.08, y + h);
     ctx.lineTo(x + w * 0.92, y + h);
     ctx.stroke();
-    text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + strip * 0.5, strip * 0.48, PALETTE.labelDim);
+    text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + strip * 0.5, Math.max(floor, strip * 0.48), PALETTE.labelDim);
+  }
+  if (tideH) {
+    // Today's tides, with or without a sun strip above: a hairline, then the
+    // times with their heights (row: two lines on the left; column: one line
+    // per extreme) and a small curve of the day with a dot for now (row: to the
+    // right of the text; column: under it).
+    const ty = y + h + strip;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = css(PALETTE.brass, 0.35);
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.08, ty);
+    ctx.lineTo(x + w * 0.92, ty);
+    ctx.stroke();
+    let box;
+    if (layout === 'row') {
+      const line = (str, ly) => text(ctx, str, x + w * 0.04, ly, Math.max(floor, fitSize(ctx, str, floor, w * 0.64)), PALETTE.labelDim, 'left');
+      // Line 1 always opens "tide ↑" (the arrow alone when no highs), line 2 is indented under it.
+      const up = `tide ↑${strips.highs.length ? ` ${strips.highs.join(' ')}` : ''}`;
+      const down = strips.lows.length ? `     ↓ ${strips.lows.join(' ')}` : '';
+      line(up, ty + tideH * 0.3);
+      if (down) line(down, ty + tideH * 0.72);
+      box = { x: x + w * 0.72, y: ty + 4, w: w * 0.24, h: tideH - 8 };
+    } else {
+      const ordered = [...tides].filter((t) => t && (t.kind === 'high' || t.kind === 'low')).sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+      ordered.slice(0, 4).forEach((t, i) => {
+        const hgt = formatTideHeight(t.height);
+        const str = `${i === 0 ? 'tide ' : '     '}${t.kind === 'high' ? '↑' : '↓'} ${t.time}${hgt ? ` ${hgt}` : ''}`;
+        text(ctx, str, x + w * 0.1, ty + 10 + 14 * i, Math.max(floor, fitSize(ctx, str, floor, w * 0.8)), PALETTE.labelDim, 'left');
+      });
+      box = { x: x + w * 0.1, y: ty + tideH + 4, w: w * 0.8, h: curveH - 8 };
+    }
+    const c = tideCurve(tides, dayT);
+    if (c) {
+      const px = (t) => box.x + t * box.w;
+      const py = (v) => box.y + box.h * (1 - 0.15 - 0.7 * ((v - c.min) / (c.max - c.min || 1)));
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = css(PALETTE.glass, 0.6);
+      ctx.beginPath();
+      c.points.forEach((p, i) => (i === 0 ? ctx.moveTo(px(p.t), py(p.h)) : ctx.lineTo(px(p.t), py(p.h))));
+      ctx.stroke();
+      if (c.now) {
+        ctx.fillStyle = css(PALETTE.labelInk);
+        ctx.beginPath();
+        ctx.arc(px(c.now.t), py(c.now.h), Math.max(1.5, box.h * 0.08), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  if (sun) {
     // The sun's path under the strip: dim and dotless outside daylight.
     const day = Number.isFinite(sunT) && sunT >= 0 && sunT <= 1;
     const cx = x + w / 2;
     const rx = w * 0.42;
-    const baseY = y + h + strip + arcH - 3;
+    const baseY = y + h + strip + tideH + curveH + arcH - 3;
     const ry = arcH - 6;
     ctx.beginPath();
     ctx.ellipse(cx, baseY, rx, ry, 0, Math.PI, Math.PI * 2);

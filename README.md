@@ -27,8 +27,10 @@ and on Nazaré's jar the swell as well.
 
 **Click or tap a jar and it lifts closer.** A card beside it shows the next
 five days: today is marked with a band and an underline (and named *today* for
-screen readers), and a strip along the bottom gives today's sunrise and sunset
-with a thin arc under it whose dot shows how far the sun has come across the
+screen readers), each day gives its chance of rain and its strongest wind with
+an arrow for the way it blows, and a strip along the bottom gives today's
+sunrise and sunset (on Nazaré, a second line adds today's high and low tide
+times) with a thin arc under it whose dot shows how far the sun has come across the
 sky. On a lifted jar the arrows, the arrow keys or a swipe move to the other
 jar. Press Escape or the back button to set it down. The shed's own window
 follows *your* clock, not either city's. A slider under the lifted jar previews
@@ -59,7 +61,7 @@ sit at the edges of the glass, so they never cover a tower.
     <td width="38%">
       <b>A wave sized by the real sea.</b> The Sítio cliff, the São Miguel Arcanjo fort and its red-roofed lighthouse stand above the Praia do Norte wave. By day a few surfers ride it; at night the lighthouse beam sweeps the foam.<br><br>
       The wave's size follows the real wave height off the coast: <b>calm</b> under 1 m, <b>moderate</b> 1–3 m, <b>big</b> 3–6 m, <b>giant</b> from 6 m. With no reading it shows a moderate two-metre day.<br><br>
-      The label adds the swell (height · period) as a fourth line, and the forecast card gives each day's peak wave height. Slide the time ahead through the day and the wave resizes to the forecast swell for that hour. The waves roll in at a gentle pace. The jar keeps Lisbon time and wears a tin lid instead of Warsaw's cork.
+      The label adds the swell (height · period) as a fourth line, and the forecast card gives each day's peak wave height and today's high and low tide times, each with its height in metres, under a small tide curve with a dot for now. Slide the time ahead through the day and the wave resizes to the forecast swell for that hour. The waves roll in at a gentle pace. The jar keeps Lisbon time and wears a tin lid instead of Warsaw's cork.
     </td>
   </tr>
 </table>

@@ -59,7 +59,7 @@ export function normaliseDaily(list) {
     if (!r || typeof r !== 'object' || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) continue;
     const code = num(r.code);
     const hm = (v) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
-    rows.push({ date: r.date, code, high: num(r.high), low: num(r.low), sunrise: hm(r.sunrise), sunset: hm(r.sunset), kind: weatherKind(code) });
+    rows.push({ date: r.date, code, high: num(r.high), low: num(r.low), sunrise: hm(r.sunrise), sunset: hm(r.sunset), rainChance: num(r.rainChance), windMax: num(r.windMax), windMaxDir: num(r.windMaxDir), kind: weatherKind(code) });
   }
   return rows;
 }
@@ -125,6 +125,9 @@ export function formatSwell(sea) {
   return p === null ? h : `${h} · ${p}`;
 }
 
+// No more than this many tide entries a day are kept (a real day has four).
+const MAX_TIDES = 6;
+
 // The sea's daily rows as the page draws from them; junk gives [].
 export function normaliseSeaDaily(list) {
   if (!Array.isArray(list)) return [];
@@ -132,7 +135,14 @@ export function normaliseSeaDaily(list) {
   for (const r of list) {
     if (rows.length >= 5) break;
     if (!r || typeof r !== 'object' || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) continue;
-    rows.push({ date: r.date, waveHeightMax: num(r.waveHeightMax), wavePeriodMax: num(r.wavePeriodMax) });
+    const tides = Array.isArray(r.tides)
+      ? r.tides
+        .filter((t) => t && typeof t === 'object' && typeof t.time === 'string' && /^\d{2}:\d{2}$/.test(t.time) && (t.kind === 'high' || t.kind === 'low'))
+        .map((t) => ({ time: t.time, kind: t.kind, height: num(t.height) }))
+        .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0))
+        .slice(0, MAX_TIDES)
+      : [];
+    rows.push({ date: r.date, waveHeightMax: num(r.waveHeightMax), wavePeriodMax: num(r.wavePeriodMax), tides });
   }
   return rows;
 }
@@ -158,14 +168,110 @@ export function swellFor(weather, date) {
   return height === null ? null : { height, period: formatPeriod(r.wavePeriodMax) };
 }
 
+// "40%" (rounded), or null for no reading.
+export function formatRainChance(p) {
+  return typeof p === 'number' && Number.isFinite(p) ? `${Math.round(p)}%` : null;
+}
+
+// "23 km/h" (rounded), or null for no reading.
+export function formatWindSpeed(kmh) {
+  return typeof kmh === 'number' && Number.isFinite(kmh) ? `${Math.round(kmh)} km/h` : null;
+}
+
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const COMPASS_NAMES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+// Arrows point the way the wind blows TO, indexed by the point it comes FROM.
+const COMPASS_ARROWS = ['↓', '↙', '←', '↖', '↑', '↗', '→', '↘'];
+
+// { abbr, name, arrow } for a wind coming FROM `deg` degrees, or null.
+export function windCompass(deg) {
+  if (typeof deg !== 'number' || !Number.isFinite(deg)) return null;
+  const i = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
+  return { abbr: COMPASS[i], name: COMPASS_NAMES[i], arrow: COMPASS_ARROWS[i] };
+}
+
+// Today's tide entries from the sea's daily row for `today`, else [].
+export function tidesFor(weather, today = null) {
+  if (typeof today !== 'string') return [];
+  const rows = weather && weather.sea && Array.isArray(weather.sea.daily) ? weather.sea.daily : [];
+  const r = rows.find((x) => x && x.date === today);
+  return r && Array.isArray(r.tides) ? r.tides : [];
+}
+
+// "3.1 m" for a finite height (one decimal, sign kept: a low can be below mean sea level), else null.
+export function formatTideHeight(h) {
+  const n = tideMetres(h);
+  return n === null ? null : `${n} m`;
+}
+
+// One decimal; a height that rounds to zero from below is "0.0", never "-0.0".
+function tideMetres(h) {
+  return typeof h === 'number' && Number.isFinite(h) ? (Math.round(h * 10) / 10 || 0).toFixed(1) : null;
+}
+
+// { highs: ['03:12 3.1 m', ...], lows: [...] } (the height is left off an entry
+// that has none), or null when there are none of either.
+export function formatTideStrip(tides) {
+  if (!Array.isArray(tides)) return null;
+  const entry = (t) => [t.time, formatTideHeight(t.height)].filter(Boolean).join(' ');
+  const highs = tides.filter((t) => t && t.kind === 'high').map(entry);
+  const lows = tides.filter((t) => t && t.kind === 'low').map(entry);
+  return highs.length || lows.length ? { highs, lows } : null;
+}
+
+// "High tide 03:12 at 3.1 metres and 15:37 at 3.3 metres, low tide 09:25 at 0.4 metres and 21:50." (either half alone; "" for none).
+export function tideSentence(tides) {
+  if (!formatTideStrip(tides)) return '';
+  const spoken = (t) => (tideMetres(t.height) !== null ? `${t.time} at ${tideMetres(t.height)} metres` : t.time);
+  const of = (kind) => tides.filter((t) => t && t.kind === kind).map(spoken);
+  const highs = of('high');
+  const lows = of('low');
+  const parts = [];
+  if (highs.length) parts.push(`High tide ${highs.join(' and ')}`);
+  if (lows.length) parts.push(`${highs.length ? 'low' : 'Low'} tide ${lows.join(' and ')}`);
+  return `${parts.join(', ')}.`;
+}
+
+// The day's tide as a smooth curve through today's extremes (cosine between
+// consecutive highs and lows), sampled across 0..1 of the local day:
+// { points: [{ t, h }], min, max, now: { t, h } | null }, or null with fewer
+// than two extremes that carry a time and a finite height. `nowT` is the day
+// fraction (0..1) the dot sits at. Pure: no clock.
+export function tideCurve(tides, nowT = null, samples = 48) {
+  if (!Array.isArray(tides)) return null;
+  const ex = tides
+    .filter((e) => e && typeof e.time === 'string' && /^\d{2}:\d{2}$/.test(e.time) && typeof e.height === 'number' && Number.isFinite(e.height))
+    .map((e) => ({ t: (Number(e.time.slice(0, 2)) * 60 + Number(e.time.slice(3))) / 1440, h: e.height }))
+    .sort((a, b) => a.t - b.t);
+  if (ex.length < 2) return null;
+  // A virtual extreme beyond each end gives a smooth turnaround there.
+  const first = ex[0];
+  const last = ex[ex.length - 1];
+  const chain = [{ t: first.t - (ex[1].t - first.t), h: ex[1].h }, ...ex, { t: last.t + (last.t - ex[ex.length - 2].t), h: ex[ex.length - 2].h }];
+  const at = (t) => {
+    let i = 0;
+    while (i < chain.length - 2 && t > chain[i + 1].t) i++;
+    const a = chain[i];
+    const b = chain[i + 1];
+    const u = b.t === a.t ? 0 : Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
+    return a.h + (b.h - a.h) * (1 - Math.cos(Math.PI * u)) / 2;
+  };
+  const n = Math.max(2, samples);
+  const points = Array.from({ length: n }, (_, i) => ({ t: i / (n - 1), h: at(i / (n - 1)) }));
+  const hs = ex.map((e) => e.h);
+  const ok = typeof nowT === 'number' && Number.isFinite(nowT) && nowT >= 0 && nowT < 1;
+  return { points, min: Math.min(...hs), max: Math.max(...hs), now: ok ? { t: nowT, h: at(nowT) } : null };
+}
+
 export function forecastCells(weather, today = null) {
   const rows = upcomingRows(weather, today);
   const cells = [];
   for (let i = 0; i < 5; i++) {
     const r = rows[i];
+    const wc = r ? windCompass(r.windMaxDir) : null;
     cells.push(r
-      ? { day: dayName(r.date), kind: r.kind || weatherKind(r.code), high: formatTemp(r.high), low: formatTemp(r.low), today: typeof today === 'string' && i === 0 && r.date === today, swell: swellFor(weather, r.date) }
-      : { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false, swell: null });
+      ? { day: dayName(r.date), kind: r.kind || weatherKind(r.code), high: formatTemp(r.high), low: formatTemp(r.low), today: typeof today === 'string' && i === 0 && r.date === today, swell: swellFor(weather, r.date), rain: formatRainChance(r.rainChance), wind: formatWindSpeed(r.windMax), windArrow: wc ? wc.arrow : null, windFrom: wc ? wc.name : null }
+      : { day: '—', kind: 'cloud', high: '—°', low: '—°', today: false, swell: null, rain: null, wind: null, windArrow: null, windFrom: null });
   }
   return cells;
 }
@@ -177,10 +283,11 @@ function fromSea(s) {
 }
 
 // The spoken five-day sentence; "today" goes before any cell flagged today,
-// and a day with a swell reading says its peak wave height.
+// and a day says its chance of rain, its wind (and where from) and its peak
+// wave height when it has them.
 export function forecastSentence(cells) {
   if (!Array.isArray(cells) || !cells.length || cells[0].day === '—') return '';
-  return `Next five days: ${cells.map((c) => `${c.today ? 'today ' : ''}${c.day} ${c.high} to ${c.low}${c.swell ? ` swell ${c.swell.height}` : ''}`).join(', ')}.`;
+  return `Next five days: ${cells.map((c) => `${c.today ? 'today ' : ''}${c.day} ${c.high} to ${c.low}${c.rain ? ` rain ${c.rain}` : ''}${c.wind ? ` wind ${c.wind}${c.windFrom ? ` from the ${c.windFrom}` : ''}` : ''}${c.swell ? ` swell ${c.swell.height}` : ''}`).join(', ')}.`;
 }
 
 // One city's entry from the function's body, as the page draws from it.

@@ -2,7 +2,7 @@
 import { readOptions, sample, isNight, moonPos } from './clock.js';
 import { moonPhase } from './moon.js';
 import { placeGuess, realPhase } from './realclock.js';
-import { therePhase, localDate, sunFraction, localTimeText } from './placeclock.js';
+import { therePhase, localDate, sunFraction, localTimeText, dayFraction } from './placeclock.js';
 import { LOOK, CSS_VARS, tint as lookTint, bloom, vignette, forecastCard } from './look/index.js';
 import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
@@ -12,7 +12,7 @@ import { Lift, liftCamera, pressLowers } from './lift.js';
 import { forecastPose, liftExtent } from './forecast.js';
 import { offsetText, previewWeather, clampScrub } from './scrub.js';
 import { ScrubBar } from './scrubbar.js';
-import { formatTemp, forecastCells, forecastSentence, sunTimesFor, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
+import { formatTemp, forecastCells, forecastSentence, sunTimesFor, tidesFor, tideSentence, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
 import { WeatherFeed } from './weatherfeed.js';
 import { forecastAnnouncement } from './announce.js';
@@ -63,7 +63,7 @@ let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
 let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
 let scenes = {}; // city id -> what the scene reported painting
 let drawn = {}; // city id -> { flash, dew, drift, moon } the last frame painted with
-let lastForecast = null; // { cells, rect, sun, sunT } of the card drawn last, or null
+let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
 let plates = [];
@@ -199,6 +199,9 @@ function render(force = false) {
     const cells = forecastCells(weathers[focus], todayHere);
     const sun = sunTimesFor(weathers[focus], todayHere);
     const sunT = sunFraction(at[focus], CITIES[focus].location.zone, sun);
+    // the tide curve is today's: the dot follows the scrubbed moment while it is still today, else none
+    const dayT = localDate(at[focus], CITIES[focus].location.zone) === todayHere ? dayFraction(at[focus], CITIES[focus].location.zone) : null;
+    const tides = tidesFor(weathers[focus], todayHere);
     ctx.save();
     // emerge from behind the glass: nothing of the card is drawn over the jar
     const jr = shelf.jarRect(focus);
@@ -207,9 +210,9 @@ function render(force = false) {
     ctx.rect(jr.x, jr.y, jr.w, jr.h);
     ctx.clip('evenodd');
     ctx.globalAlpha = pose.alpha;
-    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT);
+    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides, dayT);
     ctx.restore();
-    lastForecast = { cells, rect: pose.rect, sun, sunT };
+    lastForecast = { cells, rect: pose.rect, sun, sunT, tides, dayT };
   } else {
     lastForecast = null;
   }
@@ -251,7 +254,8 @@ function syncAria() {
   const cells = view === 'jar' ? forecastCells(here, todayHere) : null;
   const sun = view === 'jar' ? sunTimesFor(here, todayHere) : null;
   const sentence = cells ? forecastSentence(cells) : '';
-  const days = (sentence ? ` ${sentence}` : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '');
+  const tideText = view === 'jar' ? tideSentence(tidesFor(here, todayHere)) : '';
+  const days = (sentence ? ` ${sentence}` : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '') + (tideText ? ` ${tideText}` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
   const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, swell ${l[3]}` : ''}` : placeName(c);
@@ -508,13 +512,13 @@ window.__jar = {
     const r = shelf.jarRect(CITIES.findIndex((c) => c.id === id));
     return this.toCanvas(r.x + r.w / 2, r.y + r.h);
   },
-  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT } in canvas px.
+  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT } in canvas px.
   get forecast() {
     if (!lastForecast) return null;
     const r = lastForecast.rect;
     const a = this.toCanvas(r.x, r.y);
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
-    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
+    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   get dpr() { return dpr; },
   get framing() { return fitScreen(W, H, shelf.centreX); },

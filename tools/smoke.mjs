@@ -19,7 +19,7 @@ import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { startServer } from './serve.mjs';
-import { localTimeText, localDate, sunFraction, wallToMs } from '../src/placeclock.js';
+import { localTimeText, localDate, sunFraction, dayFraction, wallToMs } from '../src/placeclock.js';
 import { normalise } from '../api/weather.js';
 import { dayName, nextFlashPeak, cloudDrift, cloudTravel } from '../src/weather.js';
 import { PLACES } from '../src/cities/places.js';
@@ -70,7 +70,15 @@ const nazareFixture = JSON.parse(await readFile(new URL('../test/fixtures/weathe
 const marineFixture = JSON.parse(await readFile(new URL('../test/fixtures/marine.json', import.meta.url), 'utf8'));
 const [yl, ml, dl] = localDate(Date.now(), 'Europe/Lisbon').split('-').map(Number);
 const lisbonDays = [0, 1, 2, 3, 4].map((i) => new Date(Date.UTC(yl, ml - 1, dl + i)).toISOString().slice(0, 10));
-const marineDated = { ...marineFixture, daily: { ...marineFixture.daily, time: lisbonDays }, hourly: hourlyOn(marineFixture.hourly, lisbonDays[0], lisbonDays[1]) };
+// The hourly sea (wave height and sea level) is re-dated the same way: each hour keeps its clock time and
+// takes Lisbon's date for its day index in the fixture's own date list. The reading's own hour is
+// pinned to 09:00 today, so the 25 scrub rows run from 09:00 (indices 0, 5, 6 -> 4.2, 1.2, 6.5 m).
+const marineDated = {
+  ...marineFixture,
+  current: { ...marineFixture.current, time: `${lisbonDays[0]}T09:00` },
+  daily: { ...marineFixture.daily, time: lisbonDays },
+  hourly: { ...marineFixture.hourly, time: marineFixture.hourly.time.map((t) => `${lisbonDays[marineFixture.daily.time.indexOf(t.slice(0, 10))]}${t.slice(10)}`) },
+};
 const nazareDated = { ...nazareFixture, daily: { ...nazareFixture.daily, time: lisbonDays }, hourly: hourlyOn(nazareFixture.hourly, lisbonDays[0], lisbonDays[1]) };
 const nazareCalm = { ...nazareDated, current: { ...nazareFixture.current, wind_speed_10m: 0, cloud_cover: 0, weather_code: 0 } };
 // The vendor's two-city answer through the real normaliser, as the function would send it.
@@ -249,6 +257,9 @@ try {
   const hm = (s) => s.slice(11, 16);
   const wantSun = { sunrise: hm(fixture.daily.sunrise[sunRow]), sunset: hm(fixture.daily.sunset[sunRow]) };
   check(!!fc && !!fc.sun && /^\d\d:\d\d$/.test(fc.sun.sunrise) && /^\d\d:\d\d$/.test(fc.sun.sunset) && JSON.stringify(fc.sun) === JSON.stringify(wantSun), 'forecast card shows sunrise and sunset');
+  const real = fc ? fc.cells.filter((k) => k.day !== '—') : [];
+  check(!!fc && real.length > 0 && real.every((k) => k.rain !== null && k.wind !== null) && real.some((k) => k.windArrow === null) && real.some((k) => k.windArrow !== null) && aria.includes(' rain ') && aria.includes(' wind '), 'rain and wind per day, one arrow omitted');
+  check(!!fc && Array.isArray(fc.tides) && fc.tides.length === 0 && !aria.includes('tide'), 'warsaw card has no tides');
   const dfoot = await page.evaluate(() => window.__jar.foot('warsaw'));
   const dcanvas = await page.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!fc && fc.rect.x > dfoot.x && inside(fc.rect, dcanvas[0], dcanvas[1]), 'desktop forecast card sits beside the jar and fits');
@@ -329,6 +340,11 @@ try {
   const wantSwell = ['2.1 m', '4.2 m', '3.8 m', '5.2 m', '1.6 m'];
   check(JSON.stringify(nf0.forecast.cells.map((c) => c.swell && c.swell.height)) === JSON.stringify(wantSwell), 'nazare card shows a swell per day');
   await deepN.screenshot({ path: join(OUT, 'nazare-swell-card.png') });
+  const nAria = await deepN.evaluate(() => document.getElementById('view').getAttribute('aria-label'));
+  check(JSON.stringify(nf0.forecast.tides.map((t) => t.kind)) === JSON.stringify(['high', 'low', 'high', 'low']) && nAria.includes('High tide ') && nAria.includes(' wind '), "nazare card shows today's tides and speaks them");
+  check(nf0.forecast.tides.length > 0 && nf0.forecast.tides.every((t) => Number.isFinite(t.height)) && nAria.includes(' metres'), 'nazare card prints and speaks tide heights');
+  const [dayTNow, lisbonNow] = await deepN.evaluate(() => [window.__jar.forecast.dayT, Date.now()]);
+  check(Number.isFinite(dayTNow) && Math.abs(dayTNow - dayFraction(lisbonNow, 'Europe/Lisbon')) < 0.01, 'nazare tide curve dot follows the Lisbon clock');
   check(!!(await deepN.evaluate(() => window.__jar.forecast)), 'nazare swell card is lifted');
   check(deepNSeen.errors.length === 0 && deepNSeen.off.length === 0, `no console errors or off-origin requests on the nazare link${deepNSeen.errors.length ? `: ${deepNSeen.errors.join(' | ')}` : ''}`);
 
@@ -440,6 +456,7 @@ try {
   await viewIs(nos2, 'jar');
   await settled(nos2);
   check(await nos2.evaluate(() => window.__jar.forecast.cells.every((c) => c.swell === null)) && nos2Seen.errors.length === 0, 'missing sea leaves the label and card plain');
+  check(await nos2.evaluate(() => window.__jar.forecast.tides.length === 0 && window.__jar.forecast.dayT !== undefined && !document.getElementById('view').getAttribute('aria-label').includes('tide')) && nos2Seen.errors.length === 0, 'missing sea leaves no tide line');
   const dflt = await sceneOf(nos2);
   check(!!dflt && dflt.band === 'moderate' && nos2Seen.errors.length === 0, 'missing sea draws the default swell');
 
@@ -620,6 +637,11 @@ try {
   const pn = await jarCentre(pp, 'nazare');
   await pp.touchscreen.tap(pn.x, pn.y);
   check(await viewIs(pp, 'jar'), 'phone tap lifts the second jar');
+  await settled(pp);
+  await pp.screenshot({ path: join(OUT, 'phone', 'nazare-lifted.png') });
+  const pnf = await pp.evaluate(() => window.__jar.forecast);
+  check(!!pnf && pnf.tides.length === 4 && pnf.cells.some((k) => k.rain !== null && k.wind !== null) && inside(pnf.rect, pcanvas[0], pcanvas[1]), 'phone forecast card fits with rain, wind and tides');
+  check(!!pnf && pnf.tides.length === 4 && pnf.tides.every((t) => Number.isFinite(t.height)) && inside(pnf.rect, pcanvas[0], pcanvas[1]), 'phone card fits with tide heights and curve');
   await pp.touchscreen.tap(30, 30);
   await viewIs(pp, 'table');
   timed(await medianFrameMs(pp) < 25, 'phone frame time under 25 ms');

@@ -90,3 +90,19 @@ test('liftCamera with the taller extent never scales larger than with the plain 
     assert.ok(tall.scale <= plain.scale + 1e-9, `${W}x${H}`);
   }
 });
+
+test('the row card, resting under a jar whose foot is on the table, ends inside the scene', () => {
+  const foot = 710;
+  const onTable = { x: 600, y: foot - 440, w: 340, h: 440 };
+  const { rect } = forecastPose(onTable, true, 1);
+  assert.ok(rect.y + rect.h < 1000, `ends at ${rect.y + rect.h}`);
+  assert.equal(rect.h, 250);
+});
+
+test('the resting cards stay in the scene: row bottom above 1000, column within the jar', () => {
+  const foot = { x: 600, y: 270, w: 340, h: 440 };
+  const row = forecastPose(foot, true, 1).rect;
+  assert.ok(row.y + row.h < 1000, `row bottom ${row.y + row.h}`);
+  const col = forecastPose(foot, false, 1).rect;
+  assert.ok(col.y >= foot.y && col.y + col.h <= foot.y + foot.h);
+});

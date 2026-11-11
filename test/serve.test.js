@@ -107,6 +107,7 @@ test('GET /api/weather asks the forecast and the marine host once each and folds
     assert.equal(body.cities.nazare.sea.waveHeight, 4.2);
     assert.equal(body.cities.nazare.sea.daily.length, 5);
     assert.equal(body.cities.nazare.sea.daily[1].waveHeightMax, 4.2);
+    assert.equal(body.cities.nazare.sea.daily[0].tides.length, 4);
     assert.equal(body.cities.warsaw.sea, null);
   } finally {
     await new Promise((done) => server.close(done));

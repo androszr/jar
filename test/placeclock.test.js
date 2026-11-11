@@ -1,7 +1,7 @@
 // Adapted from Memory Lane (vir-sunset) test/placeclock.test.js, 2026-10-18
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wallToMs, sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
+import { wallToMs, dayFraction, sunFraction, localTimeText, zoneOffsetMinutes, placeAt, therePhase, formatterCacheSize, FORMATTER_MAX } from '../src/placeclock.js';
 import { realPhase } from '../src/realclock.js';
 import { findCity } from '../src/cities/index.js';
 
@@ -133,4 +133,11 @@ test('wallToMs: junk or an unknown zone is null', () => {
   for (const s of [null, undefined, 5, '', '2026-10-18', '2026-10-18T25:00', '2026-02-30T10:00', 'x']) assert.equal(wallToMs(s, 'Europe/Warsaw'), null, String(s));
   assert.equal(wallToMs('2026-10-18T15:00', 'Nowhere/Land'), null);
   assert.equal(wallToMs('2026-10-18T15:00', null), null);
+});
+
+test('dayFraction is the share of the local day gone, null when unknown', () => {
+  assert.equal(dayFraction(Date.UTC(2026, 10, 8, 12, 0), 'Europe/Lisbon'), 0.5);
+  assert.equal(dayFraction(Date.UTC(2026, 10, 8, 0, 0), 'Europe/Lisbon'), 0);
+  assert.equal(dayFraction(Date.UTC(2026, 10, 8, 12, 0), 'Nowhere/Zone'), null);
+  assert.equal(dayFraction(NaN, 'Europe/Lisbon'), null);
 });
