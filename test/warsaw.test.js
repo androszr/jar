@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import warsaw from '../src/cities/warsaw/index.js';
 import {
-  SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, PALACE, RIM_DX, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
+  SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, deckY, drawBridge, trafficLights } from '../src/cities/warsaw/bridge.js';
@@ -360,7 +360,34 @@ test('the Mermaid is outlined on both sides at night, inside the limits', () => 
   assert.ok(L.mermaid.x0 + Math.min(...RIM_DX) >= 0.07 * 340, 'the left rim pass stays clear of the streak');
   const noon = recordingCtx();
   drawMermaid(noon, rect, PHASE.noon, tint(sample(PHASE.noon)), EMPTY);
-  assert.equal(noon.calls.filter(([m]) => m === 'translate').length, 0);
+  assert.deepEqual(noon.calls.filter(([m]) => m === 'translate').map(([, a]) => a), [[sunSide(PHASE.noon) * DAY_RIM.dx, DAY_RIM.dy]]);
+  assert.ok(shifts.every((d) => Math.abs(d) !== DAY_RIM.dx), 'night carries no sunlit-sized shift');
+});
+
+test('the Mermaid is bronze by day with a sunlit edge on the sun\'s side', () => {
+  const draw = (phase) => {
+    const ctx = recordingCtx();
+    noRandom(() => drawMermaid(ctx, rect, phase, tint(sample(phase)), EMPTY));
+    return ctx;
+  };
+  const noon = draw(PHASE.noon);
+  const night = draw(PHASE.night);
+  assert.ok(noon.fills.has(css(WARSAW.mermaidBronze)), 'bronze body by day');
+  assert.ok(startsWith(noon.fills, rgbaOf(WARSAW.mermaidSunlit)).length > 0, 'a sunlit pass by day');
+  assert.ok(!night.fills.has(css(WARSAW.mermaidBronze)));
+  assert.equal(startsWith(night.fills, rgbaOf(WARSAW.mermaidSunlit)).length, 0, 'no sunlit pass at night');
+  const shift = (ctx) => ctx.calls.filter(([m]) => m === 'translate').map(([, a]) => a[0]);
+  assert.deepEqual(shift(draw(0.3)), [-DAY_RIM.dx], 'morning: the sun on the left');
+  assert.deepEqual(shift(noon), [DAY_RIM.dx], 'afternoon: the sun on the right');
+  const L = layout(340, 396);
+  assert.ok(L.mermaid.x1 + DAY_RIM.dx < LABEL.x, 'the sunlit pass stays left of the plate');
+  assert.ok(L.mermaid.x0 - DAY_RIM.dx >= 0.07 * 340, 'the sunlit pass stays clear of the streak');
+  const dusk = startsWith(draw(PHASE.dusk).fills, rgbaOf(WARSAW.mermaidSunlit));
+  assert.ok(dusk.length > 0, 'dusk still has a sunlit pass');
+  for (const f of dusk) {
+    const a = Number(f.slice(f.lastIndexOf(',') + 1, -1));
+    assert.ok(a > 0 && a < 0.9, `dusk sunlit alpha ${a} is between 0 and full`);
+  }
 });
 
 test('the low city is plaster, brick and concrete, never blue, and mixes several façades', () => {

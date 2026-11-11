@@ -99,6 +99,9 @@ export const WARSAW = {
   mermaidDay: [50, 60, 80],
   mermaidNight: [8, 10, 18],
   mermaidRim: [255, 180, 96],
+  mermaidBronze: [150, 112, 64],
+  mermaidShield: [214, 176, 112],
+  mermaidSunlit: [244, 214, 150],
   // weather
   snowCap: [236, 242, 250],
   dull: [120, 130, 138],

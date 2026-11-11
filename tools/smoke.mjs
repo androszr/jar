@@ -525,6 +525,29 @@ try {
   const dayNeedle = luma(await patch(noct, 'warsaw', 0.235, 0.085, 1));
   const dayBeside = luma(await patch(noct, 'warsaw', 0.275, 0.085, 1));
   check(!(dayNeedle > dayBeside + 15), `no lit needle by day (${dayNeedle} vs ${dayBeside})`);
+  const bronze = (r, g, b) => r >= 110 && r >= g + 15 && g >= b + 15;
+  const sunlit = (r, g, b) => r >= 225 && g >= 195 && b <= 180 && r >= b + 50;
+  check(some(await patch(noct, 'warsaw', 0.15, 0.597, 3), bronze), 'the Mermaid is bronze by day');
+  // the shield's outline sits at bx - 0.28u; probe a pixel outside it on each side, at shield-centre height
+  const grid = await noct.evaluate(() => { const a = window.__jar.bodyPx('warsaw', 0, 0); const b = window.__jar.bodyPx('warsaw', 1, 1); return { w: b.x - a.x, h: b.y - a.y }; });
+  const uFrac = 0.055 * grid.h / grid.w; // the figure's unit as a share of the body width
+  const edgeY = 0.626 - 0.55 * 0.055;
+  check(some(await patch(noct, 'warsaw', 0.15 - 0.28 * uFrac - 1.5 / grid.w, edgeY, 1), sunlit), 'the Mermaid has a sunlit edge on her left in the morning');
+  // her right flank (the torso's edge, clear of the arms) is where a flipped sunlit pass would show
+  check(!some(await patch(noct, 'warsaw', 0.15 + 0.075 * uFrac + 1.5 / grid.w, 0.626 - 0.5 * 0.055, 1), sunlit), 'the Mermaid has no sunlit edge on her right in the morning');
+  // she stays mostly bronze: in a box round the figure the pale pixels are a clear minority
+  const figBox = await noct.evaluate(([jar, x0, x1, y0, y1]) => {
+    const c = document.getElementById('view');
+    const a = window.__jar.bodyPx(jar, x0, y0);
+    const b = window.__jar.bodyPx(jar, x1, y1);
+    const d = c.getContext('2d').getImageData(Math.round(a.x), Math.round(a.y), Math.round(b.x - a.x), Math.round(b.y - a.y)).data;
+    const rows = [];
+    for (let i = 0; i < d.length; i += 4) rows.push([d[i], d[i + 1], d[i + 2]]);
+    return rows;
+  }, ['warsaw', 0.15 - 0.28 * uFrac, 0.15 + 0.31 * uFrac, 0.626 - 1.07 * 0.055, 0.626 + 0.06 * 0.055]);
+  const nPale = figBox.filter(([r, g, b]) => sunlit(r, g, b)).length;
+  const nBronze = figBox.filter(([r, g, b]) => bronze(r, g, b)).length;
+  check(nBronze > 0 && nPale < 0.45 * nBronze, `the Mermaid is mostly bronze by day (${nPale} pale vs ${nBronze} bronze)`);
   const sunFace = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
   const shadeFace = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
   check(sunFace - shadeFace >= 20, `the Palace's sun side is brighter than its shade side in the morning (${sunFace} vs ${shadeFace})`);

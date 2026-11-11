@@ -74,6 +74,7 @@ export const MERMAID = { x: 0.15, base: 0.626, u: 0.055, plinth: { hw: 0.016, to
 // look's STREAKS, which test/look.test.js keeps in step.
 // The two rim passes of the Mermaid at night, as px offsets (right, then left).
 export const RIM_DX = [1.2, -1.2];
+export const DAY_RIM = { dx: 1.8, dy: -0.75 }; // the sunlit edge by day, px, on the sun's side
 
 // Soft points of light along Varso's lit needle at night.
 export const MAST_GLOWS = 4;
@@ -677,21 +678,24 @@ function drawNearBank(ctx, L, phase, night, weather) {
 
 // The Mermaid of Warsaw: sword raised, round shield on her arm, tail coiled, on a
 // plinth on the far (left) bank's quay, beside the bridgehead. `c` is a css colour string.
-function figure(ctx, bx, by, u, c, shieldDot) {
+// grow widens every stroked limb (the sunlit copy, so a thin blade shows as an edge, not a second blade)
+// side is the way the sunlit copy is shifted: its stroked limbs step back by half the growth, so the pale band stays one shift wide
+function figure(ctx, bx, by, u, c, shieldDot, grow = 0, side = 0) {
   const P = (dx, dy) => [bx + dx * u, by + dy * u];
   const move = (dx, dy) => ctx.moveTo(...P(dx, dy));
   const line = (dx, dy) => ctx.lineTo(...P(dx, dy));
   ctx.save();
+  const back = -side * grow / 2; // x of the stroked limbs
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = c;
   ctx.fillStyle = c;
   const tail = [[0.0, -0.4], [0.1, -0.29], [0.06, -0.16], [-0.1, -0.09], [-0.15, -0.01], [0.02, 0.02], [0.17, -0.04]];
   for (let i = 0; i < tail.length - 1; i++) {
-    ctx.lineWidth = u * (0.13 - i * 0.016);
+    ctx.lineWidth = u * (0.13 - i * 0.016) + grow;
     ctx.beginPath();
-    move(...tail[i]);
-    line(...tail[i + 1]);
+    move(tail[i][0] + back / u, tail[i][1]);
+    line(tail[i + 1][0] + back / u, tail[i + 1][1]);
     ctx.stroke();
   }
   ctx.beginPath(); // the fluke
@@ -709,18 +713,18 @@ function figure(ctx, bx, by, u, c, shieldDot) {
   move(-0.03, -0.78); line(-0.12, -0.7); line(-0.04, -0.69);
   ctx.closePath();
   ctx.fill();
-  ctx.lineWidth = u * 0.04; // the sword arm
+  ctx.lineWidth = u * 0.04 + grow; // the sword arm
   ctx.beginPath();
-  move(0.06, -0.64); line(0.13, -0.79); line(0.08, -0.92);
+  move(0.06 + back / u, -0.64); line(0.13 + back / u, -0.79); line(0.08 + back / u, -0.92);
   ctx.stroke();
-  ctx.lineWidth = u * 0.022; // the blade, curving over her head
+  ctx.lineWidth = u * 0.022 + grow; // the blade, curving over her head
   ctx.beginPath();
-  move(0.08, -0.93);
-  ctx.quadraticCurveTo(...P(0.0, -1.06), ...P(-0.13, -1.04));
+  move(0.08 + back / u, -0.93);
+  ctx.quadraticCurveTo(...P(0.0 + back / u, -1.06), ...P(-0.13 + back / u, -1.04));
   ctx.stroke();
-  ctx.lineWidth = u * 0.04; // the shield arm and the shield
+  ctx.lineWidth = u * 0.04 + grow; // the shield arm and the shield
   ctx.beginPath();
-  move(-0.06, -0.62); line(-0.14, -0.56);
+  move(-0.06 + back / u, -0.62); line(-0.14 + back / u, -0.56);
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(...P(-0.18, -0.55), u * 0.1, 0, Math.PI * 2);
@@ -752,7 +756,15 @@ export function drawMermaid(ctx, rect, phase, tint, weather) {
   }
   if (night > 0) glow(ctx, cx, p.top, 12 * L.sx, WARSAW.floodGlow, 0.3 * night);
 
-  const body = tone(WARSAW.mermaidDay, WARSAW.mermaidDay, WARSAW.mermaidNight, night);
+  const body = tone(WARSAW.mermaidBronze, WARSAW.mermaidDay, WARSAW.mermaidNight, night);
+  const day = 1 - night;
+  if (day > 0) {
+    // a pale copy shifted toward the sun, drawn before the body so only the sliver shows
+    ctx.save();
+    ctx.translate(sunSide(phase) * DAY_RIM.dx, DAY_RIM.dy);
+    figure(ctx, m.bx, m.by, m.u, css(WARSAW.mermaidSunlit, 0.9 * day), null, DAY_RIM.dx, sunSide(phase));
+    ctx.restore();
+  }
   if (night > 0) {
     // a warm outline on both sides, so she reads against the dark tower behind her
     for (const dx of RIM_DX) {
@@ -762,5 +774,5 @@ export function drawMermaid(ctx, rect, phase, tint, weather) {
       ctx.restore();
     }
   }
-  figure(ctx, m.bx, m.by, m.u, css(body), css(mix(body, WARSAW.clockFace, 0.18)));
+  figure(ctx, m.bx, m.by, m.u, css(body), css(mix(WARSAW.mermaidShield, mix(body, WARSAW.clockFace, 0.18), night)));
 }
