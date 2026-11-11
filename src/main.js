@@ -51,6 +51,7 @@ let focus = 0; // the jar the lift is on
 let pinned = null;
 let scrubMin = 0; // minutes ahead the lifted jar is previewed at; 0 is now
 let lastKey = '';
+let lastShedAmbient = 0; // the shed tint's ambient at the last render (test surface)
 let lastDraw = 0;
 let lastTick = null; // the previous animation frame's time, for the glide's dt
 let artBuilds = 0;
@@ -164,6 +165,7 @@ function render(force = false) {
   lastKey = key;
 
   const shedTint = lookTint(sample(shedPhase));
+  lastShedAmbient = shedTint.ambient;
   ensureArt(shedTint);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -521,6 +523,7 @@ window.__jar = {
     return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   get dpr() { return dpr; },
+  get ambient() { return lastShedAmbient; },
   get framing() { return fitScreen(W, H, shelf.centreX); },
 };
 

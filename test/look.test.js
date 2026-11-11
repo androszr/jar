@@ -5,7 +5,8 @@ import { KEYFRAMES, sample } from '../src/clock.js';
 import { TINTS } from '../src/look/lantern/palette.js';
 
 const REQUIRED = ['PALETTE', 'CSS_VARS', 'tint', 'skyGradient', 'glow', 'bloom', 'spill', 'vignette',
-  'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet', 'moonDisc'];
+  'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet', 'moonDisc',
+  'lampWash', 'sheen', 'lightPatch', 'contactShadow', 'reflection', 'curtain', 'backShelf', 'tableBoards', 'tableFront'];
 
 test('LOOK is one of the three directions, and Lantern is chosen', () => {
   assert.ok(['lantern', 'toybox', 'pixel'].includes(look.LOOK));
@@ -62,4 +63,9 @@ test('the glass streaks hug the glass edges', () => {
   assert.ok(left.x + left.w <= 0.07);
   assert.ok(right.x >= 0.93);
   for (const s of look.STREAKS) assert.ok(s.a > 0 && s.a <= 0.5);
+});
+
+test('the lamp, the linen and the shadow are colours in the palette; the vignette eases to 0.5', () => {
+  for (const n of ['lamp', 'linenDark', 'linenLight', 'linenGlint', 'shadow']) assert.equal(look.PALETTE[n].length, 3, n);
+  assert.equal(look.VIGNETTE, 0.5);
 });

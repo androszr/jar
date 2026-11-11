@@ -64,7 +64,7 @@ direction is **Lantern (A)**, chosen by that plan: a dark moody shed, jars
 glowing from within, soft gradients, bloom, light spilling onto the table,
 monospace instrument labels. It is named once, in `src/look/index.js`
 (`LOOK`), and every colour, lighting rule and drawing primitive lives under
-`src/look/<LOOK>/` (`palette.js`, `light.js`, `draw.js`). **B Toybox** (bright
+`src/look/<LOOK>/` (`palette.js`, `light.js`, `draw.js`). An unseen lamp above the table warms the wall above the jars (`lampWash` in `src/look/lantern/light.js`, two additive glows whose strength is `0.07 + 0.13 * (1 - ambient)`, painted before the pane is cut so the sky is never tinted) and lays a sheen on the table; a linen curtain hangs at the window's left (`curtain`), the back shelf is `backShelf`, each jar stands on a `contactShadow` with a short `reflection`, and the window moon's x is clamped to 0.32..0.8 of the pane so it clears the cloth. Every room colour stays in `palette.js`; the static art is cached per `tintBucket`. **B Toybox** (bright
 isometric, faceted low-poly, saturated pastels, grotesk labels) and **C
 Pixel** (cosy pixel-art diorama, nearest-neighbour upscaled) are the recorded
 alternatives; each is a new folder under `src/look/` that exports the required

@@ -7,7 +7,7 @@ import { offsetText } from './scrub.js';
 import { placeName } from './cities/places.js';
 import { formatTemp, formatSwell } from './weather.js';
 import { drawJarSky, drawFog } from './skyweather.js';
-import { skyGradient, glow, spill, glassBody, glassHighlights, lid, label, mix } from './look/index.js';
+import { skyGradient, glow, spill, glassBody, glassHighlights, lid, label, mix, contactShadow, reflection } from './look/index.js';
 
 export { JAR };
 
@@ -77,9 +77,12 @@ export function paintJar(ctx, rect, city, phase, tint, weather, nowMs, plates, s
   ctx.translate(rect.x, rect.y);
   ctx.scale(k, k);
 
+  // the jar stands on a small shadow
+  contactShadow(ctx, JAR.w / 2, JAR.h + 2, 60, 210, 0.09, 0.5);
   // the pool of light on the table, under the foot
   const strength = 0.3 + 0.7 * Math.min(1, lum * 1.6);
   spill(ctx, { x: -70, y: JAR.h - 46, w: JAR.w + 140, h: 110 }, mix(tint.spill, colour, 0.35), strength * 0.85);
+  reflection(ctx, JAR.w / 2, JAR.h + 2, 240, 118, mix(tint.spill, colour, 0.35), 0.1);
 
   ctx.drawImage(scratch.interior, body.x, body.y, body.w, body.h);
   glassHighlights(ctx, { x: body.x, y: body.y, w: body.w, h: body.h }, JAR.neck);

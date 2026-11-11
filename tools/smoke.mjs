@@ -13,7 +13,10 @@
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
 // four swell bands and their surfers, the lighthouse beam at night, and the real moon phase (a new moon and a full
 // moon night over Nazare: the moon reported, its brightness on the glass and
-// the spoken sentence).
+// the spoken sentence). The lamplit shed: found by __jar.ambient, the wall is warm at
+// the darkest hour and much less by day, the sky in the pane is untinted, the curtain
+// covers the pane's left edge, the shelf board and the table front have lit edges,
+// the phone sees the same warm wall, and a pinned night draws the same pixels twice.
 // Writes screenshots to test-output/.
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -176,6 +179,28 @@ const some = (rows, f) => rows.some(([r, g, b]) => f(r, g, b));
 const all = (rows, f) => rows.every(([r, g, b]) => f(r, g, b));
 const luma = (rows) => rows.reduce((s, [r, g, b]) => s + 0.2126 * r + 0.7152 * g + 0.0722 * b, 0) / rows.length;
 
+// Mean [r, g, b] of the (2 rad + 1)^2 canvas px around a scene point (5 x 5 by default; rad 0 is one px).
+const rgbAt = (pg, sx, sy, rad = 2) => pg.evaluate(([x, y, r]) => {
+  const p = window.__jar.toCanvas(x, y);
+  const d = document.getElementById('view').getContext('2d').getImageData(Math.round(p.x) - r, Math.round(p.y) - r, 2 * r + 1, 2 * r + 1).data;
+  const n = d.length / 4;
+  const m = [0, 0, 0];
+  for (let i = 0; i < d.length; i += 4) { m[0] += d[i]; m[1] += d[i + 1]; m[2] += d[i + 2]; }
+  return { r: m[0] / n, g: m[1] / n, b: m[2] / n };
+}, [sx, sy, rad]);
+const lumaOf = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+let hours = null; // { darkest, brightest } as pin times, found once by __jar.ambient
+async function findHours(pg) {
+  const found = [];
+  for (let h = 0; h < 24; h++) {
+    const t = Date.UTC(2026, 5, 15, h, 30);
+    await pg.evaluate((ms) => window.__jar.pin(ms), t);
+    found.push({ t, ambient: await pg.evaluate(() => window.__jar.ambient) });
+  }
+  found.sort((a, b) => a.ambient - b.ambient);
+  return { darkest: found[0], brightest: found[found.length - 1] };
+}
+
 const pinAt = (pg, ms) => pg.evaluate((t) => window.__jar.pin(t), ms);
 const jarHash = (pg) => pg.evaluate(() => window.__jar.hash());
 const medianFrameMs = (page) => page.evaluate(() => {
@@ -233,6 +258,38 @@ try {
   await page.evaluate((t) => window.__jar.pin(t), T);
   const h2 = await page.evaluate(() => window.__jar.hash());
   check(h1 === h2, 'same moment draws the same pixels');
+
+  // the lamplit shed
+  hours = await findHours(page);
+  check(hours.brightest.ambient - hours.darkest.ambient >= 0.3, 'a day has a dark and a bright hour');
+  await pinAt(page, hours.darkest.t);
+  const wallN = await rgbAt(page, 800, 160);
+  check(wallN.r - wallN.b >= 8, 'the lamp warms the wall at the darkest hour');
+  // (560, 200): open pane right of the moon's track (disc centre x 328..520, radius 14, so 26 px clear of the disc's
+  // edge) and clear of both cross-bars (x 394..406, y 294..306), the frame and the cloth (right edge x 294..306). It
+  // sits under the lamp's high glow, so a wash painted after the cut shows here: r - b rises well above the threshold,
+  // against about -21 for the real night sky. Further down the jar's glow bleeds into the pane (y 440 reads r 167)
+  // and the wash is too faint to separate.
+  const openSky = await rgbAt(page, 560, 200);
+  check(openSky.r - openSky.b <= -15, 'the sky through the pane is not tinted by the lamp');
+  // (250, 220): the same pane under the cloth, off both cross-bars
+  const paneUnderCloth = await rgbAt(page, 250, 220);
+  check(paneUnderCloth.r >= paneUnderCloth.b + 4 && Math.abs(paneUnderCloth.r - openSky.r) + Math.abs(paneUnderCloth.b - openSky.b) >= 20, 'the curtain covers the left edge of the pane');
+  // the lip is 3 scene px (about 2 canvas px): one pixel row, against bare table just above and the face below
+  const lip = lumaOf(await rgbAt(page, 1380, 939, 0));
+  const top = lumaOf(await rgbAt(page, 1380, 930, 0));
+  const face = lumaOf(await rgbAt(page, 1380, 965, 0));
+  check(lip > face + 6 && lip > top + 6, 'the table front has a lit lip over a darker face');
+  // x 1275 is bare board between two vessels; the strip is scene y 418..420, one canvas px row
+  const board = lumaOf(await rgbAt(page, 1275, 419, 0));
+  const below = lumaOf(await rgbAt(page, 1275, 421, 0));
+  check(board > below + 12, 'the shelf board has a lit top edge');
+  const n1 = await jarHash(page);
+  await pinAt(page, hours.darkest.t);
+  check(n1 === (await jarHash(page)), 'the lamplit night draws the same pixels');
+  await pinAt(page, hours.brightest.t);
+  const wallD = await rgbAt(page, 800, 160);
+  check((wallN.r - wallN.b) - (wallD.r - wallD.b) >= 6, 'the lamp is barely there by day');
   await page.reload();
   await ready(page);
   await labelIs(page, 1, '12°');
@@ -727,6 +784,17 @@ try {
     await pn2.screenshot({ path: join(OUT, 'nazare-swell-card-phone.png') });
     check(pn2Seen.errors.length === 0 && pn2Seen.off.length === 0, 'no console errors on the phone nazare card');
     await pn2.close();
+  }
+  {
+    const pw = await phone.newPage();
+    await routeWeather(pw);
+    await pw.goto(`${origin}/`);
+    await ready(pw);
+    await pinAt(pw, hours.darkest.t);
+    const pcx = await pw.evaluate(() => window.__jar.framing.cx);
+    const pwall = await rgbAt(pw, pcx, 160);
+    check(pwall.r - pwall.b >= 8, 'the phone sees the warm wall too');
+    await pw.close();
   }
   await phone.close();
 
