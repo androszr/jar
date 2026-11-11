@@ -124,6 +124,30 @@ const footLum = async (page, id = 'warsaw') => {
 
 const DASHES = (cells) => cells.length === 5 && cells.every((c) => c.day === '—' && c.high === '—°' && c.low === '—°');
 const inside = (r, w, h) => r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= h;
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+// The Open-Meteo credit: visible, inside the screen, clear of every visible control and, lifted, of the jar and its card.
+async function creditClear(page, label) {
+  const s = await page.evaluate(() => {
+    const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+    const credit = document.getElementById('credit');
+    const controls = ['back', 'prev', 'next', 'scrubrow'].map((id) => document.getElementById(id)).filter((el) => el && !el.hidden).map(box);
+    let jar = null;
+    let card = null;
+    if (window.__jar.view === 'jar') {
+      const d = window.__jar.dpr;
+      const id = ['warsaw', 'nazare'][window.__jar.index];
+      const j = window.__jar.jarBox(id);
+      jar = { x: j.x / d, y: j.y / d, w: j.w / d, h: j.h / d };
+      const c = window.__jar.forecast.rect;
+      card = { x: c.x / d, y: c.y / d, w: c.w / d, h: c.h / d };
+    }
+    return { box: box(credit), hidden: credit.hidden, opacity: getComputedStyle(credit).opacity, controls, jar, card, w: innerWidth, h: innerHeight };
+  });
+  const ok = !s.hidden && s.box.w > 0 && s.box.h > 0 && Number(s.opacity) > 0 && inside(s.box, s.w, s.h)
+    && s.controls.every((c) => !overlaps(s.box, c)) && (!s.jar || (!overlaps(s.box, s.jar) && !overlaps(s.box, s.card)));
+  check(ok, `${label.includes('small') ? label + ' credit' : 'credit ' + label}: visible, in view, clear of controls, jar and card`);
+}
 
 function watch(page, origin) {
   const errors = [];
@@ -203,6 +227,7 @@ try {
   await page.goto(`${origin}/`);
   await ready(page);
   check(await page.evaluate(() => window.__jar.view === 'table' && window.__jar.look === 'lantern'), 'table renders');
+  await creditClear(page, 'desktop table');
   check(await labelIs(page, 1, '12°'), 'warsaw label shows fixture temperature');
   const time = await page.evaluate(() => window.__jar.labels.warsaw[2]);
   const okTimes = new Set([-1, 0, 1].flatMap((m) => [localTimeText(before + m * 60000, 'Europe/Warsaw'), localTimeText(Date.now() + m * 60000, 'Europe/Warsaw')]));
@@ -253,6 +278,7 @@ try {
   await settled(page);
   const afterLift = await page.evaluate(() => [window.__jar.hint, document.getElementById('view').getAttribute('aria-label')]);
   check(afterLift[0] === null && !afterLift[1].includes('to lift it.'), 'chalk hint fades out with the first lift');
+  await creditClear(page, 'desktop lifted');
   await page.screenshot({ path: join(OUT, 'warsaw-rain.png') });
   // The page's own clock, read beside the card: a Warsaw midnight between the
   // route and the check drops the first fixture row, exactly as the page does.
@@ -691,6 +717,7 @@ try {
     return { w: r.width, h: r.height, scrollW: el.scrollWidth, scrollH: el.scrollHeight, iw: innerWidth, ih: innerHeight, portrait: window.__jar.framing.portrait };
   });
   check(fit.w === fit.iw && fit.h === fit.ih && fit.scrollW <= fit.iw && fit.scrollH <= fit.ih && fit.portrait, 'phone fits (no scroll)');
+  await creditClear(pp, 'phone table');
   await pp.screenshot({ path: join(OUT, 'phone', 'table.png') });
 
   // swipe: drag the row with real touch input and watch it follow, then settle
@@ -716,6 +743,7 @@ try {
   check(await viewIs(pp, 'jar'), 'phone tap lifts');
   await settled(pp);
   check((await pp.evaluate(() => window.__jar.hint)) === null, 'chalk hint fades on the phone too');
+  await creditClear(pp, 'phone lifted');
   await pp.screenshot({ path: join(OUT, 'phone', 'lifted.png') });
   const [pf, pNow, paria] = await pp.evaluate(() => [window.__jar.forecast, Date.now(), document.getElementById('view').getAttribute('aria-label')]);
   const pfoot = await pp.evaluate(() => window.__jar.foot('warsaw'));
@@ -769,6 +797,30 @@ try {
   }
   await phone.close();
 
+  // ---- the credit at the sizes where the corner is tightest ------------------
+  for (const [w, h, touch] of [[1024, 768, false], [667, 375, true], [740, 360, true], [375, 667, true], [360, 740, true], [390, 844, true]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: touch, hasTouch: touch });
+    const sp = await ctx.newPage();
+    await routeWeather(sp);
+    await sp.goto(`${origin}/`);
+    await ready(sp);
+    await creditClear(sp, `small ${w}x${h} table`);
+    if (w === 390) {
+      const one = await sp.evaluate(() => { const r = document.getElementById('credit').getBoundingClientRect(); return r.height; });
+      check(one < 30, `small 390x844 credit is on one line (${one.toFixed(0)} px tall)`);
+    }
+    for (const id of ['warsaw', 'nazare']) {
+      await sp.evaluate((c) => window.__jar.lift(c), id);
+      await settled(sp);
+      await creditClear(sp, `small ${w}x${h} lifted ${id}`);
+      const sr = await sp.evaluate((c) => ({ top: document.getElementById('scrubrow').getBoundingClientRect().top, foot: window.__jar.foot(c).y / window.__jar.dpr, card: (window.__jar.forecast.rect.y + window.__jar.forecast.rect.h) / window.__jar.dpr }), id);
+      check(sr.top >= sr.foot && sr.top >= sr.card, `small ${w}x${h} ${id} scrub row clears the jar foot and the card (row top ${sr.top.toFixed(0)}, foot ${sr.foot.toFixed(0)}, card ${sr.card.toFixed(0)})`);
+      await sp.evaluate(() => window.__jar.lower());
+      await settled(sp);
+    }
+    await ctx.close();
+  }
+
   // ---- phone held sideways --------------------------------------------------
   const land = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const lp = await land.newPage();
@@ -777,6 +829,12 @@ try {
   await ready(lp);
   const lf = await lp.evaluate(() => ({ f: window.__jar.framing, sw: document.scrollingElement.scrollWidth, iw: innerWidth }));
   check(!lf.f.portrait && lf.f.slice.w === 1600 && lf.sw <= lf.iw, 'landscape letterboxes');
+  await creditClear(lp, 'landscape table');
+  await lp.evaluate(() => window.__jar.lift('warsaw'));
+  await settled(lp);
+  await creditClear(lp, 'landscape lifted');
+  await lp.evaluate(() => window.__jar.lower());
+  await settled(lp);
   await land.close();
 
   // ---- tablet upright --------------------------------------------------------

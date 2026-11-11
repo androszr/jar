@@ -95,6 +95,25 @@ test('robots.txt says stay out, and the page carries the robots meta once', () =
   assert.equal(html.split('<meta name="robots" content="noindex, nofollow">').length - 1, 1);
 });
 
+test('the page credits Open-Meteo with one outbound link and the chrome\'s own lettering', () => {
+  const html = read('src/index.html');
+  assert.equal(html.split('id="credit"').length - 1, 1);
+  const tag = /<a\b[^>]*id="credit"[^>]*>([^<]*)<\/a>/.exec(html);
+  assert.ok(tag, 'no #credit link');
+  assert.ok(tag[0].includes('href="https://open-meteo.com/"'));
+  assert.ok(tag[0].includes('target="_blank"'));
+  assert.ok(tag[0].includes('rel="noopener noreferrer"'));
+  assert.ok(!/\bhidden\b/.test(tag[0].slice(0, tag[0].indexOf('>'))), 'the credit is never hidden');
+  assert.equal(tag[1], 'Weather data by Open-Meteo');
+  assert.ok(!/\bfetch\s*\(\s*['"`]\s*(https?:|\/\/)/.test(html), 'the href is navigation, not a fetch');
+  const css = read('src/style.css');
+  const rule = /^#credit \{([^}]*)\}/m.exec(css);
+  assert.ok(rule, 'no #credit rule');
+  for (const want of ['position: fixed', 'env(safe-area-inset-top', 'env(safe-area-inset-right', 'var(--tag-ink']) assert.ok(rule[1].includes(want), want);
+  assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(rule[1]), 'colour literal in #credit');
+  assert.equal((css.match(/ui-monospace/g) || []).length, 3);
+});
+
 test('the dev server serves the production headers on every path', () => {
   for (const p of ['/', '/main.js', '/api/weather', '/cities/warsaw/index.js', '/robots.txt']) {
     const h = headersFor(p);

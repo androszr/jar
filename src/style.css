@@ -58,6 +58,27 @@ html, body {
   left: calc(12px + env(safe-area-inset-left, 0px));
 }
 
+#credit {
+  position: fixed;
+  top: calc(6px + env(safe-area-inset-top, 0px));
+  right: calc(6px + env(safe-area-inset-right, 0px));
+  padding: 6px 8px;
+  /* never wider than the room right of the back button, so a narrow phone wraps it onto two lines instead of covering the button */
+  max-width: calc(100vw - 197px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+  text-align: right;
+  color: var(--tag-ink, inherit);
+  opacity: 0.6;
+  text-decoration: none;
+  font: 500 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+#credit:hover, #credit:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+  outline-color: var(--tag-edge, currentColor);
+}
+
 #scrubrow {
   position: fixed;
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
