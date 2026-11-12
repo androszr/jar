@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildShedArt, drawShed } from '../src/shed.js';
+import { buildShedArt, drawShed, BLEED, artScale, ART_PIXELS } from '../src/shed.js';
 import { sample } from '../src/clock.js';
 import {
   PALETTE, css, mix, tint, vignette, VIGNETTE, SHELF_VESSELS, contactShadow, reflection,
@@ -106,7 +106,7 @@ test('the table front carries a lit lip', () => {
   const lip = css(mix(PALETTE.tableTop, PALETTE.lamp, 0.35), 0.5);
   const at = ctx.fills.lastIndexOf(lip);
   assert.ok(at >= 0);
-  assert.ok(idx(ctx, 'fillRect', (a) => a[0] === 0 && a[1] === 938 && a[2] === 1600 && a[3] === 3) >= 0);
+  assert.ok(idx(ctx, 'fillRect', (a) => a[0] === -BLEED.x && a[1] === 938 && a[2] === 1600 + 2 * BLEED.x && a[3] === 3) >= 0, 'the lip runs on past both ends of the scene');
 });
 
 test('the same tint builds the same room, a different one a different room', () => {
@@ -149,4 +149,25 @@ test('the vignette eases to 0.5 and takes a strength', () => {
   const b = recordingCtx();
   vignette(b, 100, 100, 0.62);
   assert.equal(b.gradients[0].stops[1][1], css(PALETTE.shadow, 0.62));
+});
+
+test('the shed runs on past the scene: planks, table and front reach the bleed on every side', () => {
+  const ctx = build(tintAt(NIGHT));
+  const rects = ctx.calls.filter(([k]) => k === 'fillRect').map(([, a]) => a);
+  const left = Math.min(...rects.map((a) => a[0]));
+  const right = Math.max(...rects.map((a) => a[0] + a[2]));
+  const top = Math.min(...rects.map((a) => a[1]));
+  const bottom = Math.max(...rects.map((a) => a[1] + a[3]));
+  assert.ok(left <= -BLEED.x && right >= 1600 + BLEED.x, 'the wall and table reach both side bleeds');
+  assert.ok(top <= -BLEED.y && bottom >= 1000 + BLEED.y, 'and the top and bottom ones');
+  assert.ok(BLEED.x >= 400 && BLEED.y >= 100);
+});
+
+test('the art canvas is the scene plus its bleed, and its size is capped', () => {
+  let made = null;
+  buildShedArt(1600, 1000, tintAt(NIGHT), (w, h) => { made = { w, h }; return { width: w, height: h, getContext: () => recordingCtx() }; });
+  assert.deepEqual(made, { w: 1600 + 2 * BLEED.x, h: 1000 + 2 * BLEED.y });
+  assert.equal(artScale(0.8), 0.8, 'a small view keeps its own scale');
+  const s = artScale(1.5);
+  assert.ok(s < 1.5 && (1600 + 2 * BLEED.x) * s * (1000 + 2 * BLEED.y) * s <= ART_PIXELS + 1);
 });

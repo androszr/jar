@@ -275,9 +275,9 @@ test('marineUrl asks one hourly list with the wave height, and no forecast_hours
   assert.equal(u.searchParams.get('forecast_hours'), null, 'it would cut today\'s earlier tides');
 });
 
-test('marineHourlyRows: 25 rows from the fixture, [] on junk, nulls when short, bad time dropped', () => {
+test('marineHourlyRows: all 120 rows of the fixture, [] on junk, nulls when short, bad time dropped', () => {
   const rows = marineHourlyRows(fixture('marine.json').hourly);
-  assert.equal(rows.length, 25);
+  assert.equal(rows.length, 120);
   assert.equal(rows[14].time, '2026-10-18T14:00');
   assert.equal(rows[14].waveHeight, 1.2);
   assert.equal(rows[15].waveHeight, 6.5);
@@ -285,14 +285,15 @@ test('marineHourlyRows: 25 rows from the fixture, [] on junk, nulls when short, 
   for (const v of [undefined, null, 'junk', 3, {}, { time: 'x' }]) assert.deepEqual(marineHourlyRows(v), [], String(v));
   assert.deepEqual(marineHourlyRows({ time: ['2026-10-18T00:00', '2026-10-18T01:00'], wave_height: [1] }), [{ time: '2026-10-18T00:00', waveHeight: 1 }, { time: '2026-10-18T01:00', waveHeight: null }]);
   assert.deepEqual(marineHourlyRows({ time: ['bad', '2026-10-18T01:00'], wave_height: [1, 2] }), [{ time: '2026-10-18T01:00', waveHeight: 2 }]);
-  assert.equal(marineHourlyRows({ time: Array.from({ length: 40 }, (_, i) => `2026-10-18T${String(i % 24).padStart(2, '0')}:00`), wave_height: [] }).length, 25);
-  assert.equal(normaliseMarine(fixture("marine.json"), [nazare]).nazare.hourly.length, 25);
+  assert.equal(marineHourlyRows({ time: Array.from({ length: 40 }, (_, i) => `2026-10-18T${String(i % 24).padStart(2, '0')}:00`), wave_height: [] }).length, 40);
+  assert.equal(marineHourlyRows({ time: Array.from({ length: 200 }, (_, i) => `2026-10-18T${String(i % 24).padStart(2, '0')}:00`), wave_height: [] }).length, 120, 'five days at most');
+  assert.equal(normaliseMarine(fixture("marine.json"), [nazare]).nazare.hourly.length, 109, "from the hour of the reading to the end of the fifth day");
 });
 
 test('marineHourlyRows starts at the hour of current.time and normaliseMarine passes it', () => {
   const h = fixture('marine.json').hourly;
   const rows = marineHourlyRows(h, '2026-10-18T11:20');
-  assert.equal(rows.length, 25);
+  assert.equal(rows.length, 109);
   assert.equal(rows[0].time, '2026-10-18T11:00');
   assert.equal(rows[0].waveHeight, h.wave_height[11]);
   assert.equal(rows[24].time, '2026-10-19T11:00');
@@ -380,11 +381,11 @@ test('a marine call that waits out its timeout never fails the weather body', as
 
 // ---- the hourly block (the lifted jar's scrub) ----
 
-test('openMeteoUrl asks for the hourly list once and 25 forecast hours', () => {
+test('openMeteoUrl asks for the hourly list once and 120 forecast hours (five days)', () => {
   const u = new URL(openMeteoUrl([warsaw]));
   assert.equal(u.searchParams.getAll('hourly').length, 1);
   assert.equal(u.searchParams.get('hourly'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m');
-  assert.equal(u.searchParams.get('forecast_hours'), '25');
+  assert.equal(u.searchParams.get('forecast_hours'), '120');
   assert.equal(openMeteoUrl([warsaw]).split('hourly=').length - 1, 1);
 });
 
@@ -416,14 +417,14 @@ test('hourlyRows: a missing or junk block gives []', () => {
   }
 });
 
-test('hourlyRows: unequal arrays give nulls, a bad time drops the row, 25 at most', () => {
+test('hourlyRows: unequal arrays give nulls, a bad time drops the row, 120 at most', () => {
   const rows = hourlyRows({ time: ['2026-10-18T00:00', 'later', '2026-10-18T02:00'], temperature_2m: [5, 6], weather_code: null, cloud_cover: ['9', 1, 2] });
   assert.deepEqual(rows, [
     { time: '2026-10-18T00:00', temperature: 5, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null },
     { time: '2026-10-18T02:00', temperature: null, code: null, cloudCover: 2, isDay: null, windSpeed: null, windDir: null },
   ]);
-  const long = Array.from({ length: 40 }, (_, i) => `2026-10-${String(1 + Math.floor(i / 24)).padStart(2, '0')}T${String(i % 24).padStart(2, '0')}:00`);
-  assert.equal(hourlyRows({ time: long }).length, 25);
+  const long = Array.from({ length: 200 }, (_, i) => `2026-10-${String(1 + Math.floor(i / 24)).padStart(2, '0')}T${String(i % 24).padStart(2, '0')}:00`);
+  assert.equal(hourlyRows({ time: long }).length, 120);
 });
 
 test('marineUrl asks for the hourly sea level exactly once', () => {

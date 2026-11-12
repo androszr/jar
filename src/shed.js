@@ -5,28 +5,41 @@ import { isNight, moonPos } from './clock.js';
 import { moonPhase, moonGlow } from './moon.js';
 import { SCENE } from './framing.js';
 import { hash2 } from './skyweather.js';
-import { PALETTE, css, plank, skyGradient, glow, vignette, moonDisc, lampWash, sheen, lightPatch, curtain, backShelf, tableBoards, tableFront } from './look/index.js';
+import { PALETTE, css, mix, plank, skyGradient, glow, vignette, moonDisc, lampWash, sheen, lightPatch, curtain, backShelf, tableBoards, tableFront, motes, moth } from './look/index.js';
 
 export const WINDOW = { x: 200, y: 120, w: 400, h: 360 };
 export const TABLE_Y = 680;
 const FRAME = 22;
+// The shed runs on past the scene: the wall, the table and its front are drawn
+// this far beyond every edge, so a screen wider or taller than the scene, or a
+// camera that follows a lifted jar to the end of the row, never shows a bare page.
+export const BLEED = { x: 480, y: 160 };
+// The art is capped at this many pixels; a larger view takes a softer copy.
+export const ART_PIXELS = 5.5e6;
+export const artScale = (s) => Math.min(s, Math.sqrt(ART_PIXELS / ((SCENE.w + 2 * BLEED.x) * (SCENE.h + 2 * BLEED.y))));
 
 // A bucket key: the art is rebuilt when this changes.
 export function tintBucket(tint) {
   return Math.round(tint.ambient * 10);
 }
 
-// Draw the static shed into a fresh canvas `w` x `h` px (the scene scaled).
+// Draw the static shed into a fresh canvas: the scene `w` x `h` px, plus the
+// bleed around it at the same scale (the canvas is larger than `w` x `h`).
 export function buildShedArt(w, h, tint, make = (cw, ch) => Object.assign(document.createElement('canvas'), { width: cw, height: ch })) {
-  const canvas = make(w, h);
+  const kx = w / SCENE.w;
+  const ky = h / SCENE.h;
+  const canvas = make(Math.round(w + 2 * BLEED.x * kx), Math.round(h + 2 * BLEED.y * ky));
   const ctx = canvas.getContext('2d');
-  ctx.scale(w / SCENE.w, h / SCENE.h);
+  ctx.scale(kx, ky);
+  ctx.translate(BLEED.x, BLEED.y);
   const lit = tint.ambient;
+  const x0 = -BLEED.x;
+  const fullW = SCENE.w + 2 * BLEED.x;
 
-  // walls: vertical planks
+  // walls: vertical planks, on past both ends and up past the top
   const pw = 100;
-  for (let i = 0; i * pw < SCENE.w; i++) {
-    plank(ctx, i * pw, 0, pw, TABLE_Y + 40, 0.15 + 0.35 * hash2(i, 21) + 0.2 * lit);
+  for (let i = Math.floor(x0 / pw); i * pw < SCENE.w + BLEED.x; i++) {
+    plank(ctx, i * pw, -BLEED.y, pw, TABLE_Y + 40 + BLEED.y, 0.15 + 0.35 * hash2(i, 21) + 0.2 * lit);
   }
   // the unseen lamp's wash goes on before the pane is cut, so the sky is never tinted
   lampWash(ctx, lit);
@@ -49,11 +62,14 @@ export function buildShedArt(w, h, tint, make = (cw, ch) => Object.assign(docume
   backShelf(ctx, lit);
 
   // the potting table: top, seams, sheen and front edge
-  tableBoards(ctx, 0, TABLE_Y, SCENE.w, 940 - TABLE_Y, lit);
+  tableBoards(ctx, x0, TABLE_Y, fullW, 940 - TABLE_Y, lit);
   ctx.fillStyle = css(PALETTE.seam, 0.26);
-  for (let i = 1; i < 6; i++) ctx.fillRect(0, TABLE_Y + i * 44, SCENE.w, 1.5);
+  for (let i = 1; i < 6; i++) ctx.fillRect(x0, TABLE_Y + i * 44, fullW, 1.5);
   sheen(ctx, 800, 770, 820, 150, PALETTE.lamp, 0.05 + 0.08 * (1 - lit));
-  tableFront(ctx, 0, 940, SCENE.w, SCENE.h - 940);
+  tableFront(ctx, x0, 940, fullW, SCENE.h - 940);
+  // under the scene's foot the front goes on in the colour it ended on
+  ctx.fillStyle = css(mix(PALETTE.tableEdge, PALETTE.shadow, 0.45));
+  ctx.fillRect(x0, SCENE.h, fullW, BLEED.y);
   return canvas;
 }
 
@@ -75,10 +91,17 @@ export function drawWindowSky(ctx, tint, phase, nowMs) {
 
 // Compose the shed under the current camera transform of `ctx`; `view` is
 // { w, h } in device px, used for the vignette once the transform is reset.
-export function drawShed(ctx, art, tint, view, phase, nowMs) {
+// `opts.reduced` stills the dust and keeps the moth away.
+export function drawShed(ctx, art, tint, view, phase, nowMs, opts = {}) {
   ctx.save();
+  // whatever lies beyond even the bleed is the dark of the room, never the bare page
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = css(mix(PALETTE.room, PALETTE.plankLight, 0.2 * tint.ambient));
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
   drawWindowSky(ctx, tint, phase, nowMs);
-  ctx.drawImage(art, 0, 0, SCENE.w, SCENE.h);
+  ctx.drawImage(art, -BLEED.x, -BLEED.y, SCENE.w + 2 * BLEED.x, SCENE.h + 2 * BLEED.y);
   // the window's light falls across the table as a pale slanting patch, fading towards the front
   lightPatch(
     ctx,
@@ -89,6 +112,9 @@ export function drawShed(ctx, art, tint, view, phase, nowMs) {
     940,
   );
   glow(ctx, WINDOW.x + WINDOW.w / 2, WINDOW.y + WINDOW.h / 2, 420, tint.skyLow, 0.18 * tint.ambient);
+  // the room is never quite still: dust in the lamp's light, and a moth at it after dark
+  motes(ctx, tint.ambient, nowMs, !!opts.reduced);
+  moth(ctx, tint.ambient, nowMs, !!opts.reduced);
   ctx.restore();
   if (view) {
     ctx.save();

@@ -37,6 +37,21 @@ export function cloudAmount(cover, kind) {
   }
 }
 
+// How heavy the sky is, 0..1: what greys it, hides the sun and dims the
+// scene under it. Nothing for an unknown reading or a clear sky; broken cloud
+// starts to weigh from GLOOM_FROM cover and a full overcast is GLOOM_CLOUD.
+export const GLOOM_FROM = 0.55;
+export const GLOOM_CLOUD = 0.7;
+export const GLOOM_KIND = Object.freeze({ fog: 0.45, drizzle: 0.75, rain: 0.9, snow: 0.6, storm: 1 });
+export function gloom(weather) {
+  if (!(weather && weather.known)) return 0;
+  const kind = weather.kind;
+  if (kind in GLOOM_KIND) return GLOOM_KIND[kind];
+  if (kind !== 'cloud') return 0;
+  const amount = cloudAmount(weather.cloudCover, kind);
+  return GLOOM_CLOUD * smoothstep((amount - GLOOM_FROM) / (1 - GLOOM_FROM));
+}
+
 // "12°", "-3°"; a dash for no reading. A negative zero prints 0°.
 export function formatTemp(t) {
   if (typeof t !== 'number' || !Number.isFinite(t)) return '—°';
@@ -67,11 +82,13 @@ export function normaliseDaily(list) {
 // The body's hourly rows (the next day, hour by hour) as the page draws from
 // them; junk gives []. `time` is the city's local wall clock "YYYY-MM-DDTHH:MM"
 // and is only ever read through wallToMs(time, zone).
+// Five days of hours: the scrub's next day, and a day pressed on the forecast card.
+export const HOURLY_MAX = 120;
 export function normaliseHourly(list) {
   if (!Array.isArray(list)) return [];
   const rows = [];
   for (const r of list) {
-    if (rows.length >= 25) break;
+    if (rows.length >= HOURLY_MAX) break;
     if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
     const code = num(r.code);
     rows.push({ time: r.time, temperature: num(r.temperature), code, cloudCover: num(r.cloudCover), isDay: num(r.isDay), windSpeed: num(r.windSpeed), windDir: num(r.windDir), kind: weatherKind(code) });
@@ -147,13 +164,13 @@ export function normaliseSeaDaily(list) {
   return rows;
 }
 
-// The sea's hourly rows ({ time, waveHeight }, at most 25) as the page draws
+// The sea's hourly rows ({ time, waveHeight }, at most HOURLY_MAX) as the page draws
 // from them; junk gives [].
 export function normaliseSeaHourly(list) {
   if (!Array.isArray(list)) return [];
   const rows = [];
   for (const r of list) {
-    if (rows.length >= 25) break;
+    if (rows.length >= HOURLY_MAX) break;
     if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
     rows.push({ time: r.time, waveHeight: num(r.waveHeight) });
   }

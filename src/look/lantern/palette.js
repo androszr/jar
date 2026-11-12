@@ -46,6 +46,18 @@ export const PALETTE = {
   linenLight: [150, 126, 98],
   linenGlint: [255, 222, 176],
   shadow: [0, 0, 0],
+  room: [13, 15, 12],
+  mote: [255, 214, 160],
+  moth: [196, 176, 148],
+  glitter: [255, 226, 170],
+  grainLight: [255, 255, 255],
+  grainDark: [0, 0, 0],
+  glassDark: [10, 24, 30],
+  overcastTop: [112, 122, 136],
+  overcastLow: [176, 182, 188],
+  gloom: [92, 100, 112],
+  cloudWarm: [255, 176, 128],
+  bolt: [240, 244, 255],
 };
 
 // Per-keyframe tints, keyed by the clock's nine keyframe names.

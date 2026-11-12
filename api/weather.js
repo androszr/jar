@@ -16,10 +16,10 @@ const MARINE_DAILY = 'wave_height_max,wave_period_max';
 // would cut today's earlier tides.
 const MARINE_HOURLY = 'wave_height,sea_level_height_msl';
 const FORECAST_DAYS = 5;
-// The next day hour by hour (the lifted jar's scrub): the same six fields as
-// `current`, 25 rows so a full day ahead has both ends.
+// Five days hour by hour (the lifted jar's scrub, and a day pressed on its
+// forecast card): the same six fields as `current`, 120 rows.
 const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m';
-const FORECAST_HOURS = 25;
+const FORECAST_HOURS = 120;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
 export function openMeteoUrl(places) {
@@ -95,7 +95,7 @@ export function marineDailyRows(d, tidesByDate = {}) {
   return rows;
 }
 
-// The marine hourly block (parallel arrays) -> at most 25 { time, waveHeight },
+// The marine hourly block (parallel arrays) -> at most 120 { time, waveHeight },
 // from the hour containing `from` (the entry's `current.time`, local ISO; without
 // it, from the first row). `time` is the vendor's local ISO "YYYY-MM-DDTHH:MM",
 // kept as a string and compared as a string (same zone, fixed width); bad rows dropped.
@@ -148,7 +148,7 @@ function dailyRows(d) {
   return rows;
 }
 
-// The vendor's hourly block (parallel arrays) -> at most 25
+// The vendor's hourly block (parallel arrays) -> at most 120
 // { time, temperature, code, cloudCover, isDay, windSpeed, windDir }. `time` is
 // the vendor's local ISO "YYYY-MM-DDTHH:MM", kept as a string; bad rows dropped.
 export function hourlyRows(h) {
@@ -174,7 +174,7 @@ export function hourlyRows(h) {
 // The vendor body (an object for one place, an array for several) ->
 // { v, fetchedAt, ok, cities }. Six numeric fields (wind in km/h and degrees
 // the wind comes from) and the daily rows are kept, plus `sea` (the wave
-// reading, or null) from the optional marine body, and `hourly` (the next 25
+// reading, or null) from the optional marine body, and `hourly` (the next 120
 // hours, [] when the vendor leaves it out).
 export function normalise(payload, places, nowMs = Date.now(), marinePayload = null) {
   const list = Array.isArray(payload) ? payload : [payload];

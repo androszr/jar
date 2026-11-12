@@ -6,7 +6,8 @@ import { TINTS } from '../src/look/lantern/palette.js';
 
 const REQUIRED = ['PALETTE', 'CSS_VARS', 'tint', 'skyGradient', 'glow', 'bloom', 'spill', 'vignette',
   'plank', 'glassBody', 'glassHighlights', 'lid', 'label', 'text', 'forecastCard', 'weatherIcon', 'droplet', 'moonDisc', 'chalk',
-  'lampWash', 'sheen', 'lightPatch', 'contactShadow', 'reflection', 'curtain', 'backShelf', 'tableBoards', 'tableFront'];
+  'lampWash', 'sheen', 'lightPatch', 'contactShadow', 'reflection', 'curtain', 'backShelf', 'tableBoards', 'tableFront',
+  'cloud', 'sunDisc', 'backdrop', 'brights', 'grainTile', 'grain', 'motes', 'moth', 'forecastCellRects'];
 
 test('LOOK is one of the three directions, and Lantern is chosen', () => {
   assert.ok(['lantern', 'toybox', 'pixel'].includes(look.LOOK));

@@ -91,7 +91,29 @@ export function weatherIcon(ctx, kind, x, y, size) {
 // bottom edge and `tides` (today's { time, kind } entries, [] for none) a
 // second strip under it. A missing rain or wind figure leaves its line empty.
 // Text never drops under FLOOR px (12.5 in the row, 12 in the column).
-export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null) {
+// Where each day's cell sits on the card `rect` ({ x, y, w, h } per cell, in
+// the card's own units): the same split forecastCard draws, so a press can be
+// matched to a day. `n` cells; `sun` and `tides` as forecastCard takes them.
+export function forecastCells(rect, n, layout, sun = null, tides = []) {
+  const key = layout === 'row' ? 'row' : 'column';
+  const strip = sun ? CARD.strip[key] : 0;
+  const arcH = sun ? CARD.arc[key] : 0;
+  const strips = formatTideStrip(tides);
+  const tideH = strips ? CARD.tide[key] : 0;
+  const curveH = strips ? CARD.curve[key] : 0;
+  const h = rect.h - strip - arcH - tideH - curveH;
+  const count = Math.max(1, n);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push(layout === 'row'
+      ? { x: rect.x + (rect.w / count) * i, y: rect.y, w: rect.w / count, h }
+      : { x: rect.x, y: rect.y + (h / count) * i, w: rect.w, h: h / count });
+  }
+  return out;
+}
+
+// `selected` (an index, or -1) rings the day the jar is being previewed on.
+export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null, selected = -1) {
   const { x, y, w } = rect;
   const key = layout === 'row' ? 'row' : 'column';
   const floor = layout === 'row' ? 12.5 : 12;
@@ -186,6 +208,14 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
         }
       }
     });
+  }
+  if (selected >= 0 && selected < n) {
+    const cell = forecastCells(rect, n, layout, sun, tides)[selected];
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = css(PALETTE.brass, 0.95);
+    ctx.beginPath();
+    ctx.roundRect(cell.x + 3, cell.y + 3, cell.w - 6, cell.h - 6, 4);
+    ctx.stroke();
   }
   if (sun) {
     ctx.lineWidth = 1;

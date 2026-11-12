@@ -534,7 +534,7 @@ try {
   await pinAt(sea, T_NOON);
   // the lighthouse: dark glass by day, a lit lantern by night
   const sky = [0.7, 0.12];
-  const lanternBy = async () => luma(await patch(sea, 'nazare', 0.78, 0.165, 2)) - luma(await patch(sea, 'nazare', sky[0], sky[1], 2));
+  const lanternBy = async () => luma(await patch(sea, 'nazare', 0.78, 0.214, 2)) - luma(await patch(sea, 'nazare', sky[0], sky[1], 2));
   check((await lanternBy()) <= 0, 'the lantern is dark by day');
   await sea.evaluate((b) => window.__jar.applyWeather(b), seaBody(4.2));
   await pinAt(sea, T_DARK);
@@ -598,12 +598,13 @@ try {
 
   // the bands, the clock, the seasons and the rock, with pixels sampled
   // Share pairs read from buildPlates: Fitz Roy's fin has a left-facing face at (0.465, 0.33) and a right-facing one at (0.61, 0.2), both clear of snow, gullies, ridges and facet edges;
-  // the summit tip is (0.566, 0.111); the bivouac light (0.57, 0.25); the first headlamp (0.16, 0.668); open lake at (0.2, 0.62).
+  // the summit tip is (0.566, 0.111); the bivouac light (0.57, 0.25); the first headlamp (0.16, 0.69); open lake at (0.2, 0.62).
   // Moments are in January (summer) and July, in the past: a pin ahead of the real clock would age the stub answer to stale.
   const T_NOON_C = Date.UTC(2026, 0, 21, 16, 0); // 13:00 in El Chaltén, midsummer
   const T_GLOW = Date.UTC(2026, 0, 21, 9, 34); // 06:34 local, 19 minutes after the 06:15 sunrise
   const T_LAMPS = Date.UTC(2026, 0, 21, 8, 5); // 05:05 local, 70 minutes before sunrise
   const T_NIGHT_C = Date.UTC(2026, 0, 22, 3, 0); // midnight local
+  const T_LEAVING = Date.UTC(2026, 0, 22, 0, 57); // 21:57 local, 8 minutes after sunset
   const T_CHALTEN_WINTER = Date.UTC(2026, 6, 15, 16, 0); // July, 13:00 local
   const cp = await desk.newPage();
   const cpSeen = watch(cp, origin);
@@ -630,7 +631,7 @@ try {
   const turquoise = (r, g, b) => g > r + 30 && b > r + 30;
   const warmer = (r, g, b) => r > b + 40;
   const clear = await at(T_NOON_C, chaltenBody({ cloud: 10, wind: 5 }));
-  check(clear.band === 'clear' && clear.plume === 0 && clear.condor === true && clear.hiker === true && clear.season === 'summer' && clear.frozen === false, 'a clear midsummer noon: the wall stands, a condor and a hiker, no plume');
+  check(clear.band === 'clear' && clear.plume === 0 && clear.condor === true && clear.hiker === true && clear.tourists >= 1 && clear.season === 'summer' && clear.frozen === false, `a clear midsummer noon: the wall stands, a condor, a hiker and visitors on the shore (${clear.tourists}), no plume`);
   check((await lineOf()) === 'FITZ ROY · CLEAR', 'the label reads FITZ ROY · CLEAR');
   check(all(await patch(cp, 'el-chalten', 0.2, 0.62, 2), turquoise), 'the lake is turquoise at noon');
   await cp.screenshot({ path: join(OUT, 'el-chalten-noon.png') });
@@ -643,7 +644,8 @@ try {
   check(Math.abs(right - left) >= 12 && Math.abs(nRight - nLeft) <= 6, `El Chaltén facets differ by the hour (noon ${Math.abs(right - left).toFixed(0)}, night ${Math.abs(nRight - nLeft).toFixed(0)})`);
   const smoking = await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 60, dir: 225 }));
   check(smoking.band === 'smoking' && smoking.plume > 0.2 && (await lineOf()) === 'FITZ ROY · SMOKING', 'a strong south-westerly smokes the summit');
-  check(await cp.evaluate(() => window.__jar.cadence.cities['el-chalten'] === 250), 'the plume asks for a 250 ms tick');
+  // 250 for the plume, or the quicker tick of somebody walking along the shore
+  check(await cp.evaluate(() => { const c = window.__jar.cadence.cities['el-chalten']; return c > 0 && c <= 250; }), 'the plume asks for a tick of 250 ms or quicker');
   check(some(await patch(cp, 'el-chalten', 0.66, 0.135, 3), (r, g, b) => r > 150 && g > 150 && b > 150), 'the banner cloud streams to the right of the summit');
   await cp.screenshot({ path: join(OUT, 'el-chalten-smoking.png') });
   await at(T_NOON_C);
@@ -664,10 +666,16 @@ try {
   await cp.screenshot({ path: join(OUT, 'el-chalten-alpenglow.png') });
   const lamps = await at(T_LAMPS, chaltenBody({ cloud: 10, wind: 4 }));
   check(lamps.headlamps >= 2 && (await cp.evaluate(() => window.__jar.cadence.cities['el-chalten'] === 400)), 'headlamps wait on the shore before dawn');
-  check(some(await patch(cp, 'el-chalten', 0.16, 0.668, 4), (r, g, b) => r > 170 && r >= b + 40), 'a headlamp shows warm on the shore');
+  check(some(await patch(cp, 'el-chalten', 0.16, 0.69, 4), (r, g, b) => r > 170 && r >= b + 40), 'a headlamp shows warm on the shore');
   await cp.screenshot({ path: join(OUT, 'el-chalten-headlamps.png') });
+  // eight minutes after the 21:49 sunset the hiker is off the rock, standing on the gravel at 0.868 and looking back
+  const leaving = await at(T_LEAVING, chaltenBody({ cloud: 10, wind: 4 }));
+  const redCoat = (r, g, b) => r > g + 50 && r > b + 50;
+  check(leaving.hiker === true && leaving.tourists === 0, 'after sunset the hiker is still in view and the visitors have gone');
+  check(some(await patch(cp, 'el-chalten', 0.868, 0.687, 4), redCoat) && !some(await patch(cp, 'el-chalten', 0.67, 0.64, 4), redCoat), 'the hiker has left the rock and stands down the shore');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-leaving.png') });
   const night = await at(T_NIGHT_C, chaltenBody({ cloud: 10, wind: 4 }));
-  check(night.headlamps === 0 && night.hiker === false && night.condor === false, 'at midnight no headlamps, hiker or condor');
+  check(night.headlamps === 0 && night.hiker === false && night.tourists === 0 && night.condor === false, 'at midnight no headlamps, hiker, visitors or condor');
   check((await lineOf()) === 'FITZ ROY · CLEAR', 'the midnight reading is fresh: the label keeps its fourth line');
   check(luma(await patch(cp, 'el-chalten', 0.57, 0.25, 1)) > luma(await patch(cp, 'el-chalten', 0.525, 0.25, 1)) + 20, 'one bivouac light shows on the wall at night');
   await cp.screenshot({ path: join(OUT, 'el-chalten-night.png') });
@@ -1394,6 +1402,178 @@ try {
   const r5 = await sr.pg.evaluate(() => { window.__jar.scrub(300); return window.__jar.labels.warsaw.slice(); });
   check(r5[1] === '18°' && r5[2] === '14:00 (+5 h)', 'reduced motion: scrub previews the same label');
   await sr.cx.close();
+
+  // ---- the room, the glass and what the viewer sets going ------------------
+  // (Under automation the page holds still: each of these is driven through its seam.)
+  const T_FX = Date.UTC(2026, 5, 15, 21, 30); // a summer night in Warsaw; El Chaltén in its afternoon
+  const fxPage = async (opts) => {
+    const cx = await browser.newContext(opts);
+    const pg = await cx.newPage();
+    const fxSeen = watch(pg, origin);
+    await routeWeather(pg);
+    await pg.goto(`${origin}/`);
+    await ready(pg);
+    await labelIs(pg, 1, '12°');
+    await pinAt(pg, T_FX);
+    await pg.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
+    return { cx, pg, fxSeen };
+  };
+  const lumAt = async (pg, cx, cy, w = 24, h = 24) => strip(pg, cx - w / 2, cy - h / 2, w, h);
+
+  // the shed runs on past the scene: a very wide screen and a 4:3 one show wall, not the bare page
+  const wide = await fxPage({ viewport: { width: 1600, height: 700 }, deviceScaleFactor: 1 });
+  const wf = await wide.pg.evaluate(() => { const a = window.__jar.toCanvas(0, 300); const b = window.__jar.toCanvas(1600, 300); return { left: a.x, right: b.x, y: a.y }; });
+  const barL = await lumAt(wide.pg, wf.left / 2, wf.y);
+  const inL = await lumAt(wide.pg, wf.left + 60, wf.y);
+  const barR = await lumAt(wide.pg, (wf.right + 1600) / 2, wf.y);
+  const pageLum = 0.2126 * 5 + 0.7152 * 9 + 0.0722 * 9;
+  check(wf.left > 150 && barL > pageLum + 2 && barL > inL * 0.45 && barR > pageLum + 2, `a wide screen shows the shed beside the scene, not the page (bar ${barL.toFixed(1)}, wall ${inL.toFixed(1)}, page ${pageLum.toFixed(1)})`);
+  await wide.pg.screenshot({ path: join(OUT, 'table-wide.png') });
+  await wide.cx.close();
+
+  const fx = await fxPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 });
+  const fp = fx.pg;
+  const topBar = await lumAt(fp, 640, 30, 200, 20);
+  const botBar = await lumAt(fp, 640, 930, 200, 20);
+  check(topBar > pageLum + 2 && botBar > pageLum + 1, `the bands above and below the scene are wall and table front (${topBar.toFixed(1)}, ${botBar.toFixed(1)})`);
+  check(await fp.evaluate(() => window.__jar.cadence.room === 200 && window.__jar.cadenceMs <= 200), 'the room asks for its own tick (dust, moth, flicker)');
+  check(await fp.evaluate(() => window.__jar.quality === 2), 'a jar on the table keeps the standing interior quality');
+
+  // a pointer over a jar: the cursor says it can be pressed, and the glass catches the light
+  const wc = await jarCentre(fp, 'warsaw');
+  const plainHash = await jarHash(fp);
+  await fp.mouse.move(wc.x, wc.y);
+  await fp.waitForFunction(() => window.__jar.hover === 'warsaw', null, { timeout: 2000 }).catch(() => {});
+  await fp.waitForTimeout(300);
+  const overHash = await fp.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_FX);
+  check(await fp.evaluate(() => window.__jar.hover === 'warsaw' && window.__jar.cursor === 'pointer'), 'a pointer over a jar shows the hand');
+  check(overHash !== plainHash, 'the jar under the pointer catches the light');
+  await fp.mouse.move(640, 60);
+  await fp.waitForFunction(() => window.__jar.hover === null, null, { timeout: 2000 }).catch(() => {});
+  await fp.waitForTimeout(300);
+  check(await fp.evaluate(() => window.__jar.hover === null && window.__jar.cursor === ''), 'off the jars the hand goes');
+  check((await fp.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_FX)) === plainHash, 'and the picture is as it was');
+
+  // where the viewer stands: the dioramas and the highlights shift, and come back
+  const parHash = await fp.evaluate(() => { window.__jar.parallax(1, 0.5); return window.__jar.hash(); });
+  const backHash = await fp.evaluate(() => { window.__jar.parallax(0, 0); return window.__jar.hash(); });
+  check(parHash !== plainHash && backHash === plainHash, 'parallax shifts the picture and returns it exactly');
+
+  // the opening moment: dark, then lit, then exactly the picture it always was
+  await fp.evaluate(() => window.__jar.intro());
+  const introStart = await fp.evaluate(() => window.__jar.introLevels);
+  const darkLum = await lumAt(fp, 640, 480, 600, 400);
+  await fp.waitForFunction(() => window.__jar.introLevels === null, null, { timeout: 5000 }).catch(() => {});
+  await twoFrames(fp);
+  const litLum = await lumAt(fp, 640, 480, 600, 400);
+  check(introStart && introStart.room < 0.3 && introStart.jars.every((j) => j === 0) && darkLum < litLum * 0.5, `the opening starts in the dark (${darkLum.toFixed(1)} against ${litLum.toFixed(1)})`);
+  check((await fp.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_FX)) === plainHash, 'and ends on the ordinary picture');
+
+  // a new reading fades in (when asked to, as a live refresh does), and the fade ends
+  const rainBody = { current: { temperature_2m: 6, weather_code: 63, cloud_cover: 100, is_day: 0, wind_speed_10m: 12, wind_direction_10m: 240 } };
+  await fp.evaluate((b) => window.__jar.applyWeather(b, { fade: true }), rainBody);
+  const fadingNow = await fp.evaluate(() => window.__jar.fading);
+  await fp.waitForFunction(() => window.__jar.fading.length === 0, null, { timeout: 6000 }).catch(() => {});
+  check(fadingNow.length === 3 && (await fp.evaluate(() => window.__jar.fading.length)) === 0, `a changed sky fades in and settles (${fadingNow.join(', ')})`);
+  await fp.evaluate((b) => window.__jar.applyWeather(b), rainBody);
+  check((await fp.evaluate(() => window.__jar.fading.length)) === 0, 'the same sky again fades nothing');
+  await fp.screenshot({ path: join(OUT, 'table-rain.png') });
+  await fp.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
+
+  // lifting Nazare: the room behind dims and softens, the jar hangs clear of the table
+  // (at 09:00 today, so the card's days lie ahead of the pinned moment)
+  await pinAt(fp, T9);
+  await fp.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
+  const edgeBefore = luma(await patch(fp, 'el-chalten', 0.25, 0.3, 3));
+  await fp.evaluate(() => window.__jar.lift('nazare'));
+  await viewIs(fp, 'jar');
+  await settled(fp);
+  await twoFrames(fp);
+  const edgeAfter = luma(await patch(fp, 'el-chalten', 0.25, 0.3, 3));
+  const edgeOn = await fp.evaluate(() => { const p = window.__jar.bodyPx('el-chalten', 0.25, 0.3); return p.x > 8 && p.x < 1270 && p.y > 40 && p.y < 950; });
+  check(edgeOn && edgeBefore > 12 && edgeAfter > 0 && edgeAfter < edgeBefore * 0.75, `the jar left on the table dims behind the lifted one (${edgeBefore.toFixed(1)} -> ${edgeAfter.toFixed(1)})`);
+  const hang = await fp.evaluate(() => ({ foot: window.__jar.foot('nazare').y, table: window.__jar.toCanvas(0, 710).y, other: window.__jar.foot('warsaw').y }));
+  check(hang.table - hang.foot > 20 && Math.abs(hang.other - hang.table) < 1, `the lifted jar hangs above the table (${(hang.table - hang.foot).toFixed(0)} px)`);
+
+  // a press on the glass shakes it; the jar stays lifted and settles
+  const nb = await fp.evaluate(() => { const b = window.__jar.jarBox('nazare'); const d = window.__jar.dpr; return { x: (b.x + b.w / 2) / d, y: (b.y + b.h * 0.4) / d }; });
+  await fp.mouse.click(nb.x, nb.y);
+  const shook = await fp.evaluate(() => [window.__jar.shaking, window.__jar.view]);
+  await fp.waitForFunction(() => !window.__jar.shaking, null, { timeout: 6000 }).catch(() => {});
+  check(shook[0] === true && shook[1] === 'jar' && (await fp.evaluate(() => !window.__jar.shaking && window.__jar.view === 'jar')), 'a press on the lifted jar shakes it, and it settles still lifted');
+
+  // a press on a day of the card previews that day; the same day again, or Escape, returns to now
+  const cardBox = await fp.evaluate(() => { const r = window.__jar.forecast.rect; const d = window.__jar.dpr; return { x: r.x / d, y: r.y / d, w: r.w / d, h: r.h / d }; });
+  await fp.mouse.move(cardBox.x + cardBox.w / 2, cardBox.y + 40);
+  await twoFrames(fp);
+  check(await fp.evaluate(() => window.__jar.cursor === 'pointer'), 'a day on the card shows the hand');
+  // Nazare's card carries the sun and tide strips, so its five days fill the top 68 %: the third is about a third of the way down
+  const dayY = cardBox.y + cardBox.h * 0.34;
+  await fp.mouse.click(cardBox.x + cardBox.w / 2, dayY);
+  await twoFrames(fp);
+  const dayPrev = await fp.evaluate(() => ({ sel: window.__jar.selectedDay, min: window.__jar.scrubMin, line: window.__jar.labels.nazare[2], view: window.__jar.view }));
+  check(dayPrev.sel === 2 && dayPrev.min > 2 * 1440 && dayPrev.min < 3 * 1440 && /^13:00 \(\+2 d( \d+ h)?\)$/.test(dayPrev.line) && dayPrev.view === 'jar', `a pressed day previews its afternoon (${dayPrev.line})`);
+  await fp.screenshot({ path: join(OUT, 'nazare-day-preview.png') });
+  await fp.mouse.click(cardBox.x + cardBox.w / 2, dayY);
+  await twoFrames(fp);
+  check(await fp.evaluate(() => window.__jar.scrubMin === 0 && window.__jar.selectedDay === -1), 'the same day pressed again returns to now');
+  await fp.evaluate(() => window.__jar.previewDay(3));
+  await fp.keyboard.press('Escape');
+  check(await fp.evaluate(() => window.__jar.scrubMin === 0 && window.__jar.view === 'jar'), 'Escape leaves a day preview before it lowers the jar');
+
+  // the time-lapse: play runs the day ahead, stop returns to now
+  await fp.click('#play');
+  await fp.waitForFunction(() => window.__jar.scrubMin > 60, null, { timeout: 5000 }).catch(() => {});
+  const playing = await fp.evaluate(() => ({ on: window.__jar.playing, min: window.__jar.scrubMin, pressed: document.getElementById('play').getAttribute('aria-pressed'), text: document.getElementById('play').textContent, slider: Number(document.getElementById('scrub').value) }));
+  check(playing.on && playing.min > 60 && playing.pressed === 'true' && playing.text === 'stop' && playing.slider > 0, `play sweeps the next day (${playing.min} min in)`);
+  await fp.click('#play');
+  check(await fp.evaluate(() => !window.__jar.playing && window.__jar.scrubMin === 0 && document.getElementById('play').textContent === 'play'), 'stop returns to now');
+  await fp.click('#play');
+  await fp.keyboard.press('Escape');
+  check(await fp.evaluate(() => !window.__jar.playing && window.__jar.scrubMin === 0 && window.__jar.view === 'jar'), 'Escape stops the time-lapse first');
+  check(fx.fxSeen.errors.length === 0 && fx.fxSeen.off.length === 0, 'no console errors or off-origin requests through the effects');
+  await fx.cx.close();
+
+  // the bloom takes only what is bright, and the grain is the same every time (the look's own primitives, in the page)
+  const lk = await fxPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
+  const prim = await lk.pg.evaluate(async () => {
+    const m = await import('/look/index.js');
+    const make = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+    const src = make(40, 20);
+    const s = src.getContext('2d');
+    s.fillStyle = m.css([128, 128, 128]);
+    s.fillRect(0, 0, 20, 20);
+    s.fillStyle = m.css([255, 255, 255]);
+    s.fillRect(20, 0, 20, 20);
+    const out = m.brights(make(40, 20), src, make(40, 20)).getContext('2d').getImageData(0, 0, 40, 20).data;
+    const px = (x) => out[(10 * 40 + x) * 4];
+    const g1 = m.grainTile(make).getContext('2d').getImageData(0, 0, 128, 128).data;
+    const g2 = m.grainTile(make).getContext('2d').getImageData(0, 0, 128, 128).data;
+    let same = true; let light = 0; let dark = 0;
+    for (let i = 0; i < g1.length; i += 4) { if (g1[i] !== g2[i] || g1[i + 3] !== g2[i + 3]) same = false; if (g1[i] > 128) light += 1; else dark += 1; }
+    return { grey: px(8), white: px(32), same, light, dark };
+  });
+  check(prim.grey < 50 && prim.white > 240, `the bloom keeps the bright and drops the mid tones (grey ${prim.grey}, white ${prim.white})`);
+  check(prim.same && prim.light > 4000 && prim.dark > 4000, 'the grain is the same tile every time, light and dark in equal measure');
+  await lk.cx.close();
+
+  // a dense screen: the lifted jar is painted at the size it is shown
+  const dense = await fxPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 2 });
+  await dense.pg.evaluate(() => window.__jar.lift('warsaw'));
+  await viewIs(dense.pg, 'jar');
+  await settled(dense.pg);
+  await twoFrames(dense.pg);
+  const dq = await dense.pg.evaluate(() => ({ q: window.__jar.quality, need: (window.__jar.jarBox('warsaw').w) / 340 }));
+  check(dq.q > 2 && dq.q >= Math.min(4, dq.need) - 0.01, `a lifted jar on a 2x screen gets its own pixels (quality ${dq.q} for ${dq.need.toFixed(2)} px per unit)`);
+  await dense.pg.screenshot({ path: join(OUT, 'warsaw-lifted-2x.png') });
+  await dense.cx.close();
+
+  // reduced motion: no shake, no room tick, the lift still lands risen
+  const calm = await fxPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+  await calm.pg.evaluate(() => window.__jar.lift('warsaw'));
+  await viewIs(calm.pg, 'jar');
+  check(await calm.pg.evaluate(() => window.__jar.shake() === false && !window.__jar.shaking && window.__jar.cadence.room === 0), 'reduced motion: the jar does not shake and the room is still');
+  await calm.cx.close();
 
   check(vendorCalls.length === 0, 'the smoke never reached the vendor stub (the browser only asks its own route)');
 } finally {

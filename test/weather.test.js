@@ -190,10 +190,10 @@ test('the sea reading (swell): EMPTY has none, fromEntry folds it and tolerates 
   assert.equal(fromEntry({ sea: { waveHeight: 'x' } }).sea.waveHeight, null);
 });
 
-test('normaliseSeaHourly: junk is [], caps at 25, drops a bad time; fromEntry keeps the rows', () => {
+test('normaliseSeaHourly: junk is [], caps at 120, drops a bad time; fromEntry keeps the rows', () => {
   for (const v of [undefined, null, 'junk', 3, {}]) assert.deepEqual(normaliseSeaHourly(v), [], String(v));
-  const rows = Array.from({ length: 30 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, waveHeight: i }));
-  assert.equal(normaliseSeaHourly(rows).length, 25);
+  const rows = Array.from({ length: 150 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, waveHeight: i }));
+  assert.equal(normaliseSeaHourly(rows).length, 120);
   assert.deepEqual(normaliseSeaHourly([{ time: 'bad', waveHeight: 1 }, { time: '2026-10-18T05:00', waveHeight: 'x' }, null]), [{ time: '2026-10-18T05:00', waveHeight: null }]);
   assert.deepEqual(fromEntry({ sea: { waveHeight: 4.2, hourly: [{ time: '2026-10-18T05:00', waveHeight: 2 }] } }).sea.hourly, [{ time: '2026-10-18T05:00', waveHeight: 2 }]);
 });
@@ -238,10 +238,10 @@ test('fromEntry reads hourly rows, folds kind per row, and defaults to []', () =
   assert.deepEqual(fromEntry({ temperature: 1 }).hourly, []);
 });
 
-test('normaliseHourly: junk gives [], at most 25 rows', () => {
+test('normaliseHourly: junk gives [], at most 120 rows', () => {
   for (const j of [undefined, null, 'x', 5, {}, [null, 1, 'a', {}]]) assert.deepEqual(normaliseHourly(j), []);
-  const many = Array.from({ length: 40 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, code: 3 }));
-  assert.equal(normaliseHourly(many).length, 25);
+  const many = Array.from({ length: 150 }, (_, i) => ({ time: `2026-10-18T${String(i % 24).padStart(2, '0')}:00`, code: 3 }));
+  assert.equal(normaliseHourly(many).length, 120);
 });
 
 test('EMPTY.hourly is an empty, frozen list', () => {

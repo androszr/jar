@@ -9,6 +9,19 @@ export const liftEase = (t) => {
   return x * x * (3 - 2 * x);
 };
 
+// The lifted jar leaves the table: it rises LIFT_RISE scene units, a little
+// past it on the way up and back (an out-back ease on the lift's own progress),
+// so it settles with a small bounce. 0 on the table, LIFT_RISE when up.
+export const LIFT_RISE = 30;
+export function liftRise(e) {
+  const x = Math.max(0, Math.min(1, e));
+  if (x === 0) return 0;
+  if (x === 1) return LIFT_RISE;
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return LIFT_RISE * (1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2);
+}
+
 // The camera at progress `e` (0 table .. 1 lifted). `dview` is the table
 // camera { cx, cy, scale } plus `viewH` and optionally `viewW` (CSS px); `rect` the jar's scene rect.
 // `extent` (default the jar) is the rect that must stay in view: the jar plus its forecast card.

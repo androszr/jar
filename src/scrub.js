@@ -23,6 +23,36 @@ export function offsetText(min) {
   return `+${h === 0 ? '' : h}${half} h`;
 }
 
+// A preview may reach further than the slider: a day pressed on the forecast
+// card. Whole minutes in 0..PREVIEW_MAX_MIN; junk -> 0.
+export const PREVIEW_MAX_MIN = 5 * 1440;
+export function clampPreview(min) {
+  if (typeof min !== 'number' || !Number.isFinite(min)) return 0;
+  return Math.max(0, Math.min(PREVIEW_MAX_MIN, Math.round(min))) + 0;
+}
+
+// The label of any preview: the slider's own wording up to a day ahead, then
+// days and hours ("+2 d 3 h", "+3 d").
+export function offsetLabel(min) {
+  const m = clampPreview(min);
+  if (m <= SCRUB_MAX_MIN) return offsetText(m);
+  let d = Math.floor(m / 1440);
+  let h = Math.round((m % 1440) / 60);
+  if (h === 24) { d += 1; h = 0; }
+  return `+${d} d${h ? ` ${h} h` : ''}`;
+}
+
+// Minutes from `nowMs` to the early afternoon (13:00 on the city's own wall
+// clock) of `date` ("YYYY-MM-DD"): where a pressed forecast day previews. 0
+// when that moment is not ahead of now, or the date cannot be read.
+export const DAY_PREVIEW_HOUR = 13;
+export function dayPreviewMin(nowMs, date, zone) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return 0;
+  const at = wallToMs(`${date}T${String(DAY_PREVIEW_HOUR).padStart(2, '0')}:00`, zone);
+  if (at === null || !Number.isFinite(nowMs) || at <= nowMs) return 0;
+  return clampPreview((at - nowMs) / 60000);
+}
+
 export function scrubMoment(nowMs, min) {
   return nowMs + clampScrub(min) * 60000;
 }

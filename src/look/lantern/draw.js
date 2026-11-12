@@ -51,19 +51,56 @@ export function glassBody(ctx, rect, neck = 0.22) {
 // The glass streaks: x and w are shares of the body width, a the peak alpha.
 export const STREAKS = [{ x: 0.02, w: 0.045, a: 0.26 }, { x: 0.945, w: 0.03, a: 0.16 }];
 
-export function glassHighlights(ctx, rect, neck = 0.22) {
+// The glass over the diorama: a cool tint, the wall's thickness (a dark band
+// inside the outline and a pale inner edge), the lid's shadow on the shoulder,
+// a thick base that catches the light, the two edge streaks, a curved highlight
+// on the left shoulder with a small hot spot, the rim, and the thread under the
+// lid. `opts.shift` slides the highlights sideways by that many px (the viewer
+// moved); `opts.glint` 0..1 brightens the rim (a pointer over the jar).
+export function glassHighlights(ctx, rect, neck = 0.22, opts = {}) {
   const { x, y, w, h } = rect;
+  const shift = Number.isFinite(opts.shift) ? opts.shift : 0;
+  const glint = Number.isFinite(opts.glint) ? Math.max(0, Math.min(1, opts.glint)) : 0;
+  const nx = w * neck;
+  const sh = h * 0.22;
   ctx.save();
   // cool refraction tint over the whole body
   glassBody(ctx, rect, neck);
   ctx.fillStyle = css(PALETTE.glass, 0.07);
   ctx.fill();
-  // rim
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = css(PALETTE.glass, 0.5);
-  ctx.stroke();
-  glassBody(ctx, rect, neck);
+  ctx.save();
   ctx.clip();
+  // the wall: only the inner half of a wide stroke survives the clip
+  glassBody(ctx, rect, neck);
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = css(PALETTE.glassDark, 0.2);
+  ctx.stroke();
+  glassBody(ctx, { x: x + 8, y: y + 6, w: w - 16, h: h - 15 }, neck);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = css(PALETTE.glass, 0.14);
+  ctx.stroke();
+  // the lid's shadow falls on the shoulder
+  const ls = ctx.createLinearGradient(0, y, 0, y + h * 0.07);
+  ls.addColorStop(0, css(PALETTE.shadow, 0.3));
+  ls.addColorStop(1, css(PALETTE.shadow, 0));
+  ctx.fillStyle = ls;
+  ctx.fillRect(x, y, w, h * 0.07);
+  // the thick base: a lens of glass that gathers light along its top edge
+  const bh = h * 0.05;
+  const by = y + h - bh;
+  const bg = ctx.createLinearGradient(0, by - 2, 0, y + h);
+  bg.addColorStop(0, css(PALETTE.glass, 0.26));
+  bg.addColorStop(0.18, css(PALETTE.glass, 0.1));
+  bg.addColorStop(1, css(PALETTE.glassDark, 0.3));
+  ctx.fillStyle = bg;
+  ctx.fillRect(x, by - 2, w, bh + 2);
+  const bl = ctx.createLinearGradient(x, 0, x + w, 0);
+  bl.addColorStop(0, css(PALETTE.glass, 0));
+  bl.addColorStop(0.3 + shift / w, css(PALETTE.glass, 0.5));
+  bl.addColorStop(0.7 + shift / w, css(PALETTE.glass, 0.12));
+  bl.addColorStop(1, css(PALETTE.glass, 0));
+  ctx.fillStyle = bl;
+  ctx.fillRect(x + 10, by - 2, w - 20, 1.5);
   // two soft vertical streaks, at the glass edges so no city's skyline sits under one
   const streak = (sx, sw, a) => {
     const g = ctx.createLinearGradient(sx, 0, sx + sw, 0);
@@ -73,13 +110,114 @@ export function glassHighlights(ctx, rect, neck = 0.22) {
     ctx.fillStyle = g;
     ctx.fillRect(sx, y + h * 0.16, sw, h * 0.62);
   };
-  for (const s of STREAKS) streak(x + w * s.x, w * s.w, s.a);
-  // a rim ellipse at the neck
-  ctx.strokeStyle = css(PALETTE.glass, 0.4);
+  for (const s of STREAKS) streak(x + w * s.x + shift, w * s.w, s.a);
+  // the shoulder's curve picks up the lamp: a soft band along it and a hot spot
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = css(PALETTE.glass, 0.2 + 0.14 * glint);
   ctx.beginPath();
-  ctx.ellipse(x + w / 2, y + 3, w * (0.5 - neck) , 4, 0, 0, Math.PI * 2);
+  ctx.moveTo(x + nx + 9 + shift, y + sh * 0.2);
+  ctx.bezierCurveTo(x + nx + 7 + shift, y + sh * 0.62, x + 15 + shift, y + sh * 0.5, x + 13 + shift, y + sh * 1.05);
+  ctx.stroke();
+  ctx.fillStyle = css(PALETTE.dewHighlight, 0.3 + 0.2 * glint);
+  ctx.beginPath();
+  ctx.ellipse(x + w * 0.105 + shift, y + sh * 0.74, 2, 5.5, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  // and a fainter answer on the far shoulder
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = css(PALETTE.glass, 0.1);
+  ctx.beginPath();
+  ctx.moveTo(x + w - nx - 8 + shift, y + sh * 0.24);
+  ctx.bezierCurveTo(x + w - nx - 6 + shift, y + sh * 0.62, x + w - 13 + shift, y + sh * 0.52, x + w - 11 + shift, y + sh * 1.0);
   ctx.stroke();
   ctx.restore();
+  // rim
+  glassBody(ctx, rect, neck);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = css(PALETTE.glass, 0.5 + 0.35 * glint);
+  ctx.stroke();
+  glassBody(ctx, rect, neck);
+  ctx.clip();
+  // a rim ellipse at the neck, and the thread the lid screws onto under it
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = css(PALETTE.glass, 0.4);
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + 3, w * (0.5 - neck), 4, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 1.5;
+  for (const [ty, a] of [[10, 0.22], [16, 0.13]]) {
+    ctx.strokeStyle = css(PALETTE.glass, a);
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + ty, w * (0.5 - neck) + 1, 3.5, 0, 0.12, Math.PI - 0.12);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// One cloud as one shape: five lobes filled together (so they never show a
+// seam where they overlap), cut flat along the base and shaded darker toward
+// it. It spans cx - 1.6r .. cx + 1.8r.
+export const CLOUD_LOBES = [[-1.0, 0.1, 0.6, 0.4], [-0.45, -0.14, 0.62, 0.52], [0.2, -0.24, 0.7, 0.6], [0.82, -0.02, 0.62, 0.46], [1.28, 0.14, 0.5, 0.32]];
+export function cloud(ctx, cx, cy, r, colour, alpha) {
+  if (!(alpha > 0) || !(r > 0)) return;
+  const top = cy - r;
+  const base = cy + r * 0.34;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cx - 2 * r, top, 4 * r, base - top);
+  ctx.clip();
+  const g = ctx.createLinearGradient(0, top, 0, base);
+  g.addColorStop(0, css(colour, alpha));
+  g.addColorStop(0.6, css(colour, alpha));
+  g.addColorStop(1, css(mix(colour, PALETTE.shadow, 0.3), alpha));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  for (const [dx, dy, rx, ry] of CLOUD_LOBES) {
+    ctx.moveTo(cx + (dx + rx) * r, cy + dy * r);
+    ctx.ellipse(cx + dx * r, cy + dy * r, rx * r, ry * r, 0, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+// A lightning bolt along `points` ([[x, y], ...], the main channel first) with
+// `forks` (more point lists): a wide soft stroke under a thin bright one.
+export function bolt(ctx, points, forks = [], strength = 1) {
+  if (!(strength > 0) || !points || points.length < 2) return;
+  const trace = (pts) => {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const [w, a] of [[7, 0.16], [3.2, 0.4], [1.3, 1]]) {
+    ctx.strokeStyle = css(PALETTE.bolt, Math.min(1, a * strength));
+    ctx.lineWidth = w;
+    trace(points);
+    ctx.lineWidth = w * 0.6;
+    ctx.strokeStyle = css(PALETTE.bolt, Math.min(1, a * strength * 0.7));
+    for (const f of forks) if (f.length > 1) trace(f);
+  }
+  ctx.restore();
+}
+
+// The sun: a pale heart, its own colour, and a soft edge instead of a rim.
+export function sunDisc(ctx, x, y, r, strength = 1) {
+  if (!(strength > 0)) return;
+  const R = r * 1.3;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0, css(mix(PALETTE.sun, PALETTE.grainLight, 0.65), strength));
+  g.addColorStop(0.62, css(mix(PALETTE.sun, PALETTE.grainLight, 0.2), strength));
+  g.addColorStop(0.82, css(PALETTE.sun, strength * 0.7));
+  g.addColorStop(1, css(PALETTE.sun, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 export function lid(ctx, rect, kind = 'cork') {

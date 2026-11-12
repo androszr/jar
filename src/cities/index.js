@@ -20,6 +20,10 @@
 //   labelLine(weather)
 //             optional: a string for a fourth line on the label plate, or null
 //             for none (Nazare's swell, El Chalten's view of the peak)
+//   water(rect, scene)
+//             optional: the open water in the jar's local px, { x, y, w, h },
+//             where the shared rain lands as rings; null for none (a frozen
+//             lake). `scene` is what paint returned for this frame
 //   sky       optional: { sun: false } declines the shared sky's sun disc (a
 //             view that faces away from where the sun crosses)
 //   seed      optional number for the city's own randomness

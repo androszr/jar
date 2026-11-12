@@ -41,6 +41,7 @@ html, body {
 
 #back,
 #now,
+#play,
 #shelfnav button {
   position: fixed;
   min-height: 32px;
@@ -87,7 +88,7 @@ html, body {
   display: flex;
   gap: 10px;
   align-items: center;
-  width: min(72vw, 440px);
+  width: min(86vw, 500px);
   color: var(--tag-ink, inherit);
   font: 500 12px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -109,8 +110,17 @@ html, body {
   accent-color: var(--tag-edge, currentColor);
 }
 
-#now {
+#now,
+#play {
   position: static;
+}
+
+#play {
+  min-width: 4.2em;
+}
+
+#play[aria-pressed="true"] {
+  border-color: var(--tag-ink, currentColor);
 }
 
 #shelfnav button {
@@ -131,7 +141,8 @@ html, body {
   }
 
   #scrub,
-  #now {
+  #now,
+  #play {
     min-height: 44px;
   }
 }
