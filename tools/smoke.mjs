@@ -586,8 +586,8 @@ try {
   await deepC.close();
 
   // the bands, the clock, the seasons and the rock, with pixels sampled
-  // Share pairs read from buildPlates: Fitz Roy's fin at y 0.30 has a left-facing face at (0.50, 0.30) and a right-facing one at (0.61, 0.275), both clear of gullies, ridges and facet edges;
-  // the summit tip is (0.566, 0.22); the bivouac light (0.545, 0.345); the first headlamp (0.16, 0.705).
+  // Share pairs read from buildPlates: Fitz Roy's fin has a left-facing face at (0.465, 0.33) and a right-facing one at (0.61, 0.2), both clear of snow, gullies, ridges and facet edges;
+  // the summit tip is (0.566, 0.111); the bivouac light (0.57, 0.25); the first headlamp (0.16, 0.668); open lake at (0.2, 0.62).
   // Moments are in January (summer) and July, in the past: a pin ahead of the real clock would age the stub answer to stale.
   const T_NOON_C = Date.UTC(2026, 0, 21, 16, 0); // 13:00 in El Chaltén, midsummer
   const T_GLOW = Date.UTC(2026, 0, 21, 9, 34); // 06:34 local, 19 minutes after the 06:15 sunrise
@@ -610,7 +610,8 @@ try {
   await settled(cp);
   const cs = () => cp.evaluate(() => window.__jar.scene('el-chalten'));
   const at = async (ms, body) => {
-    if (body) await cp.evaluate((b) => window.__jar.applyWeather(b), body);
+    // pin first, so a reading applied next is fresh at the pinned moment and the label keeps its fourth line
+    if (body) { await pinAt(cp, ms); await cp.evaluate((b) => window.__jar.applyWeather(b), body); }
     await pinAt(cp, ms);
     return cs();
   };
@@ -620,47 +621,48 @@ try {
   const clear = await at(T_NOON_C, chaltenBody({ cloud: 10, wind: 5 }));
   check(clear.band === 'clear' && clear.plume === 0 && clear.condor === true && clear.hiker === true && clear.season === 'summer' && clear.frozen === false, 'a clear midsummer noon: the wall stands, a condor and a hiker, no plume');
   check((await lineOf()) === 'FITZ ROY · CLEAR', 'the label reads FITZ ROY · CLEAR');
-  check(all(await patch(cp, 'el-chalten', 0.2, 0.68, 2), turquoise), 'the lake is turquoise at noon');
+  check(all(await patch(cp, 'el-chalten', 0.2, 0.62, 2), turquoise), 'the lake is turquoise at noon');
   await cp.screenshot({ path: join(OUT, 'el-chalten-noon.png') });
   // the rock is lit by the hour, not painted on
-  const left = luma(await patch(cp, 'el-chalten', 0.5, 0.3, 1));
-  const right = luma(await patch(cp, 'el-chalten', 0.61, 0.275, 1));
+  const left = luma(await patch(cp, 'el-chalten', 0.465, 0.33, 1));
+  const right = luma(await patch(cp, 'el-chalten', 0.61, 0.2, 1));
   await at(T_NIGHT_C);
-  const nLeft = luma(await patch(cp, 'el-chalten', 0.5, 0.3, 1));
-  const nRight = luma(await patch(cp, 'el-chalten', 0.61, 0.275, 1));
+  const nLeft = luma(await patch(cp, 'el-chalten', 0.465, 0.33, 1));
+  const nRight = luma(await patch(cp, 'el-chalten', 0.61, 0.2, 1));
   check(Math.abs(right - left) >= 12 && Math.abs(nRight - nLeft) <= 6, `El Chaltén facets differ by the hour (noon ${Math.abs(right - left).toFixed(0)}, night ${Math.abs(nRight - nLeft).toFixed(0)})`);
   const smoking = await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 60, dir: 225 }));
   check(smoking.band === 'smoking' && smoking.plume > 0.2 && (await lineOf()) === 'FITZ ROY · SMOKING', 'a strong south-westerly smokes the summit');
   check(await cp.evaluate(() => window.__jar.cadence.cities['el-chalten'] === 250), 'the plume asks for a 250 ms tick');
-  check(some(await patch(cp, 'el-chalten', 0.66, 0.24, 3), (r, g, b) => r > 150 && g > 150 && b > 150), 'the banner cloud streams to the right of the summit');
+  check(some(await patch(cp, 'el-chalten', 0.66, 0.135, 3), (r, g, b) => r > 150 && g > 150 && b > 150), 'the banner cloud streams to the right of the summit');
   await cp.screenshot({ path: join(OUT, 'el-chalten-smoking.png') });
   await at(T_NOON_C);
   const smokeA = await jarHash(cp);
   await at(T_NOON_C);
   check(smokeA === (await jarHash(cp)), 'el-chalten draws the same pixels at the same moment');
   const capped = await at(T_NOON_C, chaltenBody({ cloud: 70, wind: 10 }));
-  check(capped.band === 'capped' && (await lineOf()) === 'FITZ ROY · CAPPED' && all(await patch(cp, 'el-chalten', 0.566, 0.25, 2), (r, g, b) => Math.abs(r - b) < 25), 'a cloud deck caps the peak');
+  check(capped.band === 'capped' && (await lineOf()) === 'FITZ ROY · CAPPED' && all(await patch(cp, 'el-chalten', 0.566, 0.15, 2), (r, g, b) => Math.abs(r - b) < 25), 'a cloud deck caps the peak');
   const hidden = await at(T_NOON_C, chaltenBody({ cloud: 95, code: 61, wind: 40, dir: 315 }));
   check(hidden.band === 'hidden' && (await lineOf()) === 'FITZ ROY · HIDDEN', 'rain hides the peak');
-  check(all(await patch(cp, 'el-chalten', 0.566, 0.25, 2), (r, g, b) => !warmer(r, g, b) && !turquoise(r, g, b)), 'the summit is neither warm rock nor lake colour when hidden');
+  check(all(await patch(cp, 'el-chalten', 0.566, 0.15, 2), (r, g, b) => !warmer(r, g, b) && !turquoise(r, g, b)), 'the summit is neither warm rock nor lake colour when hidden');
   await cp.screenshot({ path: join(OUT, 'el-chalten-hidden.png') });
   const glowing = await at(T_GLOW, chaltenBody({ cloud: 10, wind: 4 }));
   check(glowing.glow > 0 && glowing.mirror > 0.8, 'first light glows and the still lake mirrors');
-  check(some(await patch(cp, 'el-chalten', 0.56, 0.27, 2), warmer), 'the top of the wall is red at sunrise');
+  check(some(await patch(cp, 'el-chalten', 0.56, 0.16, 2), warmer), 'the top of the wall is red at sunrise');
   const mirrorWarm = (rows) => rows.reduce((s, [r, , b]) => s + r - b, 0) / rows.length;
-  check(mirrorWarm(await patch(cp, 'el-chalten', 0.56, 0.56, 2)) > mirrorWarm(await patch(cp, 'el-chalten', 0.2, 0.68, 2)), 'the lake carries the red below the wall');
+  check(mirrorWarm(await patch(cp, 'el-chalten', 0.56, 0.63, 2)) > mirrorWarm(await patch(cp, 'el-chalten', 0.2, 0.62, 2)), 'the lake carries the red below the wall');
   await cp.screenshot({ path: join(OUT, 'el-chalten-alpenglow.png') });
   const lamps = await at(T_LAMPS, chaltenBody({ cloud: 10, wind: 4 }));
   check(lamps.headlamps >= 2 && (await cp.evaluate(() => window.__jar.cadence.cities['el-chalten'] === 400)), 'headlamps wait on the shore before dawn');
-  check(some(await patch(cp, 'el-chalten', 0.16, 0.705, 4), (r, g, b) => r > 170 && r >= b + 40), 'a headlamp shows warm on the shore');
+  check(some(await patch(cp, 'el-chalten', 0.16, 0.668, 4), (r, g, b) => r > 170 && r >= b + 40), 'a headlamp shows warm on the shore');
   await cp.screenshot({ path: join(OUT, 'el-chalten-headlamps.png') });
   const night = await at(T_NIGHT_C, chaltenBody({ cloud: 10, wind: 4 }));
   check(night.headlamps === 0 && night.hiker === false && night.condor === false, 'at midnight no headlamps, hiker or condor');
-  check(luma(await patch(cp, 'el-chalten', 0.545, 0.345, 1)) > luma(await patch(cp, 'el-chalten', 0.5, 0.345, 1)) + 20, 'one bivouac light shows on the wall at night');
+  check((await lineOf()) === 'FITZ ROY · CLEAR', 'the midnight reading is fresh: the label keeps its fourth line');
+  check(luma(await patch(cp, 'el-chalten', 0.57, 0.25, 1)) > luma(await patch(cp, 'el-chalten', 0.525, 0.25, 1)) + 20, 'one bivouac light shows on the wall at night');
   await cp.screenshot({ path: join(OUT, 'el-chalten-night.png') });
   const winter = await at(T_CHALTEN_WINTER, chaltenBody({ cloud: 10, wind: 4 }));
   check(winter.season === 'winter' && winter.frozen === true && winter.mirror === 0, 'in July the lake is frozen and mirrors nothing');
-  check(luma(await patch(cp, 'el-chalten', 0.2, 0.68, 2)) > 150, 'the frozen lake is white');
+  check(luma(await patch(cp, 'el-chalten', 0.2, 0.62, 2)) > 150, 'the frozen lake is pale ice');
   await cp.screenshot({ path: join(OUT, 'el-chalten-winter.png') });
   check(cpSeen.errors.length === 0 && cpSeen.off.length === 0, `no console errors or off-origin requests in the el-chalten run${cpSeen.errors.length ? `: ${cpSeen.errors.join(' | ')}` : ''}`);
   await cp.close();

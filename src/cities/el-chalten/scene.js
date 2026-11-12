@@ -18,13 +18,13 @@ import {
 export const SEED = 0xf172;
 // the lake's far shore, and the gravel shore below it
 export const SHORE = 0.5;
-export const GRAVEL = { y0: 0.7, y1: 0.737 };
-export const SUMMIT = { x: 0.566, y: 0.22 };
-export const BIVOUAC = { x: 0.545, y: 0.345 };
+// (the gravel starts well above the label plate, so the beach and the hiker are in view)
+export const GRAVEL = { y0: 0.66, y1: 0.737 };
+export const BIVOUAC = { x: 0.57, y: 0.25 };
 // where the headlamps wait on the shore, first lit first
-export const LAMPS = [[0.16, 0.705], [0.31, 0.708], [0.46, 0.72], [0.8, 0.714], [0.24, 0.715], [0.53, 0.706], [0.88, 0.708]];
+export const LAMPS = [[0.16, 0.668], [0.31, 0.671], [0.46, 0.683], [0.8, 0.677], [0.24, 0.678], [0.53, 0.669], [0.88, 0.671]];
 // the hiker's rock, clear of both glass streaks (the look's STREAKS)
-export const ROCK = { x0: 0.6, x1: 0.74, y: 0.704, h: 0.032 };
+export const ROCK = { x0: 0.6, x1: 0.74, y: 0.65, h: 0.04 };
 // The x bands the glass streaks occupy (shares of the width); the look's STREAKS.
 export const STREAK_CLEAR = [[0.02, 0.065], [0.945, 0.975]];
 
@@ -38,10 +38,17 @@ export function layout(w, h, ox = 0, oy = 0) {
 
 // ---- the geometry, built once ------------------------------------------------
 // The mock's traced points are photograph pixels; this maps them into body shares
-// (the whole photo spans a little more than the glass, the tip lifted to 0.22 and
-// the lake's far shore to 0.50).
-const px = ([x, y]) => [-0.02 + ((x + 20) / 820) * 1.04, 0.22 + (y - 37) * 0.000906];
+// (the whole photo spans a little more than the glass, the lake's far shore at 0.50).
+// The mountain is the subject, so the picture is not copied flat: the wall (PW) is
+// drawn taller than the photograph, stretched about the snow line, and the
+// moraine (PH) lower, about the waterline.
+const KY = 0.00105;
+const px = ([x, y]) => [-0.02 + ((x + 20) / 820) * 1.04, SHORE - (345 - y) * KY];
 const P = (pts) => pts.map(px);
+const PW = (pts) => pts.map(([x, y]) => px([x, 175 - (175 - y) * 1.45]));
+const PH = (pts) => pts.map(([x, y]) => px([x, 345 - (345 - y) * 0.8]));
+// Fitz Roy's tip, the highest point of the skyline below
+export const SUMMIT = (([x, y]) => ({ x, y }))(PW([[442, 37]])[0]);
 const hh = (i, k) => hash2(i, SEED + k);
 const chainY = (chain, x) => {
   if (x <= chain[0][0]) return chain[0][1];
@@ -101,7 +108,10 @@ function rockBody(ridge, slabs, k, grain, base = SHORE) {
   for (let j = 1; j < slabs; j++) {
     const t = ridge[idx[j]];
     ridges.push([t, mid[j], bot[j]]);
-    streaks.push([[t[0], t[1] + 0.006], [t[0] + 0.005, t[1] + 0.04], [t[0] - 0.004, t[1] + 0.038]]);
+    // snow lodged on a ledge part-way down the rib, not hanging from the crest
+    const s = 0.3 + 0.35 * hh(j, k + 11);
+    const q = [t[0] + (mid[j][0] - t[0]) * s, t[1] + (mid[j][1] - t[1]) * s];
+    streaks.push([[q[0] - 0.009, q[1] + 0.002], [q[0] + 0.001, q[1] - 0.003], [q[0] + 0.01, q[1] + 0.001], [q[0] + 0.004, q[1] + 0.005], [q[0] - 0.005, q[1] + 0.005]]);
     if (j % 2 === 1) couloirs.push([[t[0], t[1] + 0.008], [mid[j][0] + 0.008, mid[j][1]], [mid[j][0] - 0.008, mid[j][1]]]);
   }
   const g = [];
@@ -116,14 +126,21 @@ function rockBody(ridge, slabs, k, grain, base = SHORE) {
 }
 
 export function buildPlates(w, h) {
-  const sky = P(SKYLINE);
+  const sky = PW(SKYLINE);
   // Poincenot (the blade), Fitz Roy (the fin), then the needles stepping down
   const bodies = {
     poincenot: rockBody(sky.slice(0, 13), 4, 100, 40),
     fitzroy: rockBody(sky.slice(12, 31), 8, 200, 60),
     needles: [[30, 35], [35, 39], [39, 45]].map(([a, b], i) => rockBody(sky.slice(a, b), 1, 300 + i * 10, 12)),
   };
-  const far = rockBody(P(FAR_RIDGE), 3, 400, 0);
+  const far = rockBody(PW(FAR_RIDGE), 3, 400, 0);
+  // the snowfields that lie on the wall: the col between Poincenot and Fitz Roy, the
+  // shelf under the north shoulder, and one hanging patch on the fin
+  const snowfields = [
+    PW([[318, 150], [330, 128], [348, 134], [362, 142], [380, 134], [394, 136], [396, 152], [380, 168], [348, 172], [324, 166]]),
+    PW([[494, 146], [512, 148], [545, 146], [572, 136], [598, 134], [608, 146], [580, 162], [530, 168], [500, 160]]),
+    PW([[430, 100], [440, 94], [448, 102], [440, 110]]),
+  ];
   // the glacier tongue on the right, with cracks curving down-slope and dark outcrops
   const glTop = [[520, 180], [560, 155], [600, 140], [640, 150], [700, 160], [780, 185], [800, 190]];
   const glBot = [[495, 275], [540, 310], [640, 320], [700, 300], [740, 260], [800, 230]];
@@ -142,9 +159,11 @@ export function buildPlates(w, h) {
       P([[632, 190], [650, 170], [680, 165], [685, 185], [655, 197]]),
       P([[690, 160], [740, 158], [780, 170], [780, 185], [730, 188]]),
     ],
+    // the meltwater that joins the snout to the lake
+    melt: P([[640, 318], [644, 330], [641, 345]]),
   };
   // the moraine: the big brown bulk on the left, scree on it, snow patches, and the slope under the glacier
-  const moraine = P([[-20, 345], [0, 330], [15, 315], [40, 250], [88, 168], [120, 150], [165, 135], [185, 125], [205, 120], [225, 128], [245, 150], [262, 170], [280, 180], [300, 160], [312, 148], [325, 165], [345, 175],
+  const moraine = PH([[-20, 345], [0, 330], [15, 315], [40, 250], [88, 168], [120, 150], [165, 135], [185, 125], [205, 120], [225, 128], [245, 150], [262, 170], [280, 180], [300, 160], [312, 148], [325, 165], [345, 175],
     [380, 185], [410, 170], [430, 178], [450, 195], [480, 210], [495, 225], [475, 255], [490, 280], [520, 310], [600, 335], [640, 345]]);
   const xs = moraine.map((p) => p[0]);
   const ys = moraine.map((p) => p[1]);
@@ -158,13 +177,21 @@ export function buildPlates(w, h) {
     if (inside(moraine, x, y)) scree.push({ x, y, r: 0.0025 + 0.004 * hh(i, 72), shade: hh(i, 73) });
   }
   return {
-    w, h, ...bodies, far, glacier,
+    w, h, ...bodies, far, snowfields, glacier,
     moraine: {
       outline: moraine,
-      shade: P([[-20, 345], [0, 330], [15, 315], [40, 250], [88, 168], [120, 200], [92, 262], [112, 322], [60, 345]]),
+      shade: PH([[-20, 345], [0, 330], [15, 315], [40, 250], [88, 168], [120, 200], [92, 262], [112, 322], [60, 345]]),
       slope: P([[630, 345], [660, 320], [700, 300], [730, 240], [760, 205], [800, 195], [800, 345]]),
+      // the hill's own planes: sunlit shoulders, a shaded gully face, a band of dark rock, the scree apron at its foot
+      planes: [
+        { kind: 'lit', poly: PH([[88, 168], [120, 150], [165, 135], [185, 125], [205, 120], [218, 200], [165, 222], [120, 205]]) },
+        { kind: 'dark', poly: PH([[205, 120], [225, 128], [245, 150], [262, 170], [252, 235], [218, 200]]) },
+        { kind: 'rock', poly: PH([[262, 170], [280, 180], [300, 160], [312, 148], [325, 165], [345, 175], [335, 245], [285, 255], [252, 235]]) },
+        { kind: 'lit', poly: PH([[345, 175], [380, 185], [410, 170], [430, 178], [450, 195], [480, 210], [495, 225], [475, 255], [400, 262], [335, 245]]) },
+        { kind: 'apron', poly: PH([[60, 345], [112, 322], [200, 296], [335, 288], [475, 255], [490, 280], [520, 310], [600, 335], [640, 345]]) },
+      ],
       scree,
-      patches: [P([[150, 150], [190, 138], [212, 158], [172, 170]]), P([[298, 172], [318, 158], [336, 180], [310, 192]]), P([[392, 190], [420, 180], [446, 204], [410, 210]])],
+      patches: [PH([[150, 150], [190, 138], [212, 158], [172, 170]]), PH([[298, 172], [318, 158], [336, 180], [310, 192]]), PH([[392, 190], [420, 180], [446, 204], [410, 210]])],
     },
     shore: {
       edge: Array.from({ length: 11 }, (_, i) => [i / 10, GRAVEL.y0 + 0.006 * hh(i, 80)]),
@@ -172,7 +199,7 @@ export function buildPlates(w, h) {
       shrubs: [0.09, 0.13, 0.17, 0.12, 0.2, 0.86, 0.82].map((x, i) => ({ x, y: GRAVEL.y0 + 0.004 + 0.01 * hh(i, 85), r: 0.012 + 0.008 * hh(i, 86), k: i })),
     },
     lamps: LAMPS,
-    cross: { stars: [[0.66, 0.11], [0.69, 0.17], [0.63, 0.15], [0.72, 0.14]], pointers: [[0.55, 0.12], [0.58, 0.15]] },
+    cross: { stars: [[0.76, 0.11], [0.79, 0.17], [0.73, 0.15], [0.82, 0.14]], pointers: [[0.69, 0.2], [0.71, 0.165]] },
   };
 }
 
@@ -216,9 +243,17 @@ export function puff(ctx, x, y, r, colour, alpha) {
 // hazed toward the sky. Pure, so the tests can name the fills.
 export function facetColour(facing, phase, tint, haze = 0.12) {
   let c = mix(EC.graniteShade, EC.graniteLit, facetShade(facing, phase, tint.light));
-  c = mix(c, EC.graniteNight, nightAmount(tint.light));
+  c = mix(c, EC.graniteMoon, nightAmount(tint.light));
   c = mix(c, EC.graniteDusk, silhouetteAmount(phase) * 0.85);
   return mix(c, tint.skyLow, haze);
+}
+
+// Snow lying on the wall: it dims with the rock at dusk and at night, and takes the first light.
+export function wallSnow(phase, tint, m) {
+  let c = mix(mix(EC.snow, EC.snowNight, m.n), EC.graniteNight, m.n * 0.45);
+  c = mix(c, EC.graniteDusk, silhouetteAmount(phase) * 0.7);
+  c = mix(c, EC.ember, 0.55 * glowStrength(phase));
+  return mix(c, tint.skyLow, 0.1);
 }
 
 function drawRock(ctx, L, body, phase, tint, m, haze) {
@@ -245,8 +280,14 @@ function drawRock(ctx, L, body, phase, tint, m, haze) {
   for (const r of body.ridges) line(ctx, L, r);
   ctx.fillStyle = css(mix(EC.graniteDeep, EC.graniteNight, m.n), 0.75);
   for (const c of body.couloirs) { poly(ctx, L, c); ctx.fill(); }
-  ctx.fillStyle = css(snowTone(m.n), 0.9 * (1 - silhouetteAmount(phase)));
+  ctx.fillStyle = css(wallSnow(phase, tint, m), 0.95);
   for (const s of body.streaks) { poly(ctx, L, s); ctx.fill(); }
+  // by night a thin moonlit rim keeps the skyline
+  if (m.n > 0.3) {
+    ctx.strokeStyle = css(EC.moonRim, 0.55 * m.n);
+    ctx.lineWidth = 1;
+    line(ctx, L, body.outline.slice(0, -2));
+  }
   ctx.lineWidth = 0.7;
   ctx.strokeStyle = css(EC.graniteDeep, 0.08);
   body.grain.forEach((g, i) => { if (i % 2 === 0) line(ctx, L, g); });
@@ -276,6 +317,8 @@ export function drawWall(ctx, L, phase, tint, plates, m) {
   drawRock(ctx, L, plates.poincenot, phase, tint, m, 0.12);
   drawRock(ctx, L, plates.fitzroy, phase, tint, m, 0.12);
   for (const b of plates.needles) drawRock(ctx, L, b, phase, tint, m, 0.12);
+  ctx.fillStyle = css(wallSnow(phase, tint, m), 0.96);
+  for (const s of plates.snowfields) { poly(ctx, L, s); ctx.fill(); }
 }
 
 export function drawGlacier(ctx, L, phase, tint, plates, m) {
@@ -288,6 +331,11 @@ export function drawGlacier(ctx, L, phase, tint, plates, m) {
   ctx.strokeStyle = css(mix(EC.crevasse, EC.glacierNight, m.n * 0.6), 0.8);
   ctx.lineWidth = 1;
   for (const c of g.crevasses) line(ctx, L, c);
+  if (!m.frozen) {
+    ctx.strokeStyle = css(mix(EC.ripple, EC.glacierNight, m.n * 0.7), 0.75);
+    ctx.lineWidth = 1.5;
+    line(ctx, L, g.melt);
+  }
 }
 
 // The big brown moraine, its scree, and the snow of the season.
@@ -300,9 +348,20 @@ export function drawMoraine(ctx, L, phase, tint, plates, m) {
   poly(ctx, L, mo.outline);
   ctx.fillStyle = css(base);
   ctx.fill();
-  poly(ctx, L, mo.shade);
-  ctx.fillStyle = css(mix(EC.moraineShade, EC.moraineNight, m.n), 0.55);
-  ctx.fill();
+  const plane = { lit: EC.moraineLit, dark: EC.moraineShade, rock: EC.moraineRock, apron: EC.screeLight };
+  const planeAlpha = { lit: 0.75, dark: 0.7, rock: 0.85, apron: 0.4 };
+  const paintPlane = (p, k) => {
+    poly(ctx, L, p.poly);
+    ctx.fillStyle = css(tone(plane[p.kind], mix(plane[p.kind], EC.moraineDusk, 0.6), EC.moraineNight, m.n), planeAlpha[p.kind] * k);
+    ctx.fill();
+  };
+  const paintShade = (k) => {
+    poly(ctx, L, mo.shade);
+    ctx.fillStyle = css(mix(EC.moraineShade, EC.moraineNight, m.n), 0.55 * k);
+    ctx.fill();
+  };
+  for (const p of mo.planes) paintPlane(p, 1);
+  paintShade(1);
   for (const s of mo.scree) {
     ctx.fillStyle = css(mix(mix(EC.screeDark, EC.screeLight, s.shade), EC.moraineNight, m.n * 0.85), 0.9);
     ctx.fillRect(L.X(s.x), L.Y(s.y), Math.max(1, s.r * L.w), Math.max(1, s.r * L.w * 0.8));
@@ -313,13 +372,16 @@ export function drawMoraine(ctx, L, phase, tint, plates, m) {
     ctx.fillStyle = css(snow, patchAlpha);
     for (const p of mo.patches) { poly(ctx, L, p); ctx.fill(); }
   }
-  const cover = m.frozen ? 0.85 : m.fresh ? 0.5 : 0;
+  const cover = m.frozen ? 0.72 : m.fresh ? 0.45 : 0;
   if (cover > 0) {
     ctx.fillStyle = css(snow, cover);
     poly(ctx, L, mo.outline);
     ctx.fill();
     poly(ctx, L, mo.slope);
     ctx.fill();
+    // the steep, dark faces hold no snow: the rock shows through the white
+    for (const p of mo.planes) if (p.kind === 'dark' || p.kind === 'rock') paintPlane(p, 0.95);
+    paintShade(0.8);
   }
 }
 
@@ -334,21 +396,37 @@ export function drawPlume(ctx, L, phase, tint, plates, nowMs, m) {
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1);
     const x = L.X(SUMMIT.x + m.side * len * t);
-    const y = L.Y(SUMMIT.y + 0.012 + 0.018 * t + 0.004 * Math.sin(nowMs / 1100 + i));
-    puff(ctx, x, y, L.w * (0.014 + 0.032 * t) * fat, col, 0.85 * (1 - t * 0.6));
+    // with no side to go to (a wind from due west, or none read) it lifts off the tip instead of piling on it
+    const lift = (1 - Math.abs(m.side)) * 0.5 * len * t;
+    const y = L.Y(SUMMIT.y + 0.012 + 0.018 * t - lift + 0.004 * Math.sin(nowMs / 1100 + i));
+    puff(ctx, x, y, L.w * (0.012 + 0.12 * len * t) * fat, col, (0.85 - 0.3 * (1 - Math.abs(m.side))) * (1 - t * 0.6));
   }
 }
 
 // A deck of cloud sitting on the summits when the peak is capped, or gone.
 export function drawDeck(ctx, L, phase, tint, plates, nowMs, m) {
   if (m.band !== 'capped' && m.band !== 'hidden') return;
-  const edge = deckHeight(m.cover);
-  const col = mix(mix(EC.deck, EC.deckDark, m.band === 'hidden' ? 0.55 : 0.25), EC.graniteNight, m.n * 0.8);
-  ctx.fillStyle = css(col, m.band === 'hidden' ? 0.97 : 0.92);
-  ctx.fillRect(L.ox, L.oy, L.w, L.Y(edge) - L.oy);
+  const hidden = m.band === 'hidden';
+  // a cap sits on the summits; a hidden day comes down almost to the water
+  const edge = hidden ? SHORE - 0.035 : deckHeight(m.cover);
+  const col = mix(mix(EC.deck, EC.deckDark, hidden ? 0.55 : 0.25), EC.graniteNight, m.n * 0.8);
+  const a = hidden ? 0.97 : 0.92;
+  // solid above, thinning to nothing across the edge, so the base is soft
+  const soft = L.h * (hidden ? 0.05 : 0.035);
+  const y1 = L.Y(edge);
+  ctx.fillStyle = css(col, a);
+  ctx.fillRect(L.ox, L.oy, L.w, y1 - soft - L.oy);
+  const g = ctx.createLinearGradient(0, y1 - soft, 0, y1 + soft);
+  g.addColorStop(0, css(col, a));
+  g.addColorStop(1, css(col, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(L.ox, y1 - soft, L.w, 2 * soft);
+  // two ragged rows of cloud along the base, drifting with the wind
   const drift = (m.side * m.wind * nowMs) / 6e6;
-  for (let i = 0; i < 9; i++) {
-    const x = L.ox + L.w * (wrap(i / 8 + 0.04 * hh(i, 90) + drift) * 1.3 - 0.15);
-    puff(ctx, x, L.Y(edge) + 0.005 * L.h * Math.sin(nowMs / 1800 + i), L.w * (0.1 + 0.04 * hh(i, 91)), col, 0.85);
+  for (let i = 0; i < 18; i++) {
+    const row = i % 2;
+    const x = L.ox + L.w * (wrap(i / 17 + 0.04 * hh(i, 90) + drift * (row ? 0.7 : 1)) * 1.3 - 0.15);
+    const y = y1 - row * 0.03 * L.h + 0.005 * L.h * Math.sin(nowMs / 1800 + i);
+    puff(ctx, x, y, L.w * (0.07 + 0.06 * hh(i, 91)), col, row ? 0.6 : 0.85);
   }
 }

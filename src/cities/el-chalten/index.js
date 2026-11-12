@@ -55,10 +55,11 @@ export default {
         drawGlacier(ctx, L, phase, tint, plates, m);
         ctx.restore();
       }
-      // ... and the deck itself, so the water under a cap does not look like open sky
-      if (m.band === 'capped') drawDeck(ctx, L, phase, tint, plates, nowMs, m);
       drawMoraine(ctx, L, phase, tint, plates, m);
       drawPlume(ctx, L, phase, tint, plates, nowMs, m);
+      // ... and the deck itself, over them as it is above the water: a capped or hidden
+      // lake does not mirror open sky, or a moraine the cloud has swallowed
+      if (!seen || m.band === 'capped') drawDeck(ctx, L, phase, tint, plates, nowMs, m);
     });
     const shore = drawShore(ctx, L, phase, tint, plates, nowMs, m, minutesToSunrise(nowMs, location));
     // the scene covers the shared sky, so the rain and snow fall again in front of it

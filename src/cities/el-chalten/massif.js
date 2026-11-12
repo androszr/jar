@@ -48,7 +48,7 @@ export function visibilityBand(weather) {
 // The banner cloud's length as a share of the body width.
 export function plumeLength(windKmh) {
   if (!Number.isFinite(windKmh) || windKmh < PLUME_FROM) return 0;
-  return 0.04 + 0.36 * clamp((windKmh - 10) / 90);
+  return 0.06 + 0.34 * clamp((windKmh - 10) / 60);
 }
 
 // Which way the wind carries things on screen. The view faces west, so

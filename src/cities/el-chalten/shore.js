@@ -62,11 +62,12 @@ export function drawShore(ctx, L, phase, tint, plates, nowMs, m, minutes) {
   if (hiker) {
     const hx = L.X((ROCK.x0 + ROCK.x1) / 2);
     const hy = L.Y(ROCK.y + 0.002);
+    const u = Math.max(1, L.w / 390); // the figure grows with the jar
     ctx.fillStyle = css(EC.hikerPack, hikerAlpha);
-    ctx.fillRect(hx - 2, hy - 4, 4, 4);
+    ctx.fillRect(hx - 2 * u, hy - 4 * u, 4 * u, 4 * u);
     ctx.fillStyle = css(EC.hikerCoat, hikerAlpha);
-    ctx.fillRect(hx - 2, hy - 9, 4, 5);
-    ctx.fillRect(hx - 1.5, hy - 12, 3, 3);
+    ctx.fillRect(hx - 2 * u, hy - 9 * u, 4 * u, 5 * u);
+    ctx.fillRect(hx - 1.5 * u, hy - 12 * u, 3 * u, 3 * u);
   }
 
   // headlamps on the shore in the last ninety minutes before sunrise

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import elChalten from '../src/cities/el-chalten/index.js';
 import { deckHeight } from '../src/cities/el-chalten/massif.js';
 import { buildPlates, facetColour, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT } from '../src/cities/el-chalten/scene.js';
+import { MIRROR_SQUASH } from '../src/cities/el-chalten/water.js';
 import { EL_CHALTEN as EC } from '../src/cities/el-chalten/palette.js';
 import { EMPTY } from '../src/weather.js';
 import { css, tint, STREAKS } from '../src/look/index.js';
@@ -68,7 +69,12 @@ test('the geometry: Fitz Roy above Poincenot, both high, the far shore at half, 
   assert.ok(top(plates.poincenot) < 0.3);
   assert.ok(Math.abs(SHORE - 0.5) <= 0.02);
   assert.ok(Math.abs(top(plates.fitzroy) - SUMMIT.y) < 1e-9);
-  assert.ok(GRAVEL.y0 >= 0.7 && GRAVEL.y1 <= plateShare + 1e-9);
+  assert.ok(GRAVEL.y0 >= SHORE + 0.12 && GRAVEL.y0 <= plateShare - 0.05 && GRAVEL.y1 <= plateShare + 1e-9, 'a strip of beach shows above the plate');
+  // the mountain is the subject: the tip stands high in the glass, and twice as far above the water as the moraine's crest
+  const crest = Math.min(...plates.moraine.outline.map((p) => p[1]));
+  assert.ok(SUMMIT.y < 0.15 && SHORE - SUMMIT.y >= 1.9 * (SHORE - crest));
+  // the mirrored wall ends above the gravel
+  assert.ok(SHORE + (SHORE - SUMMIT.y) * MIRROR_SQUASH <= GRAVEL.y0 + 1e-9);
   assert.ok(Math.min(...plates.moraine.outline.map((p) => p[0])) <= 0);
   assert.ok(Math.max(...plates.glacier.outline.map((p) => p[0])) >= 1);
 });
@@ -78,7 +84,8 @@ test('every polygon point sits inside the glass frame; the plates are determinis
   for (const b of [plates.far, plates.poincenot, plates.fitzroy, ...plates.needles]) {
     pts.push(...b.outline, ...b.facets.flatMap((f) => f.poly), ...b.ridges.flat(), ...b.couloirs.flat(), ...b.streaks.flat(), ...b.grain.flat());
   }
-  pts.push(...plates.glacier.outline, ...plates.glacier.crevasses.flat(), ...plates.moraine.outline, ...plates.moraine.slope, ...plates.moraine.patches.flat());
+  pts.push(...plates.glacier.outline, ...plates.glacier.crevasses.flat(), ...plates.glacier.melt, ...plates.moraine.outline, ...plates.moraine.slope, ...plates.moraine.patches.flat(),
+    ...plates.moraine.planes.flatMap((p) => p.poly), ...plates.snowfields.flat());
   for (const [x, y] of pts) assert.ok(x >= -0.1 && x <= 1.1 && y >= -0.1 && y <= 0.8, `${x},${y}`);
   assert.deepEqual(buildPlates(340, 396), buildPlates(340, 396));
 });
@@ -94,10 +101,26 @@ test('the rock is built from many facets, ridges, gullies, snow streaks and grai
   for (const fc of f.facets) assert.ok(fc.facing >= -1 && fc.facing <= 1);
 });
 
+test('snow lies on the wall and the moraine has planes of its own', () => {
+  // every snowfield point is on the rock, below the skyline
+  const wall = [plates.poincenot, plates.fitzroy, ...plates.needles];
+  assert.equal(plates.snowfields.length, 3);
+  for (const [x, y] of plates.snowfields.flat()) assert.ok(wall.some((b) => inPoly(b.outline, x, y + 1e-6)), `${x},${y}`);
+  // ledge snow sits on its rib, part-way down, never above the crest
+  for (const s of plates.fitzroy.streaks) for (const [x, y] of s) assert.ok(inPoly(plates.fitzroy.outline, x, y), `${x},${y}`);
+  const kinds = plates.moraine.planes.map((p) => p.kind);
+  for (const k of ['lit', 'dark', 'rock', 'apron']) assert.ok(kinds.includes(k), k);
+  // by day the planes are different colours; a frozen hill still shows its dark rock
+  const noon = paint(PHASE.noon, reading({ windSpeed: 5 }));
+  for (const f of [css(EC.moraineLit, 0.75), css(EC.moraineShade, 0.7), css(EC.moraineRock, 0.85)]) assert.ok(noon.fills.has(f), f);
+  const winter = paint(PHASE.noon, reading({ windSpeed: 5 }), Date.UTC(2026, 6, 15, 16, 0));
+  assert.ok(winter.out.frozen && winter.fills.has(css(EC.moraineRock, 0.85 * 0.95)), 'dark rock is painted again over the snow');
+});
+
 test('the sun mock\'s patches: a left-facing and a right-facing facet of the fin, the bivouac on the wall', () => {
   const at = (x, y) => plates.fitzroy.facets.filter((fc) => inPoly(fc.poly, x, y));
-  assert.ok(at(0.5, 0.3)[0].facing < -0.5);
-  assert.ok(at(0.62, 0.3)[0].facing > 0.5);
+  assert.ok(at(0.465, 0.33)[0].facing < -0.5);
+  assert.ok(at(0.61, 0.2)[0].facing > 0.5);
   assert.ok(inPoly(plates.fitzroy.outline, BIVOUAC.x, BIVOUAC.y));
   assert.ok(!inPoly(plates.moraine.outline, BIVOUAC.x, BIVOUAC.y) && !inPoly(plates.glacier.outline, BIVOUAC.x, BIVOUAC.y));
 });
@@ -231,7 +254,7 @@ test('the lake mirrors the cap: nothing above the deck is reflected, and the ban
   assert.ok(capped.calls.some(([k, a]) => k === 'rect' && Math.abs(a[1] - edge) < 1e-6 && Math.abs(a[3] - (SHORE * rect.h - edge)) < 1e-6), 'a clip below the deck edge');
   const clear = paint(PHASE.noon, reading({ windSpeed: 5 }));
   assert.ok(!clear.calls.some(([k, a]) => k === 'rect' && Math.abs(a[1] - edge) < 1e-6), 'no such clip on a clear day');
-  const reflected = (c) => { const i = c.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -0.62); return { i, slice: c.calls.slice(i) }; };
+  const reflected = (c) => { const i = c.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -MIRROR_SQUASH); return { i, slice: c.calls.slice(i) }; };
   const smoking = paint(PHASE.noon, reading({ cloudCover: 20, windSpeed: 30 }));
   const r = reflected(smoking);
   assert.ok(r.i > 0 && smoking.out.mirror > 0);
@@ -247,10 +270,15 @@ test('the bivouac light stays off under any cap (the deck and its puffs cover it
 });
 
 test('the lake under a cap mirrors the deck too; a clear lake does not', () => {
-  const deckFill = (c, edge) => c.calls.slice(c.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -0.62))
-    .some(([k, a]) => k === 'fillRect' && a[0] === 0 && a[1] === 0 && a[2] === 340 && Math.abs(a[3] - edge * 396) < 1e-6);
+  const deckFill = (c, edge) => c.calls.slice(c.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -MIRROR_SQUASH))
+    .some(([k, a]) => k === 'fillRect' && a[0] === 0 && a[1] === 0 && a[2] === 340 && Math.abs(a[3] - (edge - 0.035) * 396) < 1e-6);
   assert.ok(deckFill(paint(PHASE.noon, reading({ cloudCover: 70, windSpeed: 10 })), deckHeight(70)));
   assert.ok(!deckFill(paint(PHASE.noon, reading({ windSpeed: 5 })), deckHeight(70)));
+  // a still, hidden day: the cloud that swallowed the moraine is in the water too, painted after it
+  const still = paint(PHASE.noon, reading({ cloudCover: 95, windSpeed: 4 }));
+  assert.ok(still.out.band === 'hidden' && still.out.mirror > 0);
+  const flip = still.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -MIRROR_SQUASH);
+  assert.ok(still.calls.slice(flip).some(([k, a]) => k === 'fillRect' && a[0] === 0 && a[1] === 0 && a[2] === 340 && Math.abs(a[3] - (SHORE - 0.035 - 0.05) * 396) < 1e-6), 'the hidden deck is mirrored');
 });
 
 test('a storm flashes in front of the scene, not only in the shared sky', () => {

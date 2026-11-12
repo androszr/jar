@@ -7,6 +7,8 @@ export const EL_CHALTEN = {
   graniteDeep: [30, 34, 48],
   graniteDusk: [58, 48, 70],
   graniteNight: [18, 22, 38],
+  graniteMoon: [40, 48, 74],
+  moonRim: [128, 142, 178],
   // alpenglow and the evening sun behind the wall
   ember: [255, 104, 58],
   sunset: [255, 168, 92],
@@ -18,7 +20,9 @@ export const EL_CHALTEN = {
   crevasse: [64, 104, 148],
   outcrop: [56, 52, 56],
   // the moraine: day, dusk, night, and its scree
-  moraineDay: [118, 90, 66],
+  moraineDay: [104, 84, 68],
+  moraineLit: [156, 126, 94],
+  moraineRock: [58, 52, 54],
   moraineDusk: [72, 56, 66],
   moraineNight: [22, 24, 36],
   moraineShade: [70, 54, 44],
@@ -29,7 +33,9 @@ export const EL_CHALTEN = {
   lakeDeep: [18, 90, 118],
   lakeGrey: [118, 142, 150],
   lakeNight: [10, 28, 48],
-  lakeFrozen: [222, 232, 240],
+  lakeFrozen: [150, 184, 208],
+  lakeIce: [190, 210, 226],
+  iceCrack: [112, 146, 176],
   ripple: [214, 240, 244],
   // the shore: gravel, the rock and the shrubs by season
   gravelDay: [152, 140, 126],
