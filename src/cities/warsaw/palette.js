@@ -76,7 +76,7 @@ export const WARSAW = {
   // the Swietokrzyski Bridge
   pylonDay: [236, 236, 230],
   pylonNight: [74, 76, 94],
-  cableDay: [240, 242, 240],
+  cableDay: [198, 202, 206],
   cableNight: [96, 98, 120],
   deckDay: [92, 96, 104],
   deckNight: [26, 24, 34],
@@ -116,4 +116,54 @@ export const WARSAW = {
   iceFloe: [233, 239, 244],
   iceShadow: [120, 140, 160],
   iceWater: [96, 112, 128],
+  // ---- the look-and-feel pass (2026-11-12) ----
+  // glass by day: the sky it mirrors goes to this grey under a heavy sky; floor lines; the sun's glint
+  glassDull: [150, 158, 166],
+  glassLine: [44, 54, 72],
+  glassShade: [58, 66, 86],
+  glassGlint: [255, 252, 238],
+  // golden hour: the sandstone warms, the glass catches orange on the sun's side, the low city blushes
+  stoneGolden: [246, 190, 122],
+  stoneGoldenShade: [150, 104, 100],
+  glassGolden: [255, 168, 96],
+  cityGolden: [255, 176, 120],
+  // the Palace's one clock: a small warm face, never white
+  clockDay: [226, 206, 168],
+  clockNight: [214, 160, 92],
+  // the river: the sun's glitter path, its warm twin at golden hour, the moon's track
+  sunGlitter: [255, 250, 226],
+  sunGolden: [255, 186, 110],
+  moonTrack: [206, 218, 244],
+  // the near bank: a strip of pale river beach, light on the crowns, the path lamps among the trees
+  beachDay: [216, 202, 168],
+  beachDusk: [120, 104, 110],
+  beachNight: [34, 34, 46],
+  leafLight: [236, 240, 190],
+  leafGolden: [255, 196, 120],
+  leafShade: [22, 24, 14], // a dark olive: it deepens a green or a rust without turning it blue
+  winterGround: [104, 94, 88],
+  pathLamp: [255, 196, 120],
+  pathPost: [40, 40, 46],
+  // the bridge by day: a grey pylon with a light and a shade side, the railing, the traffic
+  pylonLit: [204, 206, 204],
+  pylonShade: [136, 142, 152],
+  pylonGolden: [255, 206, 160],
+  deckEdge: [150, 154, 160],
+  railing: [176, 180, 186],
+  cars: [[150, 58, 52], [232, 232, 226], [60, 84, 130], [40, 44, 52], [150, 156, 160], [196, 176, 104]],
+  bus: [206, 184, 104],
+  busStripe: [140, 72, 62], // duller than a tail light, so the day's deck never reads as lit
+  // life: the boat on the river, birds, steam off the roofs in a hard frost
+  boatHull: [236, 232, 220],
+  boatDeck: [164, 60, 52],
+  boatWake: [214, 226, 240],
+  bird: [44, 50, 64],
+  steam: [240, 242, 246],
+  steamNight: [84, 90, 116],
+  // the calendar: New Year fireworks, the Christmas tree at the Palace's foot
+  fireworks: [[255, 214, 120], [255, 110, 96], [140, 220, 255], [196, 255, 170], [255, 150, 230], [255, 244, 220]],
+  fir: [30, 78, 54],
+  firNight: [12, 34, 30],
+  firLights: [[255, 210, 116], [255, 96, 84], [120, 200, 255], [255, 246, 222]],
+  firStar: [255, 236, 170],
 };

@@ -8,12 +8,13 @@
 // night, white over red on 3 May and 11 November. Every light is scaled by one
 // continuous darkness measure (nightAmount), so dusk is a blend, never a switch.
 // Shapes were drawn in a 340 x 396 px box (the jar's body) and are shares of it.
-import { LAMP_THRESHOLD, osc, clamp, wrap, smoothstep } from '../../clock.js';
-import { css, mix, glow } from '../../look/index.js';
+import { LAMP_THRESHOLD, osc, clamp, wrap, smoothstep, sunAltitude, sunPos, moonPos, isNight } from '../../clock.js';
+import { css, mix, glow, sheen, lightPatch } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
-import { localDate } from '../../placeclock.js';
+import { localDate, dayFraction } from '../../placeclock.js';
+import { moonPhase, moonGlow } from '../../moon.js';
 import { WARSAW } from './palette.js';
-import { isUsable } from '../../weather.js';
+import { isUsable, gloom, cloudAmount } from '../../weather.js';
 
 // The bands, top to bottom, as shares of the body height.
 export const FAR_BANK = 0.575; // the towers stand here
@@ -72,7 +73,7 @@ export const INFILL_ROW = Array.from({ length: 26 }, (_, i) => ({
 export const PALACE = {
   masses: [[48, 34], [27, 50], [21, 118], [16.5, 127], [11, 143], [6, 152]].map(([hw, top]) => ({ hw: hw / BW, top: top / BH })),
   combs: [[0, 4, 6], [1, 6, 6], [2, 6, 7], [3, 5, 6]],
-  clock: 135 / BH, // the clock faces, a share of the body height above the far bank
+  clock: 135 / BH, // the one clock face, a share of the body height above the far bank
   needle: 0.48,
 };
 
@@ -86,6 +87,8 @@ export const MERMAID = { x: 0.15, base: 0.626, u: 0.055, plinth: { hw: 0.016, to
 export const RIM_DX = [1.2, -1.2];
 export const DAY_RIM = { dx: 1.8, dy: -0.75 }; // the sunlit edge by day, px, on the sun's side
 
+export const CLOCK_R = 1.9; // the Palace clock's radius, px of the reference box
+
 // Soft points of light along Varso's lit needle at night.
 export const MAST_GLOWS = 4;
 
@@ -93,6 +96,70 @@ export const STREAK_CLEAR = [[0.02, 0.065], [0.945, 0.975]];
 
 export const nightAmount = (light) => clamp((LAMP_THRESHOLD + 0.1 - light) / 0.3);
 export const sunSide = (phase) => (wrap(phase) < 0.4 ? -1 : 1);
+
+// How warm the light is for a sun at altitude `alt`: nothing above 0.6 (the sky
+// is still blue), rising as it sinks, full on the horizon, gone a little below it.
+export const GOLDEN_FROM = 0.6;
+export const goldenAmount = (alt) => (alt >= 0 ? smoothstep(1 - alt / GOLDEN_FROM) : clamp(1 + alt / 0.12));
+
+// The hour's light on the scene, read the way the shared sky draws its sun:
+//   x        where the sun stands, a share of the width (left in the morning, right in the evening)
+//   alt      its altitude, 1 at noon, 0 on the horizon
+//   side     -1 while it stands in the left half of the picture, 1 in the right: the lit side of
+//            the towers, the Palace and the bridge's pylon (the Mermaid keeps sunSide's morning / afternoon)
+//   strength how much of its disc the sky shows (0 with no reading, at night, under rain or a full overcast)
+//   golden   0..1 how low and warm the light is, drained by a heavy sky
+//   heavy    the sky's gloom, 0..1
+export function sunLight(phase, weather) {
+  const alt = sunAltitude(phase);
+  const known = !!(weather && weather.known);
+  const kind = known ? weather.kind : 'cloud';
+  const heavy = gloom(weather);
+  const amount = cloudAmount(weather ? weather.cloudCover : null, kind);
+  const up = !isNight(phase) && alt > -0.05;
+  const shown = up && known && (kind === 'clear' || kind === 'cloud');
+  const x = clamp((sunPos(phase).x - 250) / 800, 0.12, 0.88);
+  return {
+    x,
+    alt,
+    side: x < 0.5 ? -1 : 1,
+    strength: shown ? (1 - amount * 0.85) * Math.min(1, 0.4 + alt) * (1 - heavy) : 0,
+    golden: goldenAmount(alt) * (1 - heavy),
+    heavy,
+  };
+}
+
+// The moon over the river, as the shared sky draws it: { x (share of the width),
+// strength 0..1 } while it is up after dark, else null. A new moon is strength 0.
+export const MOON_TRACK_FROM = 0.1; // a thinner moon than this lays no track
+export function moonLight(phase, weather, nowMs, light) {
+  const mp = moonPos(phase);
+  const dark = clamp((0.45 - light) / 0.3);
+  if (!(mp.alt > 0) || !(isNight(phase) || dark > 0) || !Number.isFinite(nowMs)) return null;
+  const known = !!(weather && weather.known);
+  const amount = cloudAmount(weather ? weather.cloudCover : null, known ? weather.kind : 'cloud');
+  const lit = moonPhase(nowMs).illumination;
+  return {
+    x: clamp((mp.x - 400) / 1000, 0.15, 0.85),
+    strength: (lit < MOON_TRACK_FROM ? 0 : moonGlow(lit)) * (1 - amount * 0.7) * (1 - gloom(weather)) * Math.max(dark, isNight(phase) ? 0.4 : 0),
+  };
+}
+
+// Windows go out through the night: the share that is dark at this moment of
+// Warsaw's clock. Every window is lit until 22:00, most are out by 01:30, and
+// they come back on between 04:30 and 06:30. A window with seed v (0..1, its
+// own hash) is lit while v >= windowsOut, so each goes out once and stays out.
+export const WINDOWS_OUT_MAX = 0.7;
+export function windowsOut(nowMs) {
+  const f = dayFraction(nowMs, 'Europe/Warsaw');
+  if (typeof f !== 'number') return 0;
+  const h = f * 24;
+  if (h >= 22) return WINDOWS_OUT_MAX * smoothstep((h - 22) / 3.5);
+  if (h < 1.5) return WINDOWS_OUT_MAX * smoothstep((h + 2) / 3.5);
+  if (h < 4.5) return WINDOWS_OUT_MAX;
+  if (h < 6.5) return WINDOWS_OUT_MAX * (1 - smoothstep((h - 4.5) / 2));
+  return 0;
+}
 
 // day -> dusk -> night, blended by the darkness measure.
 export const tone = (day, dusk, night, n) => mix(mix(day, dusk, Math.min(1, n * 2)), night, Math.max(0, n * 2 - 1));
@@ -334,24 +401,63 @@ export function traceBackRow(ctx, L) {
   for (const b of BACK_ROW) rectPath(ctx, L.X(b.x - b.hw), L.gy - b.h * L.h, L.X(b.x + b.hw), L.gy);
 }
 
-// Fill `trace` in the rim colour, then in the body colour nudged away from the
-// sun, leaving a 1.8 px bright edge on the sun's side.
-function rimmed(ctx, trace, L, side, bodyC, rimC, rimAlpha) {
+// One glass tower. A thin soft rim on the sun's side (the rim colour, then the
+// body nudged away from the sun), and by day the sky in the glass: lighter
+// toward the top, grey under a heavy sky, a darker shade side, faint floor
+// lines, orange on the sun's side at golden hour, and a glint that slides
+// across and down the face as the sun crosses and sinks.
+export const GLASS = { rim: 0.9, floor: 4.5, glintW: 1.5, glintH: 11 };
+function glassTower(ctx, trace, L, t, g) {
   trace(ctx, L);
-  ctx.fillStyle = css(rimC, rimAlpha);
+  ctx.fillStyle = css(g.rimC, g.rimAlpha);
   ctx.fill();
   ctx.save();
   trace(ctx, L);
   ctx.clip();
-  ctx.translate(-side * 1.8 * L.sx, 0.6 * L.sy);
+  ctx.save();
+  ctx.translate(-g.side * GLASS.rim * L.sx, 0.4 * L.sy);
   trace(ctx, L);
-  ctx.fillStyle = css(bodyC);
+  ctx.fillStyle = css(g.bodyC);
   ctx.fill();
+  ctx.restore();
+  if (g.day > 0) {
+    const x0 = L.X(t.x - t.hw);
+    const x1 = L.X(t.x + t.hw);
+    const top = L.gy - (t.crown ?? t.h) * L.h;
+    const wd = x1 - x0;
+    // the sky in the glass
+    lightPatch(ctx, [[x0, top], [x1, top], [x1, L.gy], [x0, L.gy]], g.skyC, 0.3 * g.day, top, L.gy + 0.25 * (L.gy - top));
+    // the side turned from the sun
+    ctx.fillStyle = css(WARSAW.glassShade, 0.2 * g.day);
+    ctx.fillRect(g.side > 0 ? x0 : x0 + 0.55 * wd, top, 0.45 * wd, L.gy - top);
+    // floors
+    ctx.strokeStyle = css(WARSAW.glassLine, 0.13 * g.day);
+    ctx.lineWidth = 0.5 * L.sy;
+    ctx.beginPath();
+    for (let y = L.gy - GLASS.floor * L.sy; y > top; y -= GLASS.floor * L.sy) {
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x1, y);
+    }
+    ctx.stroke();
+    // golden hour: the sun's side catches orange
+    if (g.golden > 0) {
+      ctx.fillStyle = css(WARSAW.glassGolden, 0.5 * g.golden * g.day);
+      ctx.fillRect(g.side > 0 ? x0 + 0.5 * wd : x0, top, 0.5 * wd, L.gy - top);
+      ctx.fillStyle = css(WARSAW.glassGolden, 0.22 * g.golden * g.day);
+      ctx.fillRect(x0, top, wd, L.gy - top);
+    }
+    // the sun's glint
+    if (g.sun > 0) {
+      const gx = x0 + (0.14 + 0.72 * g.sunX) * wd;
+      const gyy = top + (0.16 + 0.5 * (1 - g.alt)) * (L.gy - top);
+      sheen(ctx, gx, gyy, GLASS.glintW * L.sx, GLASS.glintH * L.sy, mix(WARSAW.glassGlint, WARSAW.glassGolden, 0.6 * g.golden), 0.6 * g.sun * g.day);
+    }
+  }
   ctx.restore();
 }
 
 // Lit floor bands across a tower, seeded so the same tower always shows the same.
-function floorBands(ctx, trace, L, t, seed, night) {
+function floorBands(ctx, trace, L, t, seed, night, out = 0) {
   const x0 = L.X(t.x - t.hw);
   const x1 = L.X(t.x + t.hw);
   const top = L.gy - summit(t) * L.h;
@@ -360,7 +466,7 @@ function floorBands(ctx, trace, L, t, seed, night) {
   ctx.clip();
   ctx.lineWidth = 1.3;
   for (let y = L.gy - 4 * L.sy, k = 0; y > top + 3; y -= 4.5 * L.sy, k++) {
-    if (hash2(seed, k) > 0.55) continue;
+    if (hash2(seed, k) > 0.55 || hash2(seed + 4, k) < out) continue;
     const a = x0 + (x1 - x0) * hash2(seed + 1, k) * 0.45;
     const b = x1 - (x1 - x0) * hash2(seed + 2, k) * 0.45;
     ctx.strokeStyle = css(WARSAW.floorBand, 0.5 * night * (0.55 + 0.45 * hash2(seed + 3, k)));
@@ -373,7 +479,7 @@ function floorBands(ctx, trace, L, t, seed, night) {
 }
 
 // Lit windows scattered over the background blocks.
-function windowDots(ctx, trace, L, night) {
+function windowDots(ctx, trace, L, night, out = 0) {
   ctx.save();
   trace(ctx, L);
   ctx.clip();
@@ -381,21 +487,36 @@ function windowDots(ctx, trace, L, night) {
   let k = 0;
   for (let y = L.gy - 110 * L.sy; y < L.gy - 3; y += 5 * L.sy) {
     for (let x = L.X(0.17); x < L.X(1); x += 4 * L.sx, k++) {
-      if (hash2(7, k) > 0.07) continue;
+      if (hash2(7, k) > 0.07 || hash2(8, k) < out) continue;
       ctx.fillRect(x, y, 1.8 * L.sx, 2.2 * L.sy);
     }
   }
   ctx.restore();
 }
 
-export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
+// `layers` lets the city slip its own things between the skyline's layers:
+// `behind(L, night)` before any tower (fireworks), `foot(L, night)` in front of
+// the Palace and behind the low city's roofs (the Christmas tree), `roofs(L,
+// night)` over the low city (steam). Returns { windows } - the share still lit.
+export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, layers = {}) {
   const L = layout(rect.w, rect.h, rect.x, rect.y);
   const night = nightAmount(tint.light);
-  const side = sunSide(phase);
   const snow = weather && weather.kind === 'snow';
+  const sun = sunLight(phase, weather);
+  const side = sun.side;
+  const golden = sun.golden * (1 - night);
+  const out = windowsOut(nowMs);
   const bodyC = tone(WARSAW.silhouetteDay, WARSAW.silhouetteDusk, WARSAW.silhouetteNight, night);
-  const rimC = tone(WARSAW.rimDay, WARSAW.rimDusk, WARSAW.rimNight, night);
-  const rimAlpha = 0.95 * (1 - night) + 0.35 * night;
+  const rimC = tone(mix(WARSAW.rimDay, tint.skyLow, 0.25), WARSAW.rimDusk, WARSAW.rimNight, night);
+  const rimAlpha = 0.6 * (1 - night) + 0.35 * night;
+  const glass = {
+    side, bodyC, rimC, rimAlpha, golden,
+    day: 1 - night,
+    skyC: mix(mix(tint.skyLow, tint.skyTop, 0.35), WARSAW.glassDull, sun.heavy),
+    sun: sun.strength,
+    sunX: (sun.x - 0.12) / 0.76,
+    alt: Math.max(0, sun.alt),
+  };
   const cap = (x0, x1, yTop) => {
     if (!snow) return;
     ctx.fillStyle = css(WARSAW.snowCap);
@@ -408,14 +529,15 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
   const backC = tone(WARSAW.backBlockDay, WARSAW.silhouetteDusk, WARSAW.silhouetteNight, night);
   ctx.fillStyle = css(mix(backC, tint.skyLow, 0.25));
   ctx.fill();
-  if (night > 0) windowDots(ctx, traceBackRow, L, night);
+  if (night > 0) windowDots(ctx, traceBackRow, L, night, out);
+  if (layers.behind) layers.behind(L, night);
 
-  // the glass towers, rim-lit on the sun's side
-  rimmed(ctx, traceCosmopolitan, L, side, bodyC, rimC, rimAlpha);
-  rimmed(ctx, traceVarso, L, side, bodyC, rimC, rimAlpha);
-  rimmed(ctx, traceInterContinental, L, side, bodyC, rimC, rimAlpha);
-  rimmed(ctx, traceSpire, L, side, bodyC, rimC, rimAlpha);
-  rimmed(ctx, traceZlota, L, side, bodyC, rimC, rimAlpha);
+  // the glass towers: the sky in the glass by day, a thin rim on the sun's side
+  glassTower(ctx, traceCosmopolitan, L, TOWER.cosmopolitan, glass);
+  glassTower(ctx, traceVarso, L, TOWER.varso, glass);
+  glassTower(ctx, traceInterContinental, L, TOWER.intercontinental, glass);
+  glassTower(ctx, traceSpire, L, TOWER.spire, glass);
+  glassTower(ctx, traceZlota, L, TOWER.zlota, glass);
 
   // masts: Varso's needle, the Spire's antenna
   const vs = TOWER.varso;
@@ -483,8 +605,8 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
     }
     ctx.restore();
 
-    floorBands(ctx, traceInterContinental, L, TOWER.intercontinental, 91, night);
-    floorBands(ctx, traceCosmopolitan, L, TOWER.cosmopolitan, 47, night);
+    floorBands(ctx, traceInterContinental, L, TOWER.intercontinental, 91, night, out);
+    floorBands(ctx, traceCosmopolitan, L, TOWER.cosmopolitan, 47, night, out);
   }
 
   // the Palace: sandstone by day with its shade side away from the sun, ribs at
@@ -492,13 +614,14 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
   const px = cx('pkin');
   const day = 1 - night;
   tracePalace(ctx, L);
-  ctx.fillStyle = css(tone(WARSAW.stoneDay, WARSAW.stoneDusk, WARSAW.silhouetteNight, night));
+  // at golden hour the sandstone warms, its shade side going dusky
+  ctx.fillStyle = css(tone(mix(WARSAW.stoneDay, WARSAW.stoneGolden, 0.85 * sun.golden), WARSAW.stoneDusk, WARSAW.silhouetteNight, night));
   ctx.fill();
   ctx.save();
   tracePalace(ctx, L);
   ctx.clip();
   if (day > 0) {
-    ctx.fillStyle = css(WARSAW.stoneShade, 0.6 * day);
+    ctx.fillStyle = css(mix(WARSAW.stoneShade, WARSAW.stoneGoldenShade, sun.golden), (0.6 + 0.15 * sun.golden) * day);
     if (side < 0) ctx.fillRect(px + 2 * L.sx, L.oy, L.w, L.h);
     else ctx.fillRect(L.ox, L.oy, px - 2 * L.sx - L.ox, L.h);
   }
@@ -544,15 +667,14 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
     ctx.fill();
   }
   if (night > 0) glow(ctx, px, L.gy - L.h * 0.16, L.w * 0.2, flagDay(nowMs) ? WARSAW.flagWhite : WARSAW.floodGlow, 0.4 * night);
-  // two clock faces, either side of the lantern's corner
+  // one clock face on the lantern: small, pale stone by day, a dim warm disc at night
   const clockY = L.Y(PALACE.clock);
-  for (const s of [-1, 1]) {
-    ctx.fillStyle = css(mix(mix(WARSAW.stoneDay, WARSAW.clockFace, 0.6), WARSAW.clockFace, night));
-    ctx.beginPath();
-    ctx.arc(px + s * 5 * L.sx, clockY, 2.2 * L.sx, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  if (night > 0) glow(ctx, px, clockY, 12 * L.sx, WARSAW.clockGlow, 0.6 * night);
+  ctx.fillStyle = css(mix(WARSAW.clockDay, WARSAW.clockNight, night), 0.9 - 0.15 * night);
+  ctx.beginPath();
+  ctx.arc(px, clockY, CLOCK_R * L.sx, 0, Math.PI * 2);
+  ctx.fill();
+  if (night > 0) glow(ctx, px, clockY, 5 * L.sx, WARSAW.clockNight, 0.22 * night);
+  if (layers.foot) layers.foot(L, night);
 
   // the low city in front: first the unbroken roofs behind, muted toward the
   // background grey, then each block its own façade (plaster, brick, concrete),
@@ -585,10 +707,16 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
       const wd = 2 * b.hw * L.w;
       const top = L.oy + b.top * L.h;
       for (let k = 0; k < 5; k++) {
-        if (hash2(i, 70 + k) > 0.55) continue;
+        if (hash2(i, 70 + k) > 0.55 || hash2(i, 80 + k) < out) continue;
         ctx.fillRect(x0 + 1.5 * L.sx + hash2(k, 71 + i) * (wd - 3.5 * L.sx), top + 2 * L.sy + hash2(i + 40, k) * (L.river.top - top - 4 * L.sy), 1.5 * L.sx, 1.7 * L.sy);
       }
     });
+  }
+
+  // golden hour: the low sun blushes the low city
+  if (golden > 0) {
+    ctx.fillStyle = css(WARSAW.cityGolden, 0.2 * golden);
+    ctx.fillRect(L.ox, L.gy, L.w, L.river.top - L.gy);
   }
 
   // snow on every roof and every setback
@@ -604,6 +732,8 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs) {
     PALACE.masses.slice(0, 5).forEach((m) => cap(px - m.hw * L.w, px + m.hw * L.w, L.gy - m.top * L.h));
     for (const b of FRONT_ROW) cap(L.X(b.x - b.hw), L.X(b.x + b.hw), L.oy + b.top * L.h);
   }
+  if (layers.roofs) layers.roofs(L, night);
+  return { windows: 1 - out };
 }
 
 // Ice on the Vistula: below ICE.from degrees blocks drift right; full at ICE.full.
@@ -661,26 +791,68 @@ function drawIce(ctx, L, night, floes) {
   ctx.restore();
 }
 
-// Short horizontal slivers down the river under a tower, jittered sideways by
-// the phase; the caller scales `a` by the daylight or the darkness.
-function reflection(ctx, L, phase, x, wid, c, a, seed, spread = 0.6) {
+// The river band's reflections. Under each lit thing lies a soft upright
+// column of its light (`column`, one elliptical sheen, cut to the river), then
+// a run of thin lens-shaped dashes in its colour (`ripple`), each narrower and
+// fainter than the one above it and nudged sideways by the clock, and across
+// both a few dark gaps of plain water that drift down the column (`gaps`), so
+// the light is broken by ripples and shimmers. Still under reduced motion.
+const RIPPLE_ROW = 1.5; // px between dashes, before the vertical scale
+function ripple(ctx, L, nowMs, reduced, x, wid, c, a, seed, spread = 0.6, rows = Infinity, flare = -0.55) {
   const top = L.river.top;
-  const n = Math.max(1, Math.floor((L.river.bottom - top - 4) / (3 * L.sy)));
+  const room = Math.floor((L.river.bottom - top - 2) / (RIPPLE_ROW * L.sy));
+  const n = Math.min(rows, Math.max(1, room));
+  const t0 = reduced || !Number.isFinite(nowMs) ? 0 : nowMs / 1000;
   for (let i = 0; i < n; i++) {
-    const y = top + 2 + i * 3 * L.sy;
-    const j = (hash2(seed, i) - 0.5) * wid * spread + osc(phase, 8, i * 0.2) * 2;
-    const bw = wid * (0.5 + 0.5 * hash2(seed + 1, i));
-    ctx.fillStyle = css(c, a * (1 - i / (n + 3)));
-    ctx.fillRect(x - bw / 2 + j, y, bw, 3 * L.sy);
+    const d = n > 1 ? i / (n - 1) : 0;
+    const fade = (1 - 0.75 * d) * (0.8 + 0.2 * hash2(seed + 2, i));
+    const y = top + 1.4 * L.sy + i * RIPPLE_ROW * L.sy;
+    const sway = Math.sin(t0 * (1.1 + 0.4 * hash2(seed + 3, i)) + i * 1.3 + seed) * (0.6 + 1.6 * d) * L.sx;
+    const jx = (hash2(seed, i) - 0.5) * wid * spread * 0.5 + sway;
+    const bw = wid * (1 + flare * d) * (0.55 + 0.45 * hash2(seed + 1, i));
+    ctx.fillStyle = css(c, clamp(a * fade));
+    ctx.beginPath();
+    ctx.ellipse(x + jx, y, Math.max(0.4, bw / 2), 0.6 * L.sy, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
+// The soft body of a reflection: an upright sheen hung from the far quay. The
+// caller has clipped to the river band.
+function column(ctx, L, x, wid, c, a, reach = 1) {
+  sheen(ctx, x, L.river.top, Math.max(1.2 * L.sx, wid * 0.62), (L.river.bottom - L.river.top) * 1.25 * reach, c, clamp(a));
+}
+
+// Plain water crossing a reflection: `n` thin gaps that drift slowly down it.
+export const GAP_MS = 9000;
+function gaps(ctx, L, nowMs, reduced, x, wid, water, seed, n = 3) {
+  const depth = L.river.bottom - L.river.top;
+  const t = reduced || !Number.isFinite(nowMs) ? 0 : nowMs / GAP_MS;
+  ctx.fillStyle = css(water, 0.5);
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const v = wrap(hash2(seed, 300 + i) + t * (0.7 + 0.6 * hash2(seed, 310 + i)));
+    const y = L.river.top + (0.14 + 0.8 * v) * depth;
+    const cx = x + Math.sin(t * 5 + i * 2 + seed) * 1.2 * L.sx;
+    const rx = wid * (0.5 + 0.25 * hash2(seed, 320 + i));
+    ctx.moveTo(cx + rx, y);
+    ctx.ellipse(cx, y, rx, 0.55 * L.sy, 0, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+// Rain, drizzle or a storm: the ground is wet, so lights run longer and stronger on it.
+export const rainy = (weather) => !!weather && (weather.kind === 'rain' || weather.kind === 'drizzle' || weather.kind === 'storm');
+
+// Returns { glitter, moonTrack, wet }: how strongly the sun's path and the
+// moon's track lie on the water (0 for none), and whether the ground is wet.
 export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = false) {
   const L = layout(rect.w, rect.h, rect.x, rect.y);
   const night = nightAmount(tint.light);
   const top = L.river.top;
   const bottom = L.river.bottom;
   const wet = weather && (weather.kind === 'rain' || weather.kind === 'drizzle' || weather.kind === 'storm' || weather.kind === 'fog');
+  const rain = rainy(weather);
   let colour = tone(WARSAW.riverDay, WARSAW.riverNight, WARSAW.riverDeep, night);
   if (wet) colour = mix(colour, WARSAW.dull, 0.35 * clamp(tint.light + 0.2));
   const ice = iceAmount(weather);
@@ -701,34 +873,80 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
     ctx.lineTo(L.ox + L.w * (0.3 + 0.4 * hash2(i, 42)) + shift, ry);
     ctx.stroke();
   }
-  // by day, faint wavy reflections of the Palace and the glass towers, handing over to the night set as the light goes
   const day = 1 - night;
+  const sun = sunLight(phase, weather);
+  const moon = moonLight(phase, weather, nowMs, tint.light);
+  const glitter = sun.strength * day;
+  const track = moon ? moon.strength : 0;
+  // the soft columns of light, cut to the river band
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L.ox, top, L.w, bottom - top);
+  ctx.clip();
+  // by day, faint wavy reflections of the Palace and the glass towers, handing over to the night set as the light goes
   if (day > 0) {
     const dim = wet ? 0.5 : 1;
-    reflection(ctx, L, phase, L.X(TOWER.pkin.x), 44 * L.sx, WARSAW.reflectDayPalace, 0.42 * day * dim, 60, 0.4);
-    reflection(ctx, L, phase, L.X(TOWER.varso.x), 17 * L.sx, WARSAW.reflectDayVarso, 0.32 * day * dim, 70, 0.4);
-    reflection(ctx, L, phase, L.X(TOWER.zlota.x), 24 * L.sx, WARSAW.reflectDayZlota, 0.28 * day * dim, 80, 0.4);
-    reflection(ctx, L, phase, L.X(TOWER.spire.x) + 6 * L.sx, 20 * L.sx, WARSAW.reflectDaySpire, 0.3 * day * dim, 90, 0.4);
+    const stone = mix(WARSAW.reflectDayPalace, WARSAW.sunGolden, 0.5 * sun.golden);
+    column(ctx, L, L.X(TOWER.pkin.x), 40 * L.sx, stone, 0.16 * day * dim);
+    ripple(ctx, L, nowMs, reduced, L.X(TOWER.pkin.x), 44 * L.sx, WARSAW.reflectDayPalace, 0.42 * day * dim, 60, 0.4);
+    ripple(ctx, L, nowMs, reduced, L.X(TOWER.varso.x), 17 * L.sx, WARSAW.reflectDayVarso, 0.32 * day * dim, 70, 0.4);
+    ripple(ctx, L, nowMs, reduced, L.X(TOWER.zlota.x), 24 * L.sx, WARSAW.reflectDayZlota, 0.28 * day * dim, 80, 0.4);
+    ripple(ctx, L, nowMs, reduced, L.X(TOWER.spire.x) + 6 * L.sx, 20 * L.sx, WARSAW.reflectDaySpire, 0.3 * day * dim, 90, 0.4);
+    // the sun's glitter path: under the sun, widening toward the viewer, long and warm when the sun is low
+    if (glitter > 0) {
+      const sx = L.X(sun.x);
+      const c = mix(WARSAW.sunGlitter, WARSAW.sunGolden, 0.8 * sun.golden);
+      const wid = (9 + 12 * sun.golden) * L.sx;
+      column(ctx, L, sx, wid * 1.6, c, (0.22 + 0.4 * sun.golden) * glitter, 1.3);
+      ripple(ctx, L, nowMs, reduced, sx, wid, c, (0.55 + 0.35 * sun.golden) * glitter, 200, 0.9, Infinity, 0.9);
+      ripple(ctx, L, nowMs, reduced, sx, wid * 0.5, WARSAW.sunGlitter, 0.6 * glitter, 210, 1.4, Infinity, 1.2);
+    }
   }
   // at night, one long shimmering reflection under each lit tower, in its colour
   if (night > 0) {
-    reflection(ctx, L, phase, L.X(TOWER.pkin.x), 40 * L.sx, flagDay(nowMs) ? WARSAW.flagRed : WARSAW.reflectPalace, 0.85 * night, 20);
-    reflection(ctx, L, phase, L.X(TOWER.varso.x), 12 * L.sx, WARSAW.reflectVarso, 0.75 * night, 30);
-    reflection(ctx, L, phase, L.X(TOWER.spire.x) + 6 * L.sx, 8 * L.sx, WARSAW.reflectSpire, 0.6 * night, 40);
-    reflection(ctx, L, phase, L.X(TOWER.zlota.x), 10 * L.sx, WARSAW.reflectZlota, 0.45 * night, 50);
+    const k = rain ? 1.35 : 1; // a wet night: stronger, and the short ones run the river's whole depth
+    const short = (rows) => (rain ? Infinity : rows);
+    const palaceC = flagDay(nowMs) ? WARSAW.flagRed : WARSAW.reflectPalace;
+    const lit = [
+      [L.X(TOWER.pkin.x), 40, palaceC, 0.85, 20],
+      [L.X(TOWER.varso.x), 12, WARSAW.reflectVarso, 0.75, 30],
+      [L.X(TOWER.spire.x) + 6 * L.sx, 8, WARSAW.reflectSpire, 0.6, 40],
+      [L.X(TOWER.zlota.x), 10, WARSAW.reflectZlota, 0.45, 50],
+    ];
+    for (const [x, wid, c, a] of lit) column(ctx, L, x, wid * L.sx * (rain ? 1.25 : 1), c, 0.9 * a * night * k);
+    for (const [x, wid, c, a, seed] of lit) ripple(ctx, L, nowMs, reduced, x, wid * L.sx, c, a * night * k * 0.8, seed);
+    // Varso's red aviation light, a short thin red thread beside its blue crown
+    ripple(ctx, L, nowMs, reduced, L.X(TOWER.varso.x), 3 * L.sx, WARSAW.aviation, 0.6 * night * k, 35, 0.3, short(4));
+    // the boulevard lamps, each a short gold shiver; long wet streaks in the rain
+    for (let x = L.ox + 9 * L.sx, i = 0; x < L.ox + L.w; x += 18 * L.sx, i++) {
+      if (rain) column(ctx, L, x, 5 * L.sx, WARSAW.quayLamp, 0.3 * night, 0.9);
+      ripple(ctx, L, nowMs, reduced, x, 3.2 * L.sx, WARSAW.quayLamp, 0.5 * night * k, 100 + i, 0.4, short(3));
+    }
+    // the moon's track, when it is up
+    if (track > 0) {
+      const mx = L.X(moon.x);
+      column(ctx, L, mx, 12 * L.sx, WARSAW.moonTrack, 0.42 * track, 1.2);
+      ripple(ctx, L, nowMs, reduced, mx, 9 * L.sx, WARSAW.moonTrack, 0.75 * track, 220, 0.9, Infinity, 0.8);
+    }
+    // plain water across the tall ones, drifting
+    for (const [x, wid, , , seed] of lit) gaps(ctx, L, nowMs, reduced, x, wid * L.sx, colour, seed, wid > 20 ? 3 : 2);
   }
+  ctx.restore();
   if (ice > 0) drawIce(ctx, L, night, iceFloes(L, nowMs, ice, reduced));
   drawBoulevard(ctx, L, tint, night, weather);
-  drawNearBank(ctx, L, phase, night, weather, nowMs);
+  return { glitter, moonTrack: track, wet: rain };
 }
 
 // The far bank's boulevard: a paved walk along the water under the low city,
-// its quay edge, and lamp posts that come on at dusk.
+// its quay edge, and lamp posts that come on at dusk. In the rain the walk is
+// wet: it darkens, each lamp wears a soft halo and lays a streak on the paving.
 function drawBoulevard(ctx, L, tint, night, weather) {
   const snow = weather && weather.kind === 'snow';
+  const rain = rainy(weather);
   const top = L.river.top;
   const walk = L.boulevard;
-  ctx.fillStyle = css(snow ? mix(WARSAW.snowCap, WARSAW.boulevardNight, 0.6 * night + 0.05) : mix(tone(WARSAW.boulevardDay, WARSAW.boulevardNight, WARSAW.boulevardNight, night), tint.skyLow, 0.1));
+  const paved = mix(tone(WARSAW.boulevardDay, WARSAW.boulevardNight, WARSAW.boulevardNight, night), tint.skyLow, 0.1);
+  ctx.fillStyle = css(snow ? mix(WARSAW.snowCap, WARSAW.boulevardNight, 0.6 * night + 0.05) : rain ? mix(paved, WARSAW.quayNight, 0.3) : paved);
   ctx.fillRect(L.ox, walk, L.w, top - walk);
   ctx.fillStyle = css(mix(tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night), tint.skyLow, 0.6));
   ctx.fillRect(L.ox, top - 1.2 * L.sy, L.w, 1.2 * L.sy);
@@ -736,65 +954,14 @@ function drawBoulevard(ctx, L, tint, night, weather) {
     ctx.fillStyle = css(tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night));
     ctx.fillRect(x, walk - 4.5 * L.sy, 0.7 * L.sx, 4.5 * L.sy + 1);
     if (night > 0) {
+      if (rain) {
+        ctx.fillStyle = css(WARSAW.quayLamp, 0.4 * night);
+        ctx.fillRect(x - 1.6 * L.sx, walk, 3.9 * L.sx, top - walk - 1.2 * L.sy);
+      }
       ctx.fillStyle = css(WARSAW.quayLamp, 0.9 * night);
       ctx.fillRect(x - 0.4 * L.sx, walk - 5.6 * L.sy, 1.5 * L.sx, 1.4 * L.sy);
-      glow(ctx, x, walk - 4 * L.sy, 6 * L.sx, WARSAW.quayLamp, 0.3 * night);
+      glow(ctx, x, walk - 4 * L.sy, (rain ? 12 : 6) * L.sx, WARSAW.quayLamp, (rain ? 0.5 : 0.3) * night);
     }
-  }
-}
-
-// The near (Praga) bank: no wall and no path, only the riverside forest, its
-// jagged canopy running straight down to the water.
-function drawNearBank(ctx, L, phase, night, weather, nowMs) {
-  const snow = weather && weather.kind === 'snow';
-  const bottom = L.oy + L.h;
-  const treeTop = (k) => L.quayTop + (hash2(k, 90) * 5 - 1 - 3 * Math.sin(k * 0.9)) * L.sy;
-  const step = 7 * L.sx;
-  const n = Math.ceil(L.w / step) + 1;
-  // the water runs under the trees' edge, so no gap of ground shows between them
-  ctx.beginPath();
-  ctx.moveTo(L.ox, bottom);
-  for (let k = 0; k <= n; k++) ctx.lineTo(L.ox + k * step, treeTop(k));
-  ctx.lineTo(L.ox + L.w, bottom);
-  ctx.closePath();
-  const w = seasonWeights(nowMs);
-  const shade = (c) => tone(c, WARSAW.treeDusk, WARSAW.treeNight, night);
-  const baseC = shade(canopyColour(0, w));
-  const baseG = ctx.createLinearGradient(0, L.quayTop, 0, bottom);
-  baseG.addColorStop(0, css(baseC));
-  baseG.addColorStop(1, css(mix(baseC, WARSAW.treeNight, 0.3)));
-  ctx.fillStyle = baseG;
-  ctx.fill();
-  // each column takes its own colour from the season's range, a little darker toward the water
-  for (let k = 0; k < n; k++) {
-    const c = shade(canopyColour(k, w));
-    const g = ctx.createLinearGradient(0, L.quayTop, 0, bottom);
-    g.addColorStop(0, css(c));
-    g.addColorStop(1, css(mix(c, WARSAW.treeNight, 0.3)));
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(L.ox + k * step, bottom);
-    ctx.lineTo(L.ox + k * step, treeTop(k));
-    ctx.lineTo(L.ox + (k + 1) * step + 0.5, treeTop(k + 1));
-    ctx.lineTo(L.ox + (k + 1) * step + 0.5, bottom);
-    ctx.closePath();
-    ctx.fill();
-  }
-  // winter: a scatter of dark twigs over the bare canopy, fading with the winter weight
-  if (w.winter > 0) {
-    ctx.fillStyle = css(tone(WARSAW.twig, WARSAW.treeDusk, WARSAW.treeNight, night), 0.9 * w.winter);
-    for (let k = 0; k < n; k++) {
-      for (let j = 0; j < 4; j++) {
-        if (hash2(k, 95 + j) <= 0.8) continue;
-        const x = L.ox + k * step + hash2(j, 96 + k) * step;
-        const y = treeTop(k) + 2 * L.sy + hash2(k + 7, j) * 0.6 * (bottom - treeTop(k));
-        ctx.fillRect(x, y, 1 * L.sx, 3 * L.sy);
-      }
-    }
-  }
-  if (snow) {
-    ctx.fillStyle = css(mix(WARSAW.snowCap, WARSAW.treeNight, 0.5 * night + 0.05));
-    for (let k = 0; k <= n; k++) ctx.fillRect(L.ox + k * step - 2.5 * L.sx, treeTop(k) - 1, 5 * L.sx, 2 * L.sy);
   }
 }
 
