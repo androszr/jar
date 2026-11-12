@@ -201,6 +201,16 @@ const strip = (page, x, y, w, h) => page.evaluate(([sx, sy, sw, sh]) => {
   return sum / (d.length / 4);
 }, [x, y, w, h]);
 
+// How far the brightest pixels of a canvas box stand above its median: lettering on a ground, whatever the font.
+const standsOut = (page, x, y, w, h) => page.evaluate(([sx, sy, sw, sh]) => {
+  const c = document.getElementById('view');
+  const d = c.getContext('2d').getImageData(Math.round(sx), Math.round(sy), sw, sh).data;
+  const l = [];
+  for (let i = 0; i < d.length; i += 4) l.push(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]);
+  l.sort((a, b) => a - b);
+  return l[Math.floor(l.length * 0.98)] - l[Math.floor(l.length / 2)];
+}, [x, y, w, h]);
+
 // The (2r+1)^2 canvas px around a body-share point of a jar, as [r, g, b] rows.
 const patch = (page, id, bx, by, r) => page.evaluate(([jar, x, y, rad]) => {
   const c = document.getElementById('view');
@@ -285,9 +295,10 @@ try {
   check(!!hintDesk[0] && hintDesk[0].text === 'click a jar' && hintDesk[0].alpha === 1 && hintDesk[1].endsWith('Click a jar to lift it.'), 'chalk hint reads click a jar on the laptop and in the accessible name');
   const hr = hintDesk[0] ? hintDesk[0].rect : { x: 0, y: 0, w: 1, h: 1 };
   const bareAt = await page.evaluate(() => window.__jar.toCanvas(1380, 834));
-  const onChalk = await strip(page, hr.x, hr.y, Math.max(1, Math.round(hr.w)), Math.max(1, Math.round(hr.h)));
-  const bareWood = await strip(page, bareAt.x, bareAt.y - hr.h / 2, Math.max(1, Math.round(hr.w)), Math.max(1, Math.round(hr.h)));
-  check(onChalk > bareWood + 1, `chalk hint is drawn on the table (${onChalk.toFixed(1)} vs ${bareWood.toFixed(1)})`);
+  // the lettering against its own slate, and the same box of bare wood: a comparison of means would depend on how heavy the machine's font is
+  const onChalk = await standsOut(page, hr.x, hr.y, Math.max(1, Math.round(hr.w)), Math.max(1, Math.round(hr.h)));
+  const bareWood = await standsOut(page, bareAt.x, bareAt.y - hr.h / 2, Math.max(1, Math.round(hr.w)), Math.max(1, Math.round(hr.h)));
+  check(onChalk > 25 && onChalk > bareWood + 15, `chalk hint is drawn on the table (lettering ${onChalk.toFixed(1)} above its slate, bare wood ${bareWood.toFixed(1)})`);
 
   // light on the table: the strip just below the jar's foot is brighter than one far from any jar
   const foot = await page.evaluate(() => window.__jar.foot('warsaw'));
