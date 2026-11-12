@@ -3,7 +3,7 @@ import { readOptions, sample, isNight, moonPos } from './clock.js';
 import { moonPhase } from './moon.js';
 import { placeGuess, realPhase } from './realclock.js';
 import { therePhase, localDate, sunFraction, localTimeText, dayFraction } from './placeclock.js';
-import { LOOK, PALETTE, CSS_VARS, css, mix, tint as lookTint, bloom, vignette, forecastCard, forecastCellRects, chalk, chalkWidth, glow, backdrop, grain, grainTile } from './look/index.js';
+import { LOOK, PALETTE, CSS_VARS, css, mix, tint as lookTint, bloom, vignette, forecastCard, forecastCellRects, chalk, chalkWidth, glow, backdrop, backdropKept, grain, grainTile } from './look/index.js';
 import { hintWording, hintSentence, initialHint, hintOnLift, hintAfter, hintAlpha, hintPose } from './hint.js';
 import { CITIES } from './cities/index.js';
 import { placeName } from './cities/places.js';
@@ -80,6 +80,17 @@ let drawn = {}; // city id -> { flash, dew, drift, moon } the last frame painted
 let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
+// the room behind a fully lifted jar is kept (softened, in scratch.back) and
+// repainted only when something in it changes or ROOM_BEHIND_MS has passed
+const ROOM_BEHIND_MS = 1000;
+let roomKey = '';
+let behind = null; // what each jar painted when the room was last drawn
+// a jar's own light (its mean brightness and colour) is read back from its
+// picture, which makes the page wait for the graphics card: it moves slowly, so
+// it is read every LIGHT_MS, the jars in turn, and at once when its sky changes
+const LIGHT_MS = 240;
+let lightKeys = [];
+let lightSeen = [];
 let plates = [];
 let ready = false;
 let hint = 'shown'; // the chalk hint: shown | fading | none, session memory only
@@ -140,6 +151,7 @@ function fit() {
 function build() {
   const body = bodyRect();
   const small = make(16, 16);
+  roomKey = '';
   scratch = {
     interiors: CITIES.map(() => make(body.w * QUALITY, body.h * QUALITY)),
     hi: null, // the lifted jar's own interior, when the screen wants more than QUALITY
@@ -263,7 +275,15 @@ function render(force = false) {
   quality = liftP > 0 ? interiorQuality(dpr * camAt(1).scale * (shelf.m.w / JAR.w)) : QUALITY;
   const body = bodyRect();
   const tints = phases.map((p) => lookTint(sample(p)));
+  // behind a fully lifted jar the room is soft and dim: it is repainted once a
+  // second, or at once when anything in it changes, and reused in between
+  const nextRoomKey = [focus, canvas.width, canvas.height, Math.round(shelf.pos * 1000), minute, feed.revision, feed.isStale(),
+    Math.round(shedPhase * 2000), phases.map((p, i) => (i === focus ? 0 : Math.round(p * 2000))).join(','), Math.floor(t / ROOM_BEHIND_MS),
+    flashes.map((f) => Math.round(f * 16)).join(','), levels ? 1 : 0, Object.keys(fades).filter((id) => id !== CITIES[focus].id).join(','), hint, Math.round(hintA * 64)].join('|');
+  const reuse = !force && liftP === 1 && behind !== null && nextRoomKey === roomKey;
+  roomKey = liftP === 1 ? nextRoomKey : '';
   const painted = CITIES.map((city, i) => {
+    if (reuse && i !== focus) return behind[i];
     const target = i === focus && quality > QUALITY ? sized('hi', Math.round(body.w * quality), Math.round(body.h * quality)) : scratch.interiors[i];
     const o = { reduced: reduceMotion, dew: dews[i], anchor: feed.cloudAnchor(city.id), parallax: par, shake: sh && shake.id === city.id ? sh : null };
     const f = fades[city.id];
@@ -278,8 +298,15 @@ function render(force = false) {
       c2.drawImage(old, 0, 0);
       c2.restore();
     }
-    return { canvas: target, ...p, ...measure(scratch, target) };
+    const lk = [force ? t : 0, feed.revision, Math.round(phases[i] * 2000), Math.round(at[i] / 60000), target.width, f ? Math.round(fadeE[i] * 100) : -1,
+      levels ? 1 : 0, Math.floor((t + i * (LIGHT_MS / CITIES.length)) / LIGHT_MS), Math.round(flashes[i] * 16)].join('|');
+    if (lightKeys[i] !== lk || !lightSeen[i]) {
+      lightKeys[i] = lk;
+      lightSeen[i] = measure(scratch, target);
+    }
+    return { canvas: target, ...p, ...lightSeen[i] };
   });
+  behind = painted;
   const wakes = CITIES.map((c, i) => (levels ? levels.jars[i] : 1));
   const cast = painted.map((p, i) => mix(tints[i].spill, p.colour, 0.5));
 
@@ -293,25 +320,27 @@ function render(force = false) {
   scratch.bloomCtx.clearRect(0, 0, scratch.bloomCanvas.width, scratch.bloomCanvas.height);
   scratch.bloomCtx.setTransform(k / 4, 0, 0, k / 4, tx / 4, ty / 4);
 
-  drawShed(ctx, art, shedTint, null, shedPhase, ms, { reduced: reduceMotion });
-  // each jar throws its own colour on the wall behind it, and a storm's flash
-  // lights the room; the sky in the pane is never tinted
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(-BLEED.x, -BLEED.y, SCENE.w + 2 * BLEED.x, TABLE_Y + BLEED.y);
-  ctx.rect(WINDOW.x, WINDOW.y, WINDOW.w, WINDOW.h);
-  ctx.clip('evenodd');
-  CITIES.forEach((city, i) => {
-    const r = shelf.jarRect(i);
-    const cx = r.x + r.w / 2;
-    const cy = r.y + r.h * 0.45;
-    glow(ctx, cx, cy, r.w * 1.05, cast[i], (0.05 + 0.17 * Math.min(1, painted[i].lum * 1.5)) * wakes[i]);
-    if (flashes[i] > 0) glow(ctx, cx, cy, r.w * 2.6, PALETTE.flash, 0.2 * flashes[i] * wakes[i]);
-  });
-  ctx.restore();
-  if (hintA > 0) {
-    const hp = hintPose(fitScreen(W, H, shelf.centreX).cx);
-    chalk(ctx, hintText, hp.x, hp.y, hp.size, hintA);
+  if (!reuse) {
+    drawShed(ctx, art, shedTint, null, shedPhase, ms, { reduced: reduceMotion });
+    // each jar throws its own colour on the wall behind it, and a storm's flash
+    // lights the room; the sky in the pane is never tinted
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-BLEED.x, -BLEED.y, SCENE.w + 2 * BLEED.x, TABLE_Y + BLEED.y);
+    ctx.rect(WINDOW.x, WINDOW.y, WINDOW.w, WINDOW.h);
+    ctx.clip('evenodd');
+    CITIES.forEach((city, i) => {
+      const r = shelf.jarRect(i);
+      const cx = r.x + r.w / 2;
+      const cy = r.y + r.h * 0.45;
+      glow(ctx, cx, cy, r.w * 1.05, cast[i], (0.05 + 0.17 * Math.min(1, painted[i].lum * 1.5)) * wakes[i]);
+      if (flashes[i] > 0) glow(ctx, cx, cy, r.w * 2.6, PALETTE.flash, 0.2 * flashes[i] * wakes[i]);
+    });
+    ctx.restore();
+    if (hintA > 0) {
+      const hp = hintPose(fitScreen(W, H, shelf.centreX).cx);
+      chalk(ctx, hintText, hp.x, hp.y, hp.size, hintA);
+    }
   }
   let bloomStrength = 0;
   const nextLabels = {};
@@ -329,7 +358,8 @@ function render(force = false) {
       wake: wakes[i],
       glint: hoverAmt[i],
       shift: -par.x * 3,
-      bloomGain: lifted || liftP === 0 ? 1 : 1 - 0.75 * liftP,
+      // a jar behind the lifted one gives up its bloom as the room softens
+      bloomGain: lifted || liftP === 0 ? 1 : 1 - liftP,
       neighbours,
     });
   };
@@ -341,9 +371,10 @@ function render(force = false) {
     bloomStrength = Math.max(bloomStrength, tints[i].bloom);
   });
   // the jars left on the table first; the room behind a lifted jar then softens and dims
-  CITIES.forEach((city, i) => { if (!(i === focus && liftP > 0)) stand(i); });
+  if (!reuse) CITIES.forEach((city, i) => { if (!(i === focus && liftP > 0)) stand(i); });
   if (liftP > 0) {
-    backdrop(ctx, scratch.back, liftP);
+    if (reuse) backdropKept(ctx, scratch.back);
+    else backdrop(ctx, scratch.back, liftP);
     stand(focus);
   }
   labels = nextLabels;
@@ -644,7 +675,12 @@ canvas.addEventListener('keydown', (e) => {
 backBtn.addEventListener('click', lowerFromUser);
 const scrub = new ScrubBar(scrubEl, document.getElementById('now'), { onChange: (min) => { play = null; setScrub(min); } });
 const playBtn = document.getElementById('play');
-playBtn.addEventListener('click', () => (play ? stopPlay() : startPlay()));
+// the button says what it does now at once, not on the next frame
+playBtn.addEventListener('click', () => {
+  if (play) stopPlay();
+  else startPlay();
+  syncChrome();
+});
 const scrubRow = scrubEl.parentElement;
 document.getElementById('prev').addEventListener('click', () => shelf.prev());
 document.getElementById('next').addEventListener('click', () => shelf.next());

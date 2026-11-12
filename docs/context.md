@@ -109,6 +109,8 @@ tests and the smoke check inject a stub, so nothing touches the network.
 
 **Rain and snow in two layers.** `drawPrecipitation(ctx, rect, weather, nowMs, layer)` (`src/skyweather.js`) paints `'far'` (a fine slow curtain, and the far snow specks) with the sky, behind the city, and `paintInterior` (`src/jar.js`) paints `'near'` after `city.paint`, so the weather falls in front of the sea and the land and not only in the sky. A city whose scene covers the whole sky (El Chaltén) paints `'far'` again itself; no city paints `'near'`. Each streak has its own length and speed. A bead on the glass leaves a short tail (`BEAD_TAIL`), not a line from where it started.
 
+**Frame cost.** Three things keep a frame cheap (`src/main.js`). Behind a fully lifted jar the room is not repainted every frame: `backdrop` leaves the softened room in `scratch.back`, and `backdropKept` draws it again until something in the room changes (`roomKey`: the feed, the minute, the shelf, a flash, a fade, the hint) or `ROOM_BEHIND_MS` has passed; a jar behind the lifted one gives up its bloom as the lift completes. A jar's own light (`measure`, a pixel read-back that makes the page wait for the graphics card) is read every `LIGHT_MS`, the jars in turn, and at once when its sky, moment or size changes. The look's full-screen upscales (`backdrop`, `backdropKept`, `bloom`) use `imageSmoothingQuality = 'medium'`: `'high'` cost about 60 ms a frame on a 2x screen.
+
 **Clocks.** `src/clock.js` (nine keyframes, `sample(p)` -> `{ light, a, b, t }`),
 `src/realclock.js` (sunrise/sunset maths -> the drawn phase), `src/placeclock.js`
 (a city's zone offset, `therePhase`, `localTimeText`), all copied from Memory

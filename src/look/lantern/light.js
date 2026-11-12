@@ -85,7 +85,7 @@ export function bloom(src, dst, strength) {
   dst.setTransform(1, 0, 0, 1, 0, 0);
   dst.globalCompositeOperation = 'lighter';
   dst.imageSmoothingEnabled = true;
-  dst.imageSmoothingQuality = 'high';
+  dst.imageSmoothingQuality = 'medium';
   // softened: a blur where the browser supports ctx.filter, else the plain upscale
   if ('filter' in dst) dst.filter = `blur(${Math.max(2, Math.round(c.width / 90))}px)`;
   dst.globalAlpha = Math.min(1, strength);
@@ -206,17 +206,31 @@ export function backdrop(ctx, small, amount) {
   const sctx = small.getContext('2d');
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.imageSmoothingEnabled = true;
-  sctx.imageSmoothingQuality = 'high';
+  sctx.imageSmoothingQuality = 'medium';
   sctx.clearRect(0, 0, small.width, small.height);
   sctx.drawImage(c, 0, 0, small.width, small.height);
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  ctx.imageSmoothingQuality = 'medium';
   ctx.globalAlpha = a;
   ctx.drawImage(small, 0, 0, c.width, c.height);
   ctx.globalAlpha = 1;
   ctx.fillStyle = css(PALETTE.shadow, BACKDROP_DIM * a);
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.restore();
+}
+
+// The same room again, from what `backdrop` left in `small` the last time it
+// ran at a full lift: nothing behind the jar has to be painted for it.
+export function backdropKept(ctx, small) {
+  const c = ctx.canvas;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'medium';
+  ctx.drawImage(small, 0, 0, c.width, c.height);
+  ctx.fillStyle = css(PALETTE.shadow, BACKDROP_DIM);
   ctx.fillRect(0, 0, c.width, c.height);
   ctx.restore();
 }
