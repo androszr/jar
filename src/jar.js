@@ -6,7 +6,7 @@ import { localTimeText } from './placeclock.js';
 import { offsetLabel } from './scrub.js';
 import { placeName } from './cities/places.js';
 import { formatTemp, gloom } from './weather.js';
-import { drawJarSky, drawFog, drawSplashes, drawRainOnGlass, drawFlurry } from './skyweather.js';
+import { drawJarSky, drawFog, drawSplashes, drawPrecipitation, drawRainOnGlass, drawFlurry } from './skyweather.js';
 import { PALETTE, css, skyGradient, overcastSky, gloomWash, glow, spill, sheen, glassBody, glassHighlights, lid, label, mix, contactShadow, reflection, brights } from './look/index.js';
 
 export { JAR };
@@ -105,6 +105,8 @@ export function paintInterior(interior, city, phase, tint, weather, nowMs, plate
   const scene = city.paint(ictx, local, phase, tint, weather, plates, nowMs) ?? null;
   // rain lands on the city's open water as rings
   if (typeof city.water === 'function') drawSplashes(ictx, city.water(local, scene), weather, nowMs);
+  // the near rain and snow fall in front of the city, not only in its sky
+  drawPrecipitation(ictx, local, weather, nowMs, 'near');
   ictx.restore();
   // and the scene under a heavy sky loses its colour and some of its light
   gloomWash(ictx, local, heavy, tint.light);

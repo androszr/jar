@@ -90,8 +90,9 @@ export default {
       if (!seen || m.band === 'capped') drawDeck(ctx, L, phase, tint, plates, nowMs, m, true);
     });
     const shore = drawShore(ctx, L, phase, tint, plates, nowMs, m, minutesToSunrise(nowMs, location), shoreFolk(nowMs, location, m.season));
-    // the scene covers the shared sky, so the rain and snow fall again in front of it
-    drawPrecipitation(ctx, rect, weather, nowMs);
+    // the scene covers the shared sky, so the far rain and snow fall again in
+    // front of it (the jar paints the near layer over every city)
+    drawPrecipitation(ctx, rect, weather, nowMs, 'far');
     drawStormFlash(ctx, rect, weather, nowMs, { reduced });
     return {
       band: m.band,

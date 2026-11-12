@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gloom, GLOOM_CLOUD, GLOOM_KIND, EMPTY, FLASH } from '../src/weather.js';
-import { boltPath, BOLT_STEPS, cloudColour, lowSun } from '../src/skyweather.js';
+import { boltPath, BOLT_STEPS, cloudColour, lowSun, drawPrecipitation } from '../src/skyweather.js';
 import * as look from '../src/look/index.js';
 
 const w = (kind, cloudCover = null) => ({ known: true, kind, cloudCover });
@@ -76,4 +76,24 @@ test('the look carries the heavy sky and the bolt', () => {
   for (const n of ['overcastTop', 'overcastLow', 'gloom', 'cloudWarm', 'bolt']) assert.equal(look.PALETTE[n].length, 3, n);
   assert.ok(look.GLOOM_DRAIN > 0 && look.GLOOM_DRAIN <= 1);
   assert.ok(look.GLOOM_DIM > 0 && look.GLOOM_DIM < 0.5);
+});
+
+test('precipitation: a far layer behind the city and a near one in front, together the whole fall', () => {
+  const rect = { x: 0, y: 0, w: 260, h: 330 };
+  const count = (kind, layer) => {
+    let lines = 0;
+    let arcs = 0;
+    const ctx = new Proxy({}, { get: (t, k) => (k === 'lineTo' ? () => { lines++; } : k === 'arc' ? () => { arcs++; } : k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
+    drawPrecipitation(ctx, rect, { known: true, kind, windSpeed: 20, windDir: 230 }, 4321, layer);
+    return lines + arcs;
+  };
+  for (const kind of ['rain', 'storm', 'drizzle', 'snow']) {
+    const far = count(kind, 'far');
+    const near = count(kind, 'near');
+    assert.ok(far > 0 && near > 0, kind);
+    assert.equal(far + near, count(kind, 'all'), kind);
+    assert.equal(count(kind), count(kind, 'all'), kind);
+  }
+  assert.equal(count('clear', 'near'), 0);
+  assert.equal(count('cloud', 'far'), 0);
 });

@@ -101,37 +101,45 @@ function clouds(ctx, rect, amount, phase, tint, nowMs, wind = 0, heavy = 0) {
 }
 
 // Rain leaning by `slant` radians (positive: the foot goes east). A streak
-// drifts sideways as it falls and wraps inside the rect.
+// drifts sideways as it falls and wraps inside the rect. Each streak has its
+// own length (0.6..1.3 of `len`) and its own speed, so the rain never falls
+// as one sheet; it is fine and plentiful rather than a few bold dashes.
 function streaks(ctx, rect, count, len, cycleMs, nowMs, alpha, slant = 0, width = 1.2, seed = 0) {
   ctx.strokeStyle = css(PALETTE.rain, alpha);
   ctx.lineWidth = width;
-  const dx = Math.sin(slant) * len;
-  const dy = Math.cos(slant) * len;
+  ctx.lineCap = 'round';
+  const sin = Math.sin(slant);
+  const cos = Math.cos(slant);
   const tan = Math.tan(slant);
   ctx.beginPath();
   for (let i = 0; i < count; i++) {
-    const t = wrap(hash2(i, 8 + seed) + nowMs / cycleMs);
-    const fall = t * (rect.h + len);
+    const own = len * (0.6 + 0.7 * hash2(i, 14 + seed));
+    const t = wrap(hash2(i, 8 + seed) + (nowMs / cycleMs) * (0.85 + 0.3 * hash2(i, 15 + seed)));
+    const fall = t * (rect.h + own);
     const x = rect.x + wrap((hash2(i, 9 + seed) * rect.w + fall * tan) / rect.w) * rect.w;
-    const y = rect.y + fall - len;
+    const y = rect.y + fall - own;
     ctx.moveTo(x, y);
-    ctx.lineTo(x + dx, y + dy);
+    ctx.lineTo(x + sin * own, y + cos * own);
   }
   ctx.stroke();
 }
 
-function flakes(ctx, rect, count, cycleMs, nowMs, slant = 0) {
+// Snow in three depths: far specks, a middle layer, a few big near flakes.
+// `layer` picks the far specks ('far'), the rest ('near') or all of them.
+export const FLAKE_FAR = 0.5;
+function flakes(ctx, rect, count, cycleMs, nowMs, slant = 0, layer = 'all') {
   ctx.fillStyle = css(PALETTE.snow, 0.85);
   const tan = Math.tan(slant);
   for (let i = 0; i < count; i++) {
+    const depth = hash2(i, 12);
+    const far = depth < FLAKE_FAR;
+    if (layer !== 'all' && far !== (layer === 'far')) continue;
     const t = wrap(hash2(i, 10) + nowMs / cycleMs);
     const loose = 0.35 * Math.abs(slant) * rect.w * 0.02 * Math.sin(2 * Math.PI * wrap(nowMs / cycleMs + hash2(i, 18)));
     const x = rect.x + wrap((hash2(i, 11) * rect.w + t * rect.h * tan) / rect.w) * rect.w + Math.sin(nowMs / 1200 + i) * 6 + loose;
     const y = rect.y + t * rect.h;
-    // three depths: far specks, a middle layer, a few big near flakes
-    const depth = hash2(i, 12);
-    const s = depth < 0.5 ? 0.7 + 0.5 * depth : depth < 0.88 ? 1.1 + 0.9 * depth : 2.2 + 1.2 * depth;
-    ctx.globalAlpha = depth < 0.5 ? 0.6 : 1;
+    const s = far ? 0.7 + 0.5 * depth : depth < 0.88 ? 1.1 + 0.9 * depth : 2.2 + 1.2 * depth;
+    ctx.globalAlpha = far ? 0.6 : 1;
     ctx.beginPath();
     ctx.arc(x, y, s, 0, Math.PI * 2);
     ctx.fill();
@@ -233,22 +241,27 @@ export function boltPath(code, nowMs, strike = null) {
 }
 
 // Rain, drizzle and snow falling through `rect`, leaning with the wind; nothing
-// for an unknown reading or any other kind. A city whose scene covers the sky
-// may call it again after painting, so the weather still falls in front of it.
-export function drawPrecipitation(ctx, rect, weather, nowMs) {
+// for an unknown reading or any other kind. `layer` is 'far' (the fine curtain
+// the jar paints with the sky, behind the city), 'near' (what the jar paints
+// after the city, so the weather falls in front of the sea and the land as
+// well as the sky) or 'all'. A city whose scene covers the whole sky may paint
+// the far layer again itself.
+export function drawPrecipitation(ctx, rect, weather, nowMs, layer = 'all') {
   const known = !!(weather && weather.known);
   const kind = known ? weather.kind : 'cloud';
   const slant = known ? windSlant(weather.windSpeed, weather.windDir, kind) : 0;
-  // a far, fine, slower curtain behind the near streaks
+  const far = layer !== 'near';
+  const near = layer !== 'far';
+  // a far, fine, slower curtain behind the scene and the near streaks in front of it
   if (kind === 'rain' || kind === 'storm') {
-    streaks(ctx, rect, 90, 11, 2900, nowMs, 0.26, slant, 0.7, 40);
-    streaks(ctx, rect, 70, 22, 2000, nowMs, 0.55, slant);
+    if (far) streaks(ctx, rect, 150, 9, 2300, nowMs, 0.2, slant, 0.6, 40);
+    if (near) streaks(ctx, rect, 110, 20, 1500, nowMs, 0.34, slant, 0.9);
   }
   if (kind === 'drizzle') {
-    streaks(ctx, rect, 50, 7, 3300, nowMs, 0.22, slant, 0.7, 40);
-    streaks(ctx, rect, 40, 12, 2400, nowMs, 0.4, slant);
+    if (far) streaks(ctx, rect, 80, 6, 3000, nowMs, 0.16, slant, 0.6, 40);
+    if (near) streaks(ctx, rect, 55, 10, 2200, nowMs, 0.26, slant, 0.8);
   }
-  if (kind === 'snow') flakes(ctx, rect, 70, 6000, nowMs, slant);
+  if (kind === 'snow') flakes(ctx, rect, 70, 6000, nowMs, slant, layer);
 }
 
 // Rings where the rain lands on open water. `water` is { x, y, w, h } in the
@@ -295,6 +308,7 @@ export function drawSplashes(ctx, water, weather, nowMs) {
 // a short wet trail. Drawn inside the jar, over the city. Nothing unless it
 // rains. Each bead's run is BEAD_MS long and starts somewhere new every time.
 export const BEAD_MS = 5200;
+export const BEAD_TAIL = 16;
 export function drawRainOnGlass(ctx, rect, weather, nowMs, reduced = false) {
   const known = !!(weather && weather.known);
   const kind = known ? weather.kind : '';
@@ -315,12 +329,14 @@ export function drawRainOnGlass(ctx, rect, weather, nowMs, reduced = false) {
     const r = 1.4 + 1.6 * Math.min(1, u * 3) * (1 - 0.4 * run);
     const a = Math.min(1, u * 6) * (1 - run ** 3);
     if (run > 0) {
-      ctx.strokeStyle = css(PALETTE.dew, 0.22 * a);
-      ctx.lineWidth = r * 0.9;
+      ctx.strokeStyle = css(PALETTE.dew, 0.16 * a);
+      ctx.lineWidth = r * 0.7;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.quadraticCurveTo(x0 + Math.sin(fall / 28 + i) * 2.2, (y0 + y) / 2, x, y);
+      // a short wet tail behind the bead, not a line from where it started
+      const tail = Math.min(fall, BEAD_TAIL);
+      ctx.moveTo(x0 + Math.sin((fall - tail) / 14 + i) * 2.2, y - tail);
+      ctx.quadraticCurveTo(x0 + Math.sin((fall - tail / 2) / 14 + i) * 2.2, y - tail / 2, x, y);
       ctx.stroke();
     }
     droplet(ctx, x, y, r, a);
@@ -401,7 +417,7 @@ export function drawJarSky(ctx, rect, phase, tint, weather, nowMs, opts = {}) {
     clouds(ctx, rect, amount, phase, tint, nowMs, wind, heavy);
   }
 
-  drawPrecipitation(ctx, rect, weather, nowMs);
+  drawPrecipitation(ctx, rect, weather, nowMs, 'far');
   drawStormFlash(ctx, rect, weather, nowMs, opts);
   // dew is what a fog leaves behind; while the fog is there the glass is misted instead
   if (kind !== 'fog' && opts.dew > 0) drawDew(ctx, rect, opts.dew);
