@@ -4,9 +4,11 @@
 import { PLACES } from '../places.js';
 import { formatSwell } from '../../weather.js';
 import { waveHeightOf, waveBand, waveSize } from './sea.js';
+import { sunStrength } from './sun.js';
 import {
-  buildPlates, drawFarSea, drawHeadland, drawFort, drawWave, drawBeach, drawSpray, drawSurfers, drawBeam, drawVeil,
+  buildPlates, drawSun, drawFarSea, drawHeadland, drawFort, drawWave, drawSpray, drawSurfers, drawBeam, drawBeamHaze, drawVeil,
 } from './scene.js';
+import { drawSand, drawBeach } from './beach.js';
 import { drawCliffLife, drawSeaLife } from './cliff.js';
 
 const place = PLACES.find((p) => p.id === 'nazare');
@@ -22,27 +24,40 @@ export default {
   lid: 'tin',
   label: { inks: { plate: 'plate', ink: 'labelInk' } },
   seed: 0x5ea,
+  // the view faces west: the shared sky's sun crosses the wrong way for it, so
+  // the scene draws its own (`backdrop`), which sets into the sea (never two discs)
+  sky: { sun: false },
   // the fourth line of the label: the swell, none without a reading
   labelLine: (weather) => formatSwell(weather && weather.sea),
   buildPlates,
   // ms between redraws the sea needs
   cadenceMs: (weather, opts = {}) => (opts.reduced ? 250 : 100),
+  // the open sea where rain rings may land: below the horizon, left of the
+  // headland, above the beach (local px, like paint's rect)
+  water: (rect) => ({ x: rect.x + 0.04 * rect.w, y: rect.y + 0.54 * rect.h, w: 0.44 * rect.w, h: 0.14 * rect.h }),
+  // the sun behind everything, the clouds included: the jar paints this with
+  // the sky, before the clouds, and the sea and the land then stand in front
+  backdrop: (ctx, rect, phase, tint, weather) => drawSun(ctx, rect, phase, tint, weather),
   paint(ctx, rect, phase, tint, weather, plates, nowMs) {
-    drawFarSea(ctx, rect, phase, tint, weather, nowMs);
+    const sun = sunStrength(phase, weather);
+    const boats = drawFarSea(ctx, rect, phase, tint, weather, nowMs, reduced);
     // the wave first: its water runs on behind the rock, never over it
     drawWave(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
+    // the sand from the water's edge to the bottom of the jar; the rock stands on it
+    drawSand(ctx, rect, phase, tint, weather);
     drawHeadland(ctx, rect, phase, tint, weather, plates);
     drawFort(ctx, rect, phase, tint, weather, plates);
     // scrub, the path, wet rock, the boards, the door and the crowd on the roof
     const spectators = drawCliffLife(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
-    drawBeach(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
+    const beach = drawBeach(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     // spray climbs in front of the rock, where the wave meets it
     drawSpray(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     const surfers = drawSurfers(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     const life = drawSeaLife(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawBeam(ctx, rect, phase, tint, weather, plates, nowMs, reduced);
     drawVeil(ctx, rect, phase, tint, weather);
+    drawBeamHaze(ctx, rect, phase, tint, weather, nowMs);
     const metres = waveHeightOf(weather);
-    return { band: waveBand(metres), waveSize: waveSize(metres), surfers, spectators, gulls: life.gulls, rescue: life.rescue };
+    return { band: waveBand(metres), waveSize: waveSize(metres), surfers, spectators, gulls: life.gulls, rescue: life.rescue, sun: sun > 0, boats, umbrellas: beach.umbrellas, flag: beach.flag };
   },
 };

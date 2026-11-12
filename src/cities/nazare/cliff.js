@@ -101,6 +101,46 @@ export function rockWet(states) {
 // (shares of the body), a lamp at every turn.
 export const PATH = [[0.715, 0.3], [0.9, 0.375], [0.68, 0.465], [0.885, 0.555], [0.625, 0.655], [0.565, 0.715]];
 export const PATH_LAMPS = PATH.slice(1, 5);
+// The stretches of the path that show: each leg is seen in two pieces, with a
+// gap where the rock hides it (a different place on every leg). Pairs of points.
+export const PATH_HIDDEN = 0.14;
+const gapAt = (i) => 0.25 + 0.4 * hash2(i, 92);
+// the middle of each hidden stretch, where scrub has grown over the path
+export function pathGaps() {
+  return PATH.slice(1).map(([bx, by], k) => {
+    const [ax, ay] = PATH[k];
+    const t = gapAt(k + 1) + PATH_HIDDEN / 2;
+    return [lerp(ax, bx, t), lerp(ay, by, t)];
+  });
+}
+export function pathPieces() {
+  const out = [];
+  for (let i = 1; i < PATH.length; i++) {
+    const [ax, ay] = PATH[i - 1];
+    const [bx, by] = PATH[i];
+    const at = (t) => [lerp(ax, bx, t), lerp(ay, by, t)];
+    const gap = gapAt(i);
+    out.push([at(0.03), at(gap)], [at(gap + PATH_HIDDEN), at(0.97)]);
+  }
+  return out;
+}
+
+// ---- water draining off the rock -----------------------------------------------
+// After a big wave has hit, the water it threw up the face runs back down in
+// thin white runnels for a few seconds. `runnelAt(p)` is how much of that there
+// is through the roll, `fallAt(p)` how far down the heads have got, 0..1.
+export const RUNNELS = 6;
+export const runnelAt = (p) => bump((p - 0.54) / 0.05) * (1 - bump((p - 0.84) / 0.12));
+export const fallAt = (p) => clamp((p - 0.54) / 0.26);
+// What drains now: { amount, fall, reach }; nothing from a moderate or calm sea.
+export function runnels(states) {
+  let best = { amount: 0, fall: 0, reach: 0 };
+  for (const s of states) {
+    const amount = runnelAt(s.p) * clamp((s.size - 0.09) / 0.05);
+    if (amount > best.amount) best = { amount, fall: fallAt(s.p), reach: Math.min(0.32, s.size * (1.3 + 1.2 * s.size / 0.26)) };
+  }
+  return best;
+}
 
 // ---- the fort wall -------------------------------------------------------------
 export const DOOR = { x0: 0.773, x1: 0.787, y0: 0.276, y1: FORT.y1 };
@@ -109,7 +149,7 @@ export const BOARDS = [0.806, 0.82, 0.834, 0.848, 0.862].map((x, i) => ({ x, lea
 
 // ---- the safety ski ------------------------------------------------------------
 // Waiting outside the break on a big or giant day, by daylight.
-export const RESCUE = { x: 0.385, y: 0.562 };
+export const RESCUE = { x: 0.385, y: 0.562, patrol: 0.03 };
 export function rescueSpot(L, weather, states, nowMs, light, reduced = false) {
   const band = waveBand(waveHeightOf(weather));
   const a = surferAlpha(light);
@@ -121,7 +161,8 @@ export function rescueSpot(L, weather, states, nowMs, light, reduced = false) {
     const top = s.baseTop - s.height(RESCUE.x) / L.h;
     return clamp((s.baseTop - RESCUE.y) / 0.01) * clamp((RESCUE.y - top) / 0.01);
   }));
-  return { x: L.X(RESCUE.x + 0.004 * Math.sin(at / 2300)), y: L.Y(RESCUE.y) + 0.003 * L.h * bob, alpha: a * (1 - under) };
+  // it idles to and fro along the back of the break; `way` is how fast and which way, -1..1
+  return { x: L.X(RESCUE.x + RESCUE.patrol * Math.sin(at / 4200)), y: L.Y(RESCUE.y) + 0.003 * L.h * bob, alpha: a * (1 - under), way: Math.cos(at / 4200) };
 }
 
 // Everything that sits on the rock and the fort, painted after them and before
@@ -161,20 +202,29 @@ export function drawCliffLife(ctx, rect, phase, tint, weather, plates, nowMs, re
   }
   ctx.stroke();
 
-  // the path: a pale switchback with railing posts, snowed over in snow
+  // the path: a thin pale track worn into the rock, lost behind a bulge here
+  // and there, a little uneven; snowed over in snow
   const pathC = snow ? mix(NAZARE.snowCap, NAZARE.cliffNight, 0.6 * night) : tone(NAZARE.pathDay, mix(NAZARE.pathDay, NAZARE.cliffDusk, 0.6), mix(NAZARE.pathDay, NAZARE.cliffNight, 0.85), night);
-  ctx.strokeStyle = css(pathC, 0.6);
-  ctx.lineWidth = Math.max(1, 1.25 * u);
+  ctx.strokeStyle = css(pathC, 0.62);
+  ctx.lineWidth = Math.max(0.7, 0.95 * u);
+  ctx.lineCap = 'round';
   ctx.beginPath();
-  PATH.forEach(([x, y], i) => (i ? ctx.lineTo(L.X(x), L.Y(y)) : ctx.moveTo(L.X(x), L.Y(y))));
-  ctx.stroke();
-  ctx.fillStyle = css(pathC, 0.65);
-  for (let i = 1; i < PATH.length; i++) {
-    const [ax, ay] = PATH[i - 1];
-    const [bx, by] = PATH[i];
-    const posts = Math.max(2, Math.round(Math.abs(bx - ax) / 0.035));
-    for (let k = 1; k < posts; k++) ctx.fillRect(L.X(lerp(ax, bx, k / posts)) - 0.4 * u, L.Y(lerp(ay, by, k / posts)) - 3.2 * u, 0.8 * u, 2.6 * u);
+  for (const [a, b] of pathPieces()) {
+    ctx.moveTo(L.X(a[0]), L.Y(a[1]));
+    ctx.quadraticCurveTo(L.X((a[0] + b[0]) / 2), L.Y((a[1] + b[1]) / 2) + 1.2 * u, L.X(b[0]), L.Y(b[1]));
   }
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  // scrub grows over it where it is hidden
+  ctx.fillStyle = css(snow ? mix(NAZARE.snowCap, NAZARE.cliffNight, 0.5 * night) : tone(NAZARE.cliffScrub, NAZARE.scrubDusk, NAZARE.scrubNight, night));
+  ctx.beginPath();
+  for (const [x, y] of pathGaps()) {
+    for (const [dx, dy, k] of [[-0.9, 0.2, 0.8], [0, -0.3, 1], [0.9, 0.2, 0.75]]) {
+      ctx.moveTo(L.X(x) + (dx + k) * 2.6 * u, L.Y(y) + dy * 2.6 * u);
+      ctx.arc(L.X(x) + dx * 2.6 * u, L.Y(y) + dy * 2.6 * u, k * 2.6 * u, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill();
 
   // the rock a wave has just hit: dark from the foot up, with a sheen on the face
   const wet = rockWet(states);
@@ -215,6 +265,29 @@ export function drawCliffLife(ctx, rect, phase, tint, weather, plates, nowMs, re
       started = true;
     }
     ctx.stroke();
+  }
+
+  // and the water running back down it: thin white runnels on the sea face
+  const drain = runnels(states);
+  if (drain.amount > 0.02) {
+    ctx.strokeStyle = css(mix(NAZARE.runnel, NAZARE.foamNight, night), 0.7 * drain.amount * (1 - 0.65 * night));
+    ctx.lineWidth = Math.max(0.6, 0.75 * u);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let k = 0; k < RUNNELS; k++) {
+      const from = CLIFF.foot.y - drain.reach * (0.3 + 0.65 * hash2(k, 93));
+      const to = lerp(from, CLIFF.foot.y + 0.02, Math.min(1, drain.fall * (0.8 + 0.5 * hash2(k, 94))));
+      const tail = lerp(from, to, clamp((drain.fall - 0.55) / 0.45));
+      const off = 0.012 + 0.05 * hash2(k, 95);
+      let first = true;
+      for (let y = tail; y <= to + 1e-9; y += 0.008) {
+        const x = L.X(cliffFaceX(y, plates) + off + 0.0025 * Math.sin(y * 70 + k));
+        if (first) ctx.moveTo(x, L.Y(y)); else ctx.lineTo(x, L.Y(y));
+        first = false;
+      }
+    }
+    ctx.stroke();
+    ctx.lineCap = 'butt';
   }
 
   // the door under the lighthouse: dark by day, lit from inside at night
@@ -284,6 +357,20 @@ export function drawSeaLife(ctx, rect, phase, tint, weather, plates, nowMs, redu
   const r = rescueSpot(L, weather, states, nowMs, tint.light, reduced);
   if (r && r.alpha > 0) {
     const u = 0.011 * L.h;
+    // its white wake, trailing behind the way it goes, and the foam round the hull
+    const d = r.way >= 0 ? 1 : -1;
+    const speed = Math.abs(r.way);
+    ctx.fillStyle = css(mix(NAZARE.skiWake, NAZARE.foamNight, night), 0.8 * r.alpha * (0.25 + 0.75 * speed));
+    ctx.beginPath();
+    ctx.moveTo(r.x - d * 0.8 * u, r.y - 0.1 * u);
+    ctx.lineTo(r.x - d * (2 + 4.5 * speed) * u, r.y + 0.3 * u);
+    ctx.lineTo(r.x - d * 0.8 * u, r.y + 0.7 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = css(mix(NAZARE.skiWake, NAZARE.foamNight, night), 0.85 * r.alpha);
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y + 0.45 * u, 1.7 * u, 0.3 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = css(NAZARE.ski, r.alpha);
     ctx.beginPath();
     ctx.moveTo(r.x - 1.3 * u, r.y);

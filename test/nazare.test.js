@@ -2,13 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import nazare from '../src/cities/nazare/index.js';
 import {
-  HORIZON, CLIFF, FORT, TOWER, LANTERN, WAVE, BEACH, STREAK_CLEAR, buildPlates, nightAmount, sunSide, layout, waveState, waveStates, surferSpots, baseAt, standAt, reachAt, breakAt, BEAM, beamLobes, cliffFaceX, ROUGH, waveTopAt, foamLight, lampOn, roughness, hitAt,
+  HORIZON, CLIFF, FORT, TOWER, LANTERN, LAMP_ROOM, GALLERY, WAVE, BEACH, STREAK_CLEAR, buildPlates, nightAmount, sunSide, layout, waveState, waveStates, surferSpots, baseAt, standAt, reachAt, breakAt, BEAM, beamLobes, cliffFaceX, ROUGH, waveTopAt, foamLight, lampOn, roughness, hitAt,
+  COLLAPSE, curlAmount, sprayRise, SPRAY_TOP, seaTones, drawSun, drawBeamHaze,
 } from '../src/cities/nazare/scene.js';
+import { SUN, SUN_GLOOM, sunSpot, sunShare, sunStrength, sunLow, seaSideLight } from '../src/cities/nazare/sun.js';
+import { waterline, swashAt, FLAG } from '../src/cities/nazare/beach.js';
+import { waveSize } from '../src/cities/nazare/sea.js';
 import { NAZARE } from '../src/cities/nazare/palette.js';
 import { EMPTY } from '../src/weather.js';
 import { css, tint, STREAKS } from '../src/look/index.js';
 import { sample } from '../src/clock.js';
 import { surferPlan } from '../src/cities/nazare/sea.js';
+import { sunAltitude } from '../src/clock.js';
 import { LABEL } from '../src/jar-geometry.js';
 import { bodyRect } from '../src/jar.js';
 
@@ -74,11 +79,168 @@ test('the tower and the fort keep clear of both glass streaks, which agree with 
   assert.deepEqual(STREAK_CLEAR, STREAKS.map((s) => [s.x, s.x + s.w]));
 });
 
-test('the wave forms below the horizon and lands above the beach, which ends at the plate', () => {
+test('the wave forms below the horizon and lands above the beach; the strand ends at the plate and the sand runs to the bottom of the jar', () => {
   assert.ok(WAVE.formY > HORIZON && WAVE.breakY > WAVE.formY);
   assert.ok(WAVE.breakY < BEACH.y0);
-  assert.ok(BEACH.y0 < BEACH.y1 && BEACH.y1 <= plateShare + 1e-9);
+  assert.ok(BEACH.y0 < BEACH.strand && BEACH.strand <= plateShare + 1e-9);
+  assert.equal(BEACH.y1, 1);
+  // the water's edge is nearly level and never rises into the breaking wave
+  for (let xs = -0.1; xs <= 1.1; xs += 0.01) assert.ok(waterline(xs) > WAVE.breakY && waterline(xs) < BEACH.strand, `edge at ${xs}`);
+  assert.ok(FLAG.foot <= BEACH.strand && FLAG.top < BEACH.y0 && FLAG.x > STREAK_CLEAR[0][1] && FLAG.x < CLIFF.foot.x);
+  assert.equal(swashAt(0.5), 0);
+  assert.ok(swashAt(0.9) > 0.9);
 });
+
+test('the foreground is beach: the sand is painted from the water\'s edge down past the bottom of the jar, before the rock', () => {
+  const { calls } = paint(PHASE.noon, EMPTY, 5000);
+  const near = (v, w) => Math.abs(v - w) < 1e-6;
+  const edgeAt = calls.findIndex(([k, a]) => k === 'moveTo' && near(a[0], -0.1 * rect.w) && near(a[1], waterline(-0.1) * rect.h));
+  const cliffAt = calls.findIndex(([k, a]) => k === 'moveTo' && near(a[0], CLIFF.foot.x * rect.w) && near(a[1], CLIFF.foot.y * rect.h));
+  assert.ok(edgeAt >= 0 && edgeAt < cliffAt, `sand at ${edgeAt}, cliff at ${cliffAt}`);
+  const run = calls.slice(edgeAt, edgeAt + 40).filter(([k]) => k === 'lineTo');
+  assert.ok(run.some(([, a]) => a[1] >= rect.h && a[0] <= 0) && run.some(([, a]) => a[1] >= rect.h && a[0] >= rect.w), 'the sand reaches both bottom corners');
+  // and the sea is filled no lower than just under the water's edge
+  const seaFill = calls.find(([k, a]) => k === 'fillRect' && near(a[1], HORIZON * rect.h) && a[2] >= rect.w);
+  assert.ok(seaFill && seaFill[1][1] + seaFill[1][3] <= (BEACH.y0 + 0.031) * rect.h);
+});
+
+test('the lighthouse is a short red lantern on a squat white base on the fort roof, not a tower', () => {
+  const wall = FORT.y1 - FORT.y0 + 0.012; // battlements included
+  const whole = FORT.y0 - LANTERN.roof.y0;
+  assert.ok(whole / wall > 1.2 && whole / wall < 1.8, `the light is ${(whole / wall).toFixed(2)} walls tall`);
+  // the base is wider than it is tall in the jar's own proportions, and the lantern sits on it, narrower
+  assert.ok((TOWER.x1 - TOWER.x0) * rect.w > (TOWER.y1 - TOWER.y0) * rect.h);
+  assert.ok(LAMP_ROOM.x0 > TOWER.x0 && LAMP_ROOM.x1 < TOWER.x1 && LAMP_ROOM.y0 < TOWER.y0);
+  assert.ok(LAMP_ROOM.glass.y0 > LAMP_ROOM.y0 && LAMP_ROOM.glass.y1 < TOWER.y0);
+  assert.ok(LANTERN.y > LAMP_ROOM.glass.y0 && LANTERN.y < LAMP_ROOM.glass.y1, 'the lamp burns behind the glass');
+  assert.ok(GALLERY.x0 < TOWER.x0 && GALLERY.x1 > TOWER.x1 && GALLERY.x0 > FORT.x0, 'the gallery overhangs the base');
+  const day = paint(PHASE.noon);
+  assert.ok(day.fills.has(css(NAZARE.lanternRed)) && day.fills.has(css(NAZARE.towerWhite)));
+});
+
+test('one sun, and it sets into the sea: the city declines the shared disc and draws its own', () => {
+  assert.deepEqual(nazare.sky, { sun: false });
+  // up behind the land on the right, down into the open water on the left, at the horizon
+  const rise = sunSpot(SUN.rise + 0.01);
+  const set = sunSpot(SUN.set);
+  assert.ok(rise.x > CLIFF.top.x0 && set.x < CLIFF.foot.x - 0.15 && set.x > STREAK_CLEAR[0][1]);
+  assert.ok(Math.abs(set.y - HORIZON) < 1e-6 && sunSpot(0.43).y < 0.2);
+  for (let q = SUN.rise + 0.02; q <= SUN.set; q += 0.02) assert.ok(sunSpot(q).x < sunSpot(q - 0.02).x, `it crosses toward the sea at ${q}`);
+  // low only in the last stretch before sunset, never in the morning
+  assert.equal(sunLow(0.1), 0);
+  assert.equal(sunLow(0.4), 0);
+  assert.equal(sunLow(0.6), 0);
+  assert.ok(sunAltitude(0.71) < 0.42 && sunLow(0.71) > 0.2 && sunLow(0.76) > 0.95);
+  assert.equal(sunLow(0.82), 0);
+  assert.equal(seaSideLight(0.15), 0);
+  assert.equal(seaSideLight(0.7), 1);
+});
+
+test('no sun without a reading, in rain or fog, at night, or under a heavy sky', () => {
+  const clear = { ...EMPTY, known: true, kind: 'clear', cloudCover: 5 };
+  const heavy = { ...EMPTY, known: true, kind: 'cloud', cloudCover: 100 };
+  assert.ok(sunShare(clear) > 0.9);
+  assert.equal(sunShare(EMPTY), 0);
+  assert.equal(sunShare({ ...clear, kind: 'rain' }), 0);
+  assert.equal(sunShare({ ...clear, kind: 'fog' }), 0);
+  assert.ok(SUN_GLOOM <= 0.5);
+  assert.equal(sunShare(heavy), 0);
+  assert.ok(sunShare({ ...heavy, cloudCover: 40 }) > 0.3);
+  assert.equal(sunStrength(PHASE.night, clear), 0);
+  assert.ok(sunStrength(0.74, clear) > 0.4);
+  const arcs = (phase, weather) => {
+    const ctx = recordingCtx();
+    const out = drawSun(ctx, rect, phase, tint(sample(phase)), weather);
+    return [out > 0, ctx.calls.filter(([k]) => k === 'arc').length];
+  };
+  assert.deepEqual(arcs(PHASE.noon, clear), [true, 1]);
+  assert.deepEqual(arcs(0.74, clear), [true, 2], 'the low sun reddens');
+  assert.deepEqual(arcs(PHASE.noon, heavy), [false, 0]);
+  assert.deepEqual(arcs(PHASE.noon, EMPTY), [false, 0]);
+  assert.equal(paint(PHASE.noon, clear).out.sun, true);
+  assert.equal(paint(PHASE.noon, heavy).out.sun, false);
+  assert.equal(paint(PHASE.night, clear).out.sun, false);
+});
+
+test('the sun is the backdrop: the jar paints it with the sky, before the clouds, and paint draws no disc of its own', () => {
+  const clear = { ...EMPTY, known: true, kind: 'clear', cloudCover: 5 };
+  assert.equal(typeof nazare.backdrop, 'function');
+  const ctx = recordingCtx();
+  nazare.backdrop(ctx, rect, PHASE.noon, tint(sample(PHASE.noon)), clear);
+  assert.equal(ctx.calls.filter(([k]) => k === 'arc').length, 1);
+  const spot = sunSpot(PHASE.noon);
+  const discs = paint(PHASE.noon, clear).calls.filter(([k, a]) => k === 'arc' && Math.abs(a[0] - spot.x * rect.w) < 1 && Math.abs(a[1] - spot.y * rect.h) < 1);
+  assert.equal(discs.length, 0);
+});
+
+test('the low sun lays a warm path on the water and shines green-gold through the wave; a heavy sky lays none', () => {
+  const clear = { ...EMPTY, known: true, kind: 'clear', cloudCover: 5, sea: { waveHeight: 5, wavePeriod: 12, waveDir: null } };
+  const gold = (ctx) => [...ctx.fills].some((f) => f.startsWith('rgba(255, 1') || f.startsWith('rgba(255, 2'));
+  const path = (phase, weather) => {
+    const ctx = paint(phase, weather, 9000);
+    return ctx.calls.filter(([k, a]) => k === 'ellipse' && Math.abs(a[0] - sunSpot(phase).x * rect.w) < 0.08 * rect.w && a[1] > HORIZON * rect.h && a[1] < 0.7 * rect.h).length;
+  };
+  assert.ok(path(0.75, clear) >= 15, 'a path under the setting sun');
+  assert.equal(path(PHASE.noon, clear), 0);
+  assert.equal(path(0.75, { ...clear, kind: 'cloud', cloudCover: 100 }), 0);
+  assert.ok(gold(paint(0.75, clear, 9000)));
+  // the sea itself: warmer toward the horizon at sunset, grey-green under a heavy sky
+  const m = { night: 0, kind: 'clear', cloud: 0, wet: false, storm: false, fog: false, snow: false };
+  const tn = tint(sample(PHASE.noon));
+  const plain = seaTones(m, tn, { grey: 0, low: 0 });
+  const warm = seaTones(m, tn, { grey: 0, low: 1 });
+  const grey = seaTones(m, tn, { grey: 0.7, low: 0 });
+  const spread = (c) => Math.max(...c) - Math.min(...c);
+  assert.ok(warm.stops[1][1][0] > plain.stops[1][1][0] + 20, 'redder at sunset');
+  assert.ok(spread(grey.col) < spread(plain.col) - 15, 'drained under a heavy sky');
+  assert.deepEqual(plain.at(HORIZON), plain.stops[0][1]);
+  assert.deepEqual(plain.at(BEACH.y0), plain.stops[plain.stops.length - 1][1]);
+});
+
+test('a giant towers to about the foot of the fort, a calm sea stays small, and only big water curls', () => {
+  const L = layout(340, 396);
+  const top = (metres) => {
+    let best = 1;
+    const weather = { ...EMPTY, sea: { waveHeight: metres, wavePeriod: 12, waveDir: null } };
+    for (let t = 0; t < 18000; t += 100) for (const s of waveStates(L, weather, t, false)) best = Math.min(best, s.crest(WAVE.rock) / L.h);
+    return best;
+  };
+  assert.ok(top(10) > CLIFF.top.y && top(10) < CLIFF.top.y + 0.03, `10 m crest at ${top(10)}`);
+  assert.ok(top(9) < CLIFF.top.y + 0.06, `9 m crest at ${top(9)}`);
+  assert.ok(top(4.5) > CLIFF.top.y + 0.12, 'a big day is clearly lower than a giant one');
+  assert.ok(top(0.5) > WAVE.formY - 0.04, 'a calm sea barely stands');
+  assert.equal(curlAmount(waveSize(0.5)), 0);
+  assert.ok(curlAmount(waveSize(2)) < 0.25);
+  assert.ok(curlAmount(waveSize(4.5)) > 0.8);
+  assert.equal(curlAmount(waveSize(9)), 1);
+});
+
+test('behind the break the wall has fallen into its foam; ahead of it it still stands', () => {
+  const L = layout(340, 396);
+  const weather = { ...EMPTY, sea: { waveHeight: 8, wavePeriod: 12, waveDir: null } };
+  const s = waveState(L, weather, 0.6 * 18000, false);
+  assert.ok(s.brk < WAVE.rock && s.brk > WAVE.x0);
+  assert.equal(s.body(s.brk - 0.05), s.height(s.brk - 0.05));
+  assert.ok(Math.abs(s.body(s.brk + 0.12) - (1 - COLLAPSE) * s.height(s.brk + 0.12)) < 1e-9);
+  for (let xs = s.brk; xs < WAVE.x1; xs += 0.01) assert.ok(s.body(xs + 0.01) / s.height(xs + 0.01) <= s.body(xs) / s.height(xs) + 1e-9);
+});
+
+test('the plume a giant throws up the rock never climbs past the light', () => {
+  const L = layout(340, 396);
+  for (const metres of [2, 5, 10, 14]) {
+    const weather = { ...EMPTY, sea: { waveHeight: metres, wavePeriod: 12, waveDir: null } };
+    for (let t = 0; t < 18000; t += 150) {
+      for (const s of waveStates(L, weather, t, false)) {
+        const rise = sprayRise(s, L);
+        const h = s.height(WAVE.rock);
+        assert.ok(rise >= 0.5 * h - 1e-9 && rise <= 1.8 * h + 1e-9);
+        if (rise > 0.5 * h + 1e-9) assert.ok(s.crest(WAVE.rock) + 0.3 * h - rise >= L.Y(SPRAY_TOP) - 1e-6, `${metres} m at ${t}`);
+      }
+    }
+  }
+  assert.ok(SPRAY_TOP >= LANTERN.roof.y0);
+});
+
 
 test('the wave spans the bay: from past the left edge to behind the rock, never ending in open water', () => {
   assert.ok(WAVE.x0 < 0, 'it starts past the jar wall');
@@ -211,8 +373,9 @@ test('snow caps appear in snow only', () => {
 test('nightAmount and sunSide', () => {
   assert.equal(nightAmount(1), 0);
   assert.equal(nightAmount(0), 1);
-  assert.equal(sunSide(0.1), -1);
-  assert.equal(sunSide(0.6), 1);
+  // the morning sun is on the land side (the right), the evening one over the sea
+  assert.equal(sunSide(0.1), 1);
+  assert.equal(sunSide(0.6), -1);
 });
 
 test('buildPlates is deterministic', () => {
@@ -340,13 +503,19 @@ test('fog veils the whole scene; a clear day does not', () => {
 });
 
 test('bathers come down on a fine day only', () => {
-  const fine = paint(PHASE.noon, { ...EMPTY, kind: 'clear', code: 0, cloudCover: 0 }, 5000);
-  const wet = paint(PHASE.noon, { ...EMPTY, kind: 'rain', code: 61, cloudCover: 100 }, 5000);
-  const night = paint(PHASE.night, { ...EMPTY, kind: 'clear', code: 0, cloudCover: 0 }, 5000);
+  const warm = { ...EMPTY, known: true, kind: 'clear', code: 0, cloudCover: 0, temperature: 24 };
+  const fine = paint(PHASE.noon, warm, 5000);
+  const wet = paint(PHASE.noon, { ...warm, kind: 'rain', code: 61, cloudCover: 100 }, 5000);
+  const night = paint(PHASE.night, warm, 5000);
+  const cold = paint(PHASE.noon, { ...warm, temperature: 12 }, 5000);
+  const swell = paint(PHASE.noon, { ...warm, sea: { waveHeight: 9, wavePeriod: 14, waveDir: null } }, 5000);
   const has = (ctx) => [...ctx.fills].some((f) => f.startsWith(`rgba(${NAZARE.umbrellas[0].join(', ')}, `));
-  assert.ok(has(fine), 'umbrellas on a fine noon');
-  assert.ok(!has(wet), 'none in the rain');
+  const flag = (ctx) => [...ctx.fills].some((f) => f.startsWith(`rgba(${NAZARE.flagRed.join(', ')}, `));
+  assert.ok(has(fine) && fine.out.umbrellas && !fine.out.flag && !flag(fine), 'umbrellas on a fine warm noon, no flag');
+  assert.ok(!has(wet) && !wet.out.umbrellas, 'none in the rain');
   assert.ok(!has(night), 'none at night');
+  assert.ok(!has(cold), 'none on a cold day');
+  assert.ok(!has(swell) && swell.out.flag && flag(swell), 'a 9 m swell: no umbrellas, the red flag is up');
 });
 
 test('at night the beam paints no wedge that climbs above the lantern', () => {
@@ -369,4 +538,60 @@ test('waveStates hands back the same answer for the same moment, a fresh one for
   const c = waveStates(layout(340, 440, 10, 20), EMPTY, 5100, false);
   assert.notEqual(a, c);
   assert.notEqual(waveStates(layout(300, 440, 10, 20), EMPTY, 5100, false), c);
+});
+
+test('water(rect): open sea inside the rect, below the horizon, left of the headland, above the beach', () => {
+  const rect = { x: 12, y: 30, w: 200, h: 260 };
+  const r = nazare.water(rect);
+  assert.ok(r.w > 0 && r.h > 0);
+  assert.ok(r.x >= rect.x && r.y >= rect.y && r.x + r.w <= rect.x + rect.w && r.y + r.h <= rect.y + rect.h);
+  assert.ok(r.y > rect.y + HORIZON * rect.h);
+  assert.ok(r.x + r.w < rect.x + CLIFF.foot.x * rect.w);
+  assert.ok(r.y + r.h < rect.y + BEACH.y0 * rect.h);
+});
+
+test('fishing boats work the horizon at night: none by day, in a storm or under a giant swell', () => {
+  const clear = { ...EMPTY, known: true, kind: 'clear', cloudCover: 5 };
+  const withSea = (h, more = {}) => ({ ...clear, sea: { waveHeight: h, wavePeriod: 12, waveDir: null }, ...more });
+  assert.equal(paint(PHASE.night, clear, 5000).out.boats, 3);
+  assert.equal(paint(PHASE.night, withSea(4.5), 5000).out.boats, 2);
+  assert.equal(paint(PHASE.night, withSea(9), 5000).out.boats, 0);
+  assert.equal(paint(PHASE.night, withSea(2, { kind: 'storm' }), 5000).out.boats, 0);
+  assert.equal(paint(PHASE.noon, clear, 5000).out.boats, 0);
+  const lit = (ctx) => [...ctx.fills].some((f) => f.startsWith(`rgba(${NAZARE.boatLight.join(', ')}, `));
+  assert.ok(lit(paint(PHASE.night, clear, 5000)) && !lit(paint(PHASE.noon, clear, 5000)));
+});
+
+test('the beam shows in fog and rain as light hanging along it, and not on a clear night', () => {
+  const glows = (phase, kind) => {
+    let n = 0;
+    const ctx = new Proxy({ createRadialGradient: () => { n += 1; return { addColorStop() {} }; }, createLinearGradient: () => ({ addColorStop() {} }) }, {
+      get: (t, k) => (k in t ? t[k] : () => {}),
+      set: (t, k, v) => { t[k] = v; return true; },
+    });
+    drawBeamHaze(ctx, rect, phase, tint(sample(phase)), { ...EMPTY, kind }, 2000);
+    return n;
+  };
+  assert.ok(glows(PHASE.night, 'fog') >= 3);
+  assert.ok(glows(PHASE.night, 'rain') >= 3);
+  assert.equal(glows(PHASE.night, 'clear'), 0);
+  assert.equal(glows(PHASE.noon, 'fog'), 0);
+});
+
+test('the rock is built once: strata of more than one colour from above the top to below the foot, a ridge inside the rock, cracks, scrub', () => {
+  const p = buildPlates(340, 396);
+  assert.ok(p.strata.length >= 7 && p.strata[0].y < CLIFF.top.y && p.strata[p.strata.length - 1].y > CLIFF.foot.y);
+  for (let i = 1; i < p.strata.length; i++) {
+    assert.ok(p.strata[i].y > p.strata[i - 1].y);
+    assert.notEqual(p.strata[i].tone, p.strata[i - 1].tone, 'two neighbours share a colour');
+  }
+  assert.ok(new Set(p.strata.map((s) => s.tone)).size >= 4);
+  assert.ok(Math.max(...p.strata.map((s) => s.tone)) < NAZARE.strata.length);
+  for (const r of p.ridge) assert.ok(r.x > cliffFaceX(Math.min(r.y, CLIFF.foot.y), p) + 0.03 && r.x < FORT.x1, `ridge at ${r.x}, ${r.y}`);
+  assert.equal(p.crevices.length, 4);
+  assert.ok(p.tufts.length >= 6 && p.boulders.length > 4);
+  for (const c of p.crevices.flat()) assert.ok(c.x > cliffFaceX(c.y, p) && c.y > CLIFF.top.y && c.y < CLIFF.bottom);
+  // the two faces are lit by the hour: the strata show by day in every colour
+  const day = paint(PHASE.noon);
+  for (const t of new Set(p.strata.map((s) => s.tone))) assert.ok(day.fills.has(css(NAZARE.strata[t])), `stratum ${t}`);
 });

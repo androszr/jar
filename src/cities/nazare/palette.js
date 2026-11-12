@@ -58,6 +58,35 @@ export const NAZARE = {
   skiTrim: [200, 60, 48],
   towLine: [20, 24, 30],
   skiWake: [236, 246, 252],
+  // the sun going down into the sea, and what it does to the water
+  sunLow: [255, 148, 72],
+  sunPath: [255, 216, 150],
+  seaGold: [222, 150, 112],
+  seaGrey: [96, 112, 106],
+  seaShallow: [104, 168, 164],
+  faceGreen: [84, 164, 150],
+  faceBacklit: [204, 226, 128],
+  // the bedded rock of the headland: ochre and red strata, cracks, scrub, runnels
+  strata: [[178, 134, 90], [150, 90, 64], [200, 164, 118], [122, 88, 70], [166, 112, 76]],
+  crevice: [40, 28, 28],
+  cliffLit: [255, 228, 184],
+  cliffScrub: [80, 100, 62],
+  runnel: [240, 248, 252],
+  // the lighthouse: a red iron lantern on a squat white base
+  lanternRed: [192, 44, 36],
+  lanternRedShade: [116, 26, 30],
+  gallery: [52, 36, 38],
+  // the beach in front, the flag, the towels
+  sandNear: [186, 156, 114],
+  sandDusk: [120, 100, 104],
+  sandRipple: [120, 96, 72],
+  flagRed: [222, 40, 36],
+  flagPole: [236, 232, 220],
+  towels: [[240, 240, 232], [90, 160, 190], [236, 150, 90]],
+  vests: [[236, 120, 40], [238, 206, 60], [226, 60, 60]],
+  // the fishing boats out at night
+  boatLight: [255, 208, 132],
+  boatHull: [8, 12, 20],
   // weather
   snowCap: [236, 242, 250],
   dull: [120, 130, 138],

@@ -4,6 +4,7 @@ import nazare from '../src/cities/nazare/index.js';
 import { CLIFF, FORT, TOWER, WAVE, STREAK_CLEAR, buildPlates, layout, cliffFaceX, waveStates } from '../src/cities/nazare/scene.js';
 import {
   CROWD, MERLON, SPECTATOR_SPOTS, spectatorCount, cheerAmount, GULLS, gullSpots, wetAt, rockWet, PATH, PATH_LAMPS, DOOR, BOARDS, RESCUE, rescueSpot,
+  PATH_HIDDEN, pathPieces, pathGaps, RUNNELS, runnelAt, fallAt, runnels,
 } from '../src/cities/nazare/cliff.js';
 import { NAZARE } from '../src/cities/nazare/palette.js';
 import { EMPTY } from '../src/weather.js';
@@ -191,4 +192,64 @@ test('every detail paints with no weather at all, at noon, dusk and night', () =
   for (const ph of Object.values(PHASE)) {
     for (const t of [0, 7000, 13000]) assert.doesNotThrow(() => paint(ph, EMPTY, t));
   }
+});
+
+test('the path shows in pieces: every leg is partly hidden behind the rock, and scrub grows over each gap', () => {
+  const pieces = pathPieces();
+  assert.equal(pieces.length, 2 * (PATH.length - 1));
+  assert.equal(pathGaps().length, PATH.length - 1);
+  for (let i = 1; i < PATH.length; i++) {
+    const [ax, ay] = PATH[i - 1];
+    const [bx, by] = PATH[i];
+    const along = ([x, y]) => ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2);
+    const [[p0, p1], [p2, p3]] = [pieces[2 * (i - 1)], pieces[2 * (i - 1) + 1]];
+    const ts = [p0, p1, p2, p3].map(along);
+    assert.ok(ts[0] >= 0 && ts[0] < ts[1] && ts[1] < ts[2] && ts[2] < ts[3] && ts[3] <= 1, `leg ${i}: ${ts}`);
+    assert.ok(Math.abs(ts[2] - ts[1] - PATH_HIDDEN) < 1e-9, 'the gap is the hidden stretch');
+    const g = along(pathGaps()[i - 1]);
+    assert.ok(g > ts[1] && g < ts[2], 'the scrub sits in the gap');
+  }
+  assert.ok(has(paint(PHASE.noon).fills, NAZARE.cliffScrub));
+});
+
+test('after a big wave hits, water drains down the rock in white runnels for a few seconds; a small sea leaves none', () => {
+  assert.equal(runnelAt(WAVE.peelFrom), 0);
+  assert.ok(runnelAt(0.65) > 0.95);
+  assert.equal(runnelAt(0.97), 0);
+  assert.equal(fallAt(0.5), 0);
+  assert.equal(fallAt(0.9), 1);
+  for (let p = 0.02; p <= 1; p += 0.02) assert.ok(fallAt(p) >= fallAt(p - 0.02), 'the heads only run down');
+  // a few seconds of a roll: the 18 s roll of a 12 s swell drains for 3 to 8 s
+  let on = 0;
+  for (let p = 0; p < 1; p += 0.001) if (runnelAt(p) > 0.05) on += 0.001;
+  assert.ok(on * 18 > 3 && on * 18 < 8, `drains for ${(on * 18).toFixed(1)} s`);
+  const peak = (h) => {
+    let best = { amount: 0, t: 0 };
+    for (let t = 0; t < 18000; t += 250) {
+      const r = runnels(waveStates(L, sea(h), t, false));
+      if (r.amount > best.amount) best = { ...r, t };
+    }
+    return best;
+  };
+  assert.equal(peak(0.5).amount, 0);
+  assert.equal(peak(2).amount, 0);
+  assert.ok(peak(4.5).amount > 0.5 && peak(9).amount > 0.95 && peak(9).reach <= 0.32);
+  assert.ok(RUNNELS >= 4);
+  assert.ok(has(paint(PHASE.noon, sea(9), peak(9).t).strokes, NAZARE.runnel));
+  assert.ok(!has(paint(PHASE.noon, sea(2), peak(9).t).strokes, NAZARE.runnel));
+});
+
+test('the safety ski patrols the back of the break and trails a white wake', () => {
+  const noon = lightAt(PHASE.noon);
+  let left = Infinity;
+  let right = -Infinity;
+  for (let t = 0; t < 30000; t += 300) {
+    const r = rescueSpot(L, sea(8), waveStates(L, sea(8), t, false), t, noon);
+    assert.ok(r.way >= -1 && r.way <= 1);
+    left = Math.min(left, r.x);
+    right = Math.max(right, r.x);
+  }
+  assert.ok(right - left > 0.04 * L.w && left > L.X(STREAK_CLEAR[0][1]) && right < L.X(WAVE.rock - 0.1));
+  const seen = Array.from({ length: 72 }, (_, i) => paint(PHASE.noon, sea(8), i * 250)).find((c) => c.out.rescue);
+  assert.ok(has(seen.fills, NAZARE.skiWake));
 });
