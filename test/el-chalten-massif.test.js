@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_WIND, HIDDEN_COVER, CAPPED_COVER, SMOKING_WIND, BANDS, coverOf, windOf, visibilityBand, plumeLength, plumeSide, glowLine, glowStrength,
-  silhouetteAmount, mirrorAmount, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf,
+  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf,
 } from '../src/cities/el-chalten/massif.js';
 import { EMPTY, KINDS } from '../src/weather.js';
 
@@ -160,4 +160,59 @@ test('the cadence: still in calm, 250 in wind or cloud, 400 for headlamps, doubl
   assert.equal(cadenceOf(reading({ windSpeed: 30 }), { nowMs: T_LAMPS }, location), 250, 'the smallest wins');
   assert.equal(cadenceOf(calm, { nowMs: T_LAMPS, reduced: true }, location), 800);
   assert.equal(cadenceOf(calm, { nowMs: T_NOON, reduced: true }, location), 0);
+});
+
+test('the first light starts on the tips and reaches the foot; a height above the line has it, below has none', () => {
+  assert.ok(glowLine(0.073) < GLOW_TOP + 0.03, 'only the tips at first');
+  assert.ok(Math.abs(glowLine(0.103) - GLOW_FOOT) < 1e-9, 'the whole wall at the end');
+  assert.equal(glowAt(0.085, 0.3, 0.085), 1);
+  assert.equal(glowAt(0.3, 0.3, 0.085), 0);
+  assert.equal(glowAt(0.4, 0.3, 0.085), 0);
+  assert.ok(glowAt(0.2, 0.3, 0.085) > 0 && glowAt(0.2, 0.3, 0.085) < 1);
+  assert.equal(glowAt(0.2, 0, 0.085), 0, 'no line, no light');
+});
+
+test('the evening sun: none at noon or at night, strong in the evening, sinking all the while', () => {
+  assert.equal(eveningSun(0.4).k, 0);
+  assert.equal(eveningSun(0.92).k, 0);
+  assert.ok(eveningSun(0.7).k > 0.9);
+  assert.ok(eveningSun(0.74).sink > eveningSun(0.66).sink);
+  assert.ok(silhouetteAmount(0.7) > 0.7, 'the wall is already a silhouette an hour and a half before sunset');
+});
+
+test('the moon: down by day, up at night; a full one high up gives light, a new one none', () => {
+  const full = Date.UTC(2026, 0, 3, 4, 0);
+  const newMoon = Date.UTC(2026, 0, 18, 22, 0);
+  assert.equal(moonLight(0.4, full).up, false);
+  assert.equal(moonLight(0.4, full).k, 0);
+  const high = moonLight(0.96, full);
+  assert.ok(high.up && high.k > 0.8 && high.x >= 0.15 && high.x <= 0.85);
+  assert.ok(moonLight(0.96, newMoon).k < 0.05);
+});
+
+test('the ghost window opens for a few seconds once in a while, never under reduced motion', () => {
+  assert.equal(ghostWindow(0), 0);
+  assert.ok(Math.abs(ghostWindow(GHOST_MS / 2) - 1) < 1e-9);
+  assert.equal(ghostWindow(GHOST_MS), 0);
+  assert.equal(ghostWindow(GHOST_EVERY_MS - 1), 0);
+  assert.ok(ghostWindow(GHOST_EVERY_MS * 7 + GHOST_MS / 4) > 0.4);
+  assert.equal(ghostWindow(GHOST_MS / 2, true), 0);
+  assert.equal(ghostWindow(undefined), 0);
+  assert.equal(ghostWindow(-GHOST_EVERY_MS + GHOST_MS / 2), 1, 'a moment before the epoch still has its windows');
+});
+
+test('wind\'s marks: spindrift in a strong wind, a lens on a windy clear day, whitecaps on open water', () => {
+  assert.equal(spindriftAmount(20), 0);
+  assert.ok(spindriftAmount(45) > 0 && spindriftAmount(45) < 1);
+  assert.equal(spindriftAmount(200), 1);
+  assert.equal(spindriftAmount(NaN), 0);
+  assert.equal(lensAmount(5, 'clear', 10), 0);
+  assert.equal(lensAmount(15, 'clear', 10), 0, 'the default wind with no reading makes none');
+  assert.ok(lensAmount(22, 'clear', 10) > 0.5);
+  assert.equal(lensAmount(40, 'capped', 70), 0);
+  assert.equal(lensAmount(40, 'hidden', 95), 0);
+  assert.equal(whitecapCount(10, false), 0);
+  assert.ok(whitecapCount(40, false) > whitecapCount(28, false));
+  assert.equal(whitecapCount(60, true), 0, 'none on ice');
+  assert.ok(whitecapCount(1e9, false) <= 26);
 });

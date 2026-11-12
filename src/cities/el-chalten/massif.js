@@ -1,6 +1,7 @@
 // El Chalten's numbers: the visibility of the peak and everything the weather
 // and the clock turn into plain figures for the drawing. Pure, canvas-free.
-import { clamp, lerp, smoothstep } from '../../clock.js';
+import { clamp, lerp, smoothstep, moonPos } from '../../clock.js';
+import { moonPhase } from '../../moon.js';
 import { cloudAmount } from '../../weather.js';
 import { sunTimes } from '../../realclock.js';
 import { zoneOffsetMinutes, localDate as wallDay } from '../../placeclock.js';
@@ -16,6 +17,17 @@ export const MAX_WIND = 150; // km/h: a bad answer cannot make any loop or figur
 export const HEADLAMP_MINUTES = 90;
 export const GLOW_WALK = 0.025; // phase: about 40 minutes at midsummer's pace, about 22 at midwinter's
 export const BANDS = ['clear', 'smoking', 'capped', 'hidden'];
+// Where the light starts on the tips and where it ends, as shares of the body height.
+export const GLOW_TOP = 0.13;
+export const GLOW_FOOT = 0.52;
+// A hidden day: the ragged cloud base (a share of the body height: the moraine's foot and
+// the shore stay in view under it), and the brief thin window that shows a ghost of the wall.
+export const HIDDEN_EDGE = 0.405;
+export const GHOST_EVERY_MS = 38000;
+export const GHOST_MS = 7000;
+export const SPINDRIFT_FROM = 30;
+export const LENS_FROM = 16;
+export const WHITECAP_FROM = 26;
 
 const WET = new Set(['fog', 'drizzle', 'rain', 'snow', 'storm']);
 const DAY_MS = 86400000;
@@ -76,14 +88,66 @@ export function glowStrength(phase) {
 }
 export function glowLine(phase) {
   if (!(phase > 0.07 && phase < 0.08 + GLOW_WALK)) return 0;
-  return lerp(0.25, 0.5, clamp((phase - 0.08) / GLOW_WALK));
+  return lerp(GLOW_TOP, GLOW_FOOT, clamp((phase - 0.072) / 0.03));
+}
+// How much of the first light reaches a height `y` (a share of the body) with the line at
+// `line`: full on the tips, none at the line. `top` is the summit's height.
+export function glowAt(y, line, top) {
+  if (!(line > top)) return 0;
+  return clamp((line - y) / (line - top));
 }
 
-// The wall against the setting sun: 0 until golden, 1 at sunset, 0 by night.
+// The wall against the evening sun: the sun goes behind the massif long before it
+// sets, so the wall darkens through the late afternoon, is a silhouette from about
+// an hour and a half before sunset, and fades into the night after it.
 export function silhouetteAmount(phase) {
   const p = phase - Math.floor(phase);
-  if (p < 0.68 || p >= 0.88) return 0;
-  return p < 0.76 ? smoothstep((p - 0.68) / 0.08) : 1 - smoothstep((p - 0.76) / 0.12);
+  if (p < 0.63 || p >= 0.88) return 0;
+  return p < 0.76 ? smoothstep((p - 0.63) / 0.1) : 1 - smoothstep((p - 0.76) / 0.12);
+}
+// The evening sun behind the wall: how strong its glow is (0..1) and how far it has
+// sunk (0 high above the col, 1 gone down behind it).
+export function eveningSun(phase) {
+  const p = phase - Math.floor(phase);
+  if (p < 0.58 || p > 0.86) return { k: 0, sink: 0 };
+  return { k: smoothstep((p - 0.58) / 0.08) * (1 - smoothstep((p - 0.79) / 0.07)), sink: clamp((p - 0.6) / 0.17) };
+}
+
+// The moon the shared sky draws, worked out the same way (the sky does not hand it
+// to a scene): where it stands as shares of the jar, and how much light it gives,
+// 0 when it is down or new, 1 for a full moon high up.
+export function moonLight(phase, nowMs) {
+  const mp = moonPos(phase);
+  if (!(mp.alt > 0)) return { up: false, x: 0.5, y: 0.4, k: 0 };
+  return {
+    up: true,
+    x: clamp((mp.x - 400) / 1000, 0.15, 0.85),
+    y: 0.4 - 0.28 * mp.alt,
+    k: moonPhase(nowMs).illumination * clamp(mp.alt * 2.5),
+  };
+}
+
+// A hidden day's thin window: 0 almost always, rising to 1 and back over GHOST_MS
+// once every GHOST_EVERY_MS. None under reduced motion, or without a moment.
+export function ghostWindow(nowMs, reduced = false) {
+  if (reduced || typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return 0;
+  const t = ((nowMs % GHOST_EVERY_MS) + GHOST_EVERY_MS) % GHOST_EVERY_MS;
+  if (t >= GHOST_MS) return 0;
+  const s = Math.sin((Math.PI * t) / GHOST_MS);
+  return s * s;
+}
+
+// Wind's other marks, each 0..1: snow blowing off the ridges, a lens of cloud by
+// the summit on a windy clear day, and how many whitecaps the lake carries.
+export const spindriftAmount = (windKmh) => (Number.isFinite(windKmh) ? clamp((windKmh - SPINDRIFT_FROM) / 30) : 0);
+export function lensAmount(windKmh, band, cover) {
+  if (band !== 'clear' && band !== 'smoking') return 0;
+  if (!Number.isFinite(windKmh)) return 0;
+  return smoothstep((windKmh - LENS_FROM) / 8) * (1 - clamp((cover || 0) / 100) * 0.5);
+}
+export function whitecapCount(windKmh, frozen) {
+  if (frozen || !Number.isFinite(windKmh) || windKmh < WHITECAP_FROM) return 0;
+  return Math.min(26, 5 + Math.round((windKmh - WHITECAP_FROM) * 0.5));
 }
 
 // Seasons run the southern way round.
@@ -131,7 +195,8 @@ export function headlampCount(minutes) {
 export function facetShade(facing, phase, light) {
   const p = phase - Math.floor(phase);
   const day = clamp((light - 0.1) / 0.5);
-  const gain = (p < 0.4 ? 0.45 : 0.9) * day * (1 - silhouetteAmount(p));
+  // the morning sun stands behind the viewer and lights every face; by noon it is round to the north
+  const gain = lerp(0.6, 0.96, smoothstep((p - 0.18) / 0.22)) * day * (1 - silhouetteAmount(p));
   return clamp(0.5 + 0.5 * clamp(facing, -1, 1) * gain);
 }
 

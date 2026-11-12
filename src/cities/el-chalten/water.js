@@ -2,10 +2,11 @@
 // the wall in still air (red at sunrise), ripples as the wind rises, white and
 // mirror-less when it is frozen.
 import { clamp, wrap } from '../../clock.js';
-import { css, mix } from '../../look/index.js';
+import { css, mix, sheen } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
 import { EL_CHALTEN as EC } from './palette.js';
-import { SEED, SHORE, GRAVEL } from './scene.js';
+import { whitecapCount } from './massif.js';
+import { SEED, SHORE, GRAVEL, SUMMIT, SUN_X, glowShare } from './scene.js';
 
 // How tall the mirrored wall stands in the water, as a share of the wall: it ends above the gravel.
 export const MIRROR_SQUASH = 0.4;
@@ -36,9 +37,17 @@ export function drawLake(ctx, L, phase, tint, plates, nowMs, m, reflect) {
     ctx.translate(0, y0);
     ctx.scale(1, -MIRROR_SQUASH);
     ctx.translate(0, -y0);
-    ctx.globalAlpha = 0.5 * m.mirror;
+    // the mirror is clearest when the wall is the brightest thing there is: at first light
+    ctx.globalAlpha = (0.5 + 0.3 * m.glowK) * m.mirror;
     reflect();
     ctx.restore();
+    // ... and then the water under the wall carries its red
+    const warm = m.mirror * glowShare(m, 0.2);
+    if (warm > 0) sheen(ctx, L.X(SUMMIT.x - 0.02), L.Y(SHORE + 0.07), L.w * 0.4, L.h * 0.09, EC.ember, 0.22 * warm);
+  }
+  // the evening sun behind the wall leaves a soft warm path on the water below the col
+  if (!m.frozen && m.band !== 'hidden' && m.sil > 0 && m.n < 1) {
+    sheen(ctx, L.X(SUN_X), L.Y(SHORE + 0.05), L.w * 0.3, L.h * 0.07, EC.sunset, 0.16 * m.sil * (1 - m.n) * (1 - (m.cover / 100) * 0.8));
   }
 
   // ripples drift with the wind, the more the stronger it blows
@@ -57,11 +66,52 @@ export function drawLake(ctx, L, phase, tint, plates, nowMs, m, reflect) {
     }
     ctx.stroke();
   }
+  // whitecaps when it blows: short crests that rise, run with the wind and fall
+  const caps = whitecapCount(m.wind, m.frozen);
+  if (caps > 0) {
+    const way = Math.abs(m.side) < 0.2 ? 0.3 : m.side;
+    const day = 1 - m.n * 0.75;
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < caps; i++) {
+      const life = wrap(nowMs / (2200 + 1400 * hash2(i, SEED + 51)) + hash2(i, SEED + 52));
+      const near = hash2(i, SEED + 53);
+      const x = L.X(wrap(hash2(i, SEED + 54) + way * 0.03 * life));
+      const y = L.Y(SHORE + 0.018 + (GRAVEL.y0 - SHORE - 0.035) * near);
+      const w = L.w * (0.01 + 0.016 * near);
+      ctx.strokeStyle = css(EC.whitecap, 0.85 * Math.sin(Math.PI * life) * day);
+      ctx.beginPath();
+      ctx.moveTo(x - w, y + 0.6);
+      ctx.quadraticCurveTo(x, y - 1.4 - near, x + w, y + 0.6);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
+  // the moon's track: a column of dashes under the moon, widening towards the shore,
+  // shimmering; on ice a soft sheen instead
+  if (m.moon.k > 0.05) {
+    const mx = L.X(m.moon.x);
+    if (m.frozen) {
+      sheen(ctx, mx, L.Y(SHORE + 0.07), L.w * 0.16, L.h * 0.07, EC.moonTrack, 0.2 * m.moon.k);
+    } else {
+      const rows = 11;
+      for (let i = 0; i < rows; i++) {
+        const t = i / (rows - 1);
+        const shimmer = 0.6 + 0.4 * Math.sin(nowMs / 900 + i * 2.1);
+        const w = L.w * (0.012 + 0.05 * t) * (0.75 + 0.5 * hash2(i, SEED + 56));
+        const x = mx + (hash2(i, SEED + 57) - 0.5) * L.w * 0.03 * (0.4 + t);
+        ctx.fillStyle = css(EC.moonTrack, 0.5 * m.moon.k * shimmer * (0.5 + 0.5 * t) * (0.6 + 0.4 * m.mirror));
+        ctx.beginPath();
+        ctx.ellipse(x, L.Y(SHORE + 0.012 + (GRAVEL.y0 - SHORE - 0.03) * t), w, Math.max(0.7, L.h * 0.0022), 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
   // the ice: wind-blown drifts of snow and a few dark cracks
   if (m.frozen) {
     const span = GRAVEL.y0 - SHORE - 0.03;
     ctx.lineWidth = 2;
-    ctx.strokeStyle = css(mix(EC.snow, EC.snowNight, m.n), 0.6);
+    ctx.strokeStyle = css(mix(mix(EC.snow, EC.snowShade, 0.25), EC.snowNight, m.n), 0.6);
     ctx.beginPath();
     for (let i = 0; i < 9; i++) {
       const x = hash2(i, SEED + 41);

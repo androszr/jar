@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import elChalten from '../src/cities/el-chalten/index.js';
-import { deckHeight } from '../src/cities/el-chalten/massif.js';
-import { buildPlates, facetColour, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT } from '../src/cities/el-chalten/scene.js';
+import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS } from '../src/cities/el-chalten/massif.js';
+import { DECK_SOFT, lensSpot, sunSpot } from '../src/cities/el-chalten/air.js';
+import { condorAt, lapAt, CONDOR_LOOP_MS } from '../src/cities/el-chalten/shore.js';
+import { buildPlates, facetColour, emberTone, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
 import { MIRROR_SQUASH } from '../src/cities/el-chalten/water.js';
 import { EL_CHALTEN as EC } from '../src/cities/el-chalten/palette.js';
 import { EMPTY } from '../src/weather.js';
@@ -76,15 +78,24 @@ test('the geometry: Fitz Roy above Poincenot, both high, the far shore at half, 
   // the mirrored wall ends above the gravel
   assert.ok(SHORE + (SHORE - SUMMIT.y) * MIRROR_SQUASH <= GRAVEL.y0 + 1e-9);
   assert.ok(Math.min(...plates.moraine.outline.map((p) => p[0])) <= 0);
-  assert.ok(Math.max(...plates.glacier.outline.map((p) => p[0])) >= 1);
+  // the wall is the subject: the moraine and the glacier lie low, so most of the granite shows
+  assert.ok(crest >= 0.39, 'the moraine is a low hill');
+  const ice = plates.glacier.outline;
+  assert.ok(Math.min(...ice.map((p) => p[1])) >= 0.32 && Math.max(...ice.map((p) => p[1])) <= 0.45, 'the glacier hangs at the foot of the wall');
+  assert.ok(Math.min(...ice.map((p) => p[0])) >= 0.38 && Math.max(...ice.map((p) => p[0])) <= 0.96);
+  // Fitz Roy is the dominant tower: taller above the water than anything else by a fifth
+  const others = [plates.poincenot, ...plates.needles, ...plates.south, plates.far].map((b) => Math.min(...b.outline.map((p) => p[1])));
+  for (const y of others) assert.ok(SHORE - SUMMIT.y >= 1.2 * (SHORE - y));
+  // each layer further off is paler
+  assert.ok(HAZE.far > HAZE.south && HAZE.south > HAZE.wall);
 });
 
 test('every polygon point sits inside the glass frame; the plates are deterministic', () => {
   const pts = [];
-  for (const b of [plates.far, plates.poincenot, plates.fitzroy, ...plates.needles]) {
+  for (const b of [plates.far, plates.poincenot, plates.fitzroy, ...plates.needles, ...plates.south]) {
     pts.push(...b.outline, ...b.facets.flatMap((f) => f.poly), ...b.ridges.flat(), ...b.couloirs.flat(), ...b.streaks.flat(), ...b.grain.flat());
   }
-  pts.push(...plates.glacier.outline, ...plates.glacier.crevasses.flat(), ...plates.glacier.melt, ...plates.moraine.outline, ...plates.moraine.slope, ...plates.moraine.patches.flat(),
+  pts.push(...plates.glacier.outline, ...plates.glacier.crevasses.flat(), ...plates.glacier.melt, ...plates.glacier.cliff, ...plates.glacier.bench, ...plates.glacier.shades.flat(), ...plates.caps.flat(), ...plates.moraine.outline, ...plates.moraine.slope, ...plates.moraine.patches.flat(),
     ...plates.moraine.planes.flatMap((p) => p.poly), ...plates.snowfields.flat());
   for (const [x, y] of pts) assert.ok(x >= -0.1 && x <= 1.1 && y >= -0.1 && y <= 0.8, `${x},${y}`);
   assert.deepEqual(buildPlates(340, 396), buildPlates(340, 396));
@@ -96,7 +107,8 @@ test('the rock is built from many facets, ridges, gullies, snow streaks and grai
   assert.ok(plates.poincenot.facets.length >= 6 && plates.poincenot.grain.length >= 30);
   assert.equal(plates.needles.length, 3);
   for (const n of plates.needles) assert.ok(n.facets.length >= 2);
-  assert.ok(plates.glacier.crevasses.length >= 5 && plates.glacier.outcrops.length === 3);
+  assert.equal(plates.south.length, 3);
+  assert.ok(plates.glacier.crevasses.length >= 5);
   assert.ok(plates.moraine.scree.length >= 40 && plates.moraine.patches.length === 3);
   for (const fc of f.facets) assert.ok(fc.facing >= -1 && fc.facing <= 1);
 });
@@ -135,9 +147,9 @@ test('the hiker\'s rock and every headlamp keep clear of both glass streaks, whi
   assert.ok(ROCK.y + ROCK.h <= plateShare + 1e-9);
 });
 
-test('paint returns the nine keys of the test surface', () => {
+test('paint returns the ten keys of the test surface', () => {
   assert.deepEqual(Object.keys(paint(PHASE.noon, reading({})).out).sort(),
-    ['band', 'condor', 'frozen', 'glow', 'headlamps', 'hiker', 'mirror', 'plume', 'season']);
+    ['band', 'condor', 'frozen', 'glow', 'headlamps', 'hiker', 'mirror', 'plume', 'season', 'tourists']);
 });
 
 test('a clear noon in summer: the condor and the hiker are out, no plume, the lake mirrors', () => {
@@ -278,7 +290,7 @@ test('the lake under a cap mirrors the deck too; a clear lake does not', () => {
   const still = paint(PHASE.noon, reading({ cloudCover: 95, windSpeed: 4 }));
   assert.ok(still.out.band === 'hidden' && still.out.mirror > 0);
   const flip = still.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -MIRROR_SQUASH);
-  assert.ok(still.calls.slice(flip).some(([k, a]) => k === 'fillRect' && a[0] === 0 && a[1] === 0 && a[2] === 340 && Math.abs(a[3] - (SHORE - 0.035 - 0.05) * 396) < 1e-6), 'the hidden deck is mirrored');
+  assert.ok(still.calls.slice(flip).some(([k, a]) => k === 'fillRect' && a[0] === 0 && a[1] === 0 && a[2] === 340 && Math.abs(a[3] - (HIDDEN_EDGE - DECK_SOFT.hidden) * 396) < 1e-6), 'the hidden deck is mirrored');
 });
 
 test('a storm flashes in front of the scene, not only in the shared sky', () => {
@@ -286,4 +298,135 @@ test('a storm flashes in front of the scene, not only in the shared sky', () => 
   const full = (c) => c.calls.slice(-80).some(([k, a]) => k === 'fillRect' && a[2] === 340 && a[3] === 396);
   assert.ok(full(paint(PHASE.noon, storm, 1680)), 'at the burst\'s peak the flash covers the jar last');
   assert.ok(!full(paint(PHASE.noon, storm, 6000)), 'between bursts there is none');
+});
+
+// ---- the look-and-feel pass --------------------------------------------------
+const T_FULL_MOON = Date.UTC(2026, 0, 3, 4, 0); // 01:00 in El Chalten, the moon full and high
+const T_NEW_MOON = Date.UTC(2026, 0, 18, 22, 0) + 6 * 3600000;
+const rgb = (s) => s.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+
+test('the glacier hangs: an ice cliff under its front, crevasses down the flow, no dark patches on the ice', () => {
+  const g = plates.glacier;
+  assert.equal(g.outcrops, undefined, 'nothing dark sits on the ice');
+  // the cliff hangs below the front, never above it
+  const frontY = (x) => { for (let i = 1; i < g.front.length; i++) if (x <= g.front[i][0]) { const [x0, y0] = g.front[i - 1]; const [x1, y1] = g.front[i]; return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0); } return g.front[g.front.length - 1][1]; };
+  for (const [x, y] of g.cliff) assert.ok(y >= frontY(x) - 1e-9, `${x},${y}`);
+  assert.ok(Math.max(...g.cliff.map((p) => p[1])) - Math.max(...g.front.map((p) => p[1])) >= 0.008, 'the cliff has a face');
+  // every crevasse runs down the flow: longer in y than in x, and on the ice
+  for (const c of g.crevasses) {
+    const [a, b] = [c[0], c[c.length - 1]];
+    assert.ok(b[1] > a[1] && b[1] - a[1] > Math.abs(b[0] - a[0]));
+    for (const [x, y] of c) assert.ok(inPoly(g.outline, x, y - 1e-4), `${x},${y}`);
+  }
+  // the blue of the cliff is painted by day
+  const noon = paint(PHASE.noon, reading({}));
+  assert.ok([...noon.fills].some((f) => { const [r, , b] = rgb(f); return b > r + 60; }), 'an ice-blue fill');
+});
+
+test('alpenglow creeps: red on the tips first, gold by the time it reaches the foot, pink on the snow and ice', () => {
+  const early = emberTone(0.14);
+  const late = emberTone(0.52);
+  assert.ok(late[1] > early[1] + 30, 'the light turns from red to gold as it walks down');
+  assert.ok(emberTone(0.3, -1)[0] < emberTone(0.3, 1)[0], 'a face turned away is a deeper red');
+  // early: the line is still high, so the glacier and the low snow are not pink yet; later they are
+  const pink = (c) => [...c.fills].filter((f) => { const [r, g, b] = rgb(f); return r > 235 && g > 150 && g < 225 && b > 130 && r > b + 25; }).length;
+  const first = paint(0.076, reading({ windSpeed: 4 }));
+  const full = paint(0.094, reading({ windSpeed: 4 }));
+  assert.ok(first.out.glow > 0 && full.out.glow > 0.9);
+  assert.ok(pink(full) > pink(first), `${pink(first)} then ${pink(full)}`);
+  // the mirror is stronger at first light than at noon
+  const alphaOf = (c) => { const i = c.calls.findIndex(([k, a]) => k === 'scale' && a[1] === -MIRROR_SQUASH); return i; };
+  assert.ok(alphaOf(full) > 0);
+});
+
+test('the evening sun goes down behind the col, between Poincenot and Fitz Roy', () => {
+  const inWall = (x, y) => [plates.poincenot, plates.fitzroy].some((b) => inPoly(b.outline, x, y));
+  assert.ok(!inWall(SUN_X, sunSpot(0).y), 'high, it stands in the sky above the col');
+  assert.ok(inWall(SUN_X, sunSpot(1).y), 'sunk, it is behind the rock');
+  // at sunset the ridgeline carries a warm rim, at noon it does not
+  const rim = (c) => [...c.strokes].some((f) => { const [r, g, b] = rgb(f); return r === 255 && g > 190 && b < 170; });
+  assert.ok(rim(paint(0.74, reading({}))));
+  assert.ok(!rim(paint(PHASE.noon, reading({}))));
+});
+
+test('a hidden day keeps the near ground and, now and then, shows a ghost of the wall', () => {
+  const rain = reading({ cloudCover: 95, kind: 'rain', code: 61, windSpeed: 40, windDir: 315 });
+  assert.ok(HIDDEN_EDGE < SHORE - 0.06, 'the cloud base stands clear of the water');
+  assert.ok(Math.max(...plates.moraine.outline.map((p) => p[1])) > HIDDEN_EDGE + 0.05, 'the foot of the moraine is under the base');
+  const ghostFill = css(EC.ghost, 0.42);
+  const window0 = Math.floor(T_NOON / GHOST_EVERY_MS) * GHOST_EVERY_MS;
+  const open = paint(PHASE.noon, rain, window0 + GHOST_MS / 2);
+  const shut = paint(PHASE.noon, rain, window0 + GHOST_MS + 5000);
+  assert.ok(open.fills.has(ghostFill), 'at the middle of the window the wall stands in the cloud, grey');
+  assert.ok(![...shut.fills].some((f) => f.startsWith(css(EC.ghost, 1).slice(0, -4))), 'and outside it there is none');
+  assert.equal(open.out.band, 'hidden');
+  // the curtains move
+  assert.notDeepEqual(paint(PHASE.noon, rain, window0 + 20000).calls, paint(PHASE.noon, rain, window0 + 21000).calls);
+  // rain hangs shafts from the base; a dry overcast does not
+  const dry = paint(PHASE.noon, reading({ cloudCover: 95, windSpeed: 40, windDir: 315 }), window0 + 20000);
+  const wet = paint(PHASE.noon, rain, window0 + 20000);
+  assert.ok(wet.calls.length > dry.calls.length);
+});
+
+test('a clear night: the Milky Way and the Southern Cross, and a bright moon on the snow, the water and the shore', () => {
+  assert.equal(plates.cross.stars.length, 5);
+  assert.equal(plates.cross.pointers.length, 2);
+  assert.ok(plates.sky.dust.length >= 60 && plates.sky.clouds.length >= 6);
+  // the Cross and its pointers stand in open sky, clear of every rock
+  const rock = [plates.far, plates.poincenot, plates.fitzroy, ...plates.needles, ...plates.south];
+  for (const [x, y] of [...plates.cross.stars, ...plates.cross.pointers]) assert.ok(!rock.some((b) => inPoly(b.outline, x, y)), `${x},${y}`);
+  const track = (c) => [...c.fills].some((f) => rgb(f).join() === EC.moonTrack.join());
+  const full = paint(PHASE.night, reading({ windSpeed: 4, cloudCover: 5 }), T_FULL_MOON);
+  const dark = paint(PHASE.night, reading({ windSpeed: 4, cloudCover: 5 }), T_NEW_MOON);
+  assert.ok(track(full), 'a full moon lays a track on the lake');
+  assert.ok(!track(dark), 'a new moon lays none');
+  assert.ok(!track(paint(PHASE.night, reading({ cloudCover: 95, kind: 'rain' }), T_FULL_MOON)), 'nor does a moon behind the cloud');
+  // the dust of the Milky Way is painted only on a clear night
+  const arcs = (c) => c.calls.filter(([k]) => k === 'arc').length;
+  assert.ok(arcs(dark) > arcs(paint(PHASE.night, reading({ cloudCover: 70 }), T_NEW_MOON)) + 60);
+});
+
+test('winter: no white is whiter than 236, and the snow has a blue shadow side', () => {
+  assert.ok(Math.max(...EC.snow) <= 243 && 0.2126 * EC.snow[0] + 0.7152 * EC.snow[1] + 0.0722 * EC.snow[2] <= 236.5);
+  assert.ok(EC.snowShade[2] > EC.snowShade[0] + 30);
+  const w = paint(PHASE.noon, reading({ windSpeed: 4, temperature: -6 }), T_WINTER);
+  const luma = (f) => { const [r, g, b] = rgb(f); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  // nothing the scene itself fills in winter is brighter than the snow
+  for (const f of w.fills) if (!/, 0\)$/.test(f)) assert.ok(luma(f) <= 237, f);
+  assert.ok(plates.shore.drifts.length >= 8, 'the snow on the ground lies in drifts, with gravel between');
+});
+
+test('wind: a lens beside the summit, spindrift off the ridges, whitecaps, and a condor that circles', () => {
+  const breezy = paint(PHASE.noon, reading({ windSpeed: 22 }));
+  assert.equal(breezy.out.band, 'clear');
+  assert.ok(breezy.calls.filter(([k]) => k === 'ellipse').length > paint(PHASE.noon, reading({ windSpeed: 5 })).calls.filter(([k]) => k === 'ellipse').length, 'the lens is drawn');
+  const gale = paint(PHASE.noon, reading({ windSpeed: 80, cloudCover: 20 }));
+  assert.ok(gale.calls.length > paint(PHASE.noon, reading({ windSpeed: 46, cloudCover: 20 })).calls.length, 'more wind, more spindrift and whitecaps');
+  assert.ok(gale.strokes.has(css(EC.whitecap, 0)) || [...gale.strokes].some((f) => rgb(f).join() === EC.whitecap.join()), 'whitecaps on the lake');
+  // the lens stands upwind of the summit, so the banner never crosses it
+  assert.ok(lensSpot(0.7).x < SUMMIT.x && lensSpot(-0.7).x > SUMMIT.x);
+  // the condor goes round: a quarter of a loop later it is somewhere else, a whole loop later back
+  const a = condorAt(0);
+  const b = condorAt(CONDOR_LOOP_MS / 4);
+  const c = condorAt(CONDOR_LOOP_MS);
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > 0.05);
+  assert.ok(Math.abs(a.x - c.x) < 1e-9 && Math.abs(a.y - c.y) < 1e-9);
+  assert.ok(a.y < SUMMIT.y + 0.01 && b.y < SUMMIT.y + 0.01, 'above the summit');
+  assert.notDeepEqual(paint(PHASE.noon, reading({ windSpeed: 5 }), T_NOON).calls, paint(PHASE.noon, reading({ windSpeed: 5 }), T_NOON + 3000).calls);
+});
+
+test('the foreground: scrub clumps and boulders with a shaded side; the water laps within a hair of the shore', () => {
+  const sh = plates.shore;
+  assert.ok(sh.shrubs.length >= 12);
+  for (const s of sh.shrubs) assert.ok(s.lobes.length >= 4 && s.twigs.length >= 4 && s.y > GRAVEL.y0);
+  for (const b of sh.boulders) assert.ok(b.shade.length === 4 && b.lit.length === 4);
+  // big scrub keeps to the sides of the label plate
+  for (const s of sh.shrubs) if (s.y > plateShare) assert.ok(s.x < 0.2 || s.x > 0.8, `${s.x}`);
+  for (let t = 0; t < 20000; t += 700) for (const x of [0, 0.3, 0.9]) assert.ok(Math.abs(lapAt(x, t)) <= 0.006);
+  assert.notEqual(lapAt(0.3, 0), lapAt(0.3, 900));
+  // the scrub turns with the season: red-orange in April, green in January
+  const red = (c) => [...c.fills].filter((f) => { const [r, g, b] = rgb(f); return r > 150 && r > g + 60 && r > b + 60; }).length;
+  const april = paint(PHASE.noon, reading({}), Date.UTC(2026, 3, 15, 16, 0));
+  assert.equal(april.out.season, 'autumn');
+  assert.ok(red(april) > red(paint(PHASE.noon, reading({}))));
 });
