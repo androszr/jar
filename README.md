@@ -5,6 +5,10 @@
 <h1 align="center">jar</h1>
 
 <p align="center">
+  <a href="https://jar-pearl.vercel.app"><b>jar-pearl.vercel.app</b></a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Canvas%202D-no%20build%20step-1b2440" alt="Canvas 2D, no build step">
   <img src="https://img.shields.io/badge/runtime%20libraries-none-b8975a" alt="no runtime libraries">
   <img src="https://img.shields.io/badge/node-22%2B-3c873a" alt="Node 22+">
@@ -21,87 +25,178 @@ on each glass gives the city and country, the temperature and the local time,
 on Nazaré's jar the swell as well, and on El Chaltén's whether you can see
 Fitz Roy today.
 
-<img src="docs/images/table.jpg" alt="The shed: a moonlit window on the left and two glowing jars on the wooden table. Left, a corked jar with Warsaw in the rain, the floodlit Palace of Culture between the towers, labelled WARSAW, POLAND 12° 16:44. Right, a tin-lidded jar with the Nazaré cliff, its fort and red-roofed lighthouse above a breaking wave with small surfers, labelled NAZARÉ, PORTUGAL 18° 15:44 4.2 m · 14 s." width="880">
+<img src="docs/images/table.jpg" alt="The shed: a window with a crescent moon and three glowing jars on the wooden table. Left, a corked jar with Warsaw after dark, the Palace of Culture floodlit gold, labelled WARSAW, POLAND 6° 17:50. Middle, a tin-lidded jar with the Nazaré cliff and lighthouse, a green wave breaking and the sun low over the sea, labelled NAZARÉ, PORTUGAL 18° 16:50 4.4 m · 14 s. Right, a corked jar with Fitz Roy above a turquoise lake in daylight, a banner cloud streaming off the summit, labelled EL CHALTÉN, ARGENTINA 12° 13:50 FITZ ROY · SMOKING. A chalked slate on the table says click a jar." width="880">
 
-## What you're looking at
+The picture above is one moment: evening in Warsaw, the last half hour of sun
+in Nazaré and early afternoon in Patagonia. Nothing in it is a photograph or an
+image file; every jar is drawn in code, every frame.
 
-**The moon is the real one.** The moon in the jars and in the window shows its phase for the moment, from a thin crescent to full, and on a new moon night it is almost gone.
+## What you can do
 
-**Click or tap a jar and it lifts closer.** Until you lift one for the first
-time, a small chalked slate lying on the table says so ("tap a jar" on a phone,
-"click a jar" on a laptop). A card beside it shows the next
-five days: today is marked with a band and an underline (and named *today* for
-screen readers), each day gives its chance of rain and its strongest wind with
-an arrow for the way it blows, and a strip along the bottom gives today's
-sunrise and sunset (on Nazaré, a second line adds today's high and low tide
-times) with a thin arc under it whose dot shows how far the sun has come across the
-sky. On a lifted jar the arrows, the arrow keys or a swipe move to the other
-jar. Press Escape or the back button to set it down. The shed's own window
-follows *your* clock, not either city's. A slider under the lifted jar previews
-the next 24 hours (the light and the hourly weather, with the label marked
-"+5 h"); let go of it or press *now* and the jar snaps back to the present.
+- **Click or tap a jar** and it lifts closer, with a five-day forecast card
+  beside it (under it on a phone). Until you lift one for the first time, a
+  chalked slate on the table says so.
+- **Press the lifted jar** and it shakes: it leans, the scene sloshes, and a
+  flurry lifts off the floor of the jar and settles (snow when it is cold
+  there, warm glitter when it is not).
+- **Drag the slider** under the jar to preview the next 24 hours: the light and
+  the hourly weather move with it and the label says how far ahead you are
+  ("+5 h"). Let go, or press *now*, and the jar returns to the present.
+- **Press *play*** and the next 24 hours run by in twenty seconds.
+- **Click a day on the card** and the jar shows that day's early afternoon;
+  click it again, or press Escape, to come back.
+- **Arrows, the arrow keys or a swipe** move to the next jar. Escape or *back
+  to the table* sets the jar down.
+- **Move the pointer** and the scene slides a little behind the glass, as it
+  would if you leaned to one side.
+
+The shed's own window follows *your* clock, not any city's, and its moon is the
+real one: the right phase for tonight, almost gone at new moon. If your system
+asks for reduced motion, the page calms down: the jar does not shake, the
+time-lapse steps an hour at a time, the clouds barely drift and a storm draws
+no bolt.
+
+## The three jars
+
+### Warsaw
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/night.jpg" alt="The lifted jar at 01:30 in Warsaw: the Palace of Culture floodlit gold with a gold reflection in the river, Varso's crown glowing blue under a red aviation light, the Spire with a thin white edge, and the Mermaid outlined in warm light on her plinth at the left. A five-day forecast card stands beside the jar." width="430"></td>
-    <td width="50%"><img src="docs/images/morning.jpg" alt="The same jar at 10:30: a blue sky with the sun on the left, the towers as flat cool silhouettes with a bright rim on their left edges, a calm blue river above the label, and the Mermaid as a dark silhouette on her plinth." width="430"></td>
+    <td width="50%"><img src="docs/images/warsaw-night.jpg" alt="The Warsaw jar lifted at 19:10: the Palace of Culture floodlit gold, Varso's crown glowing blue under a red aviation light, lit windows in the towers, car lights on the cable-stayed bridge and the city's lamps reflected in the Vistula. The forecast card beside it lists five days with rain chance and wind, and sunrise 06:51, sunset 15:48." width="430"></td>
+    <td width="50%"><img src="docs/images/warsaw-day.jpg" alt="The same jar at 11:20 on a November morning: glass towers under a blue sky with drifting clouds, the sand-coloured Palace in the middle, the low city along the far bank, a small boat on the river, the Mermaid on her plinth, and a bank of autumn-brown trees in the foreground." width="430"></td>
   </tr>
   <tr>
-    <td align="center"><b>Night: the Floodlit Nocturne.</b> The Palace glows gold, Varso's crown glows blue under a red needle light, and the towers reflect in the river.</td>
-    <td align="center"><b>Day: rim-lit silhouettes.</b> Each tower has a bright edge on the side the sun is on. At dusk the two blend.</td>
+    <td align="center"><b>Night.</b> The Palace glows gold, Varso's crown glows blue, and the city reflects in the river. Windows go out one by one as the night gets late.</td>
+    <td align="center"><b>Day.</b> Each tower has a bright edge on the side the sun is on. The forest on the near bank follows the seasons.</td>
   </tr>
 </table>
 
 The skyline is the downtown cluster: the Cosmopolitan, Varso, the Palace of
-Culture and Science, Warsaw Spire, Złota 44 and the InterContinental. The
-Mermaid stands on the left bank with her sword raised. The jar's glass streaks
-sit at the edges of the glass, so they never cover a tower.
+Culture and Science, Warsaw Spire, Złota 44 and the InterContinental, with the
+Świętokrzyski bridge across the Vistula and the Mermaid on the left bank with
+her sword raised. Around them the jar has a small life of its own:
 
-### The second jar: Nazaré
+- a **boat** crosses the river by day, **birds** cross the sky in fair weather,
+  and traffic runs over the bridge;
+- in a hard frost the river carries **ice** and **steam** rises from a few
+  roofs, leaning with the wind;
+- a **Christmas tree** stands at the Palace's foot from 6 December to
+  6 January, and there are **fireworks** over the skyline from 23:55 on New
+  Year's Eve to 00:20;
+- in a thunderstorm, every other bolt strikes the Palace's needle.
+
+### Nazaré
 
 <table>
   <tr>
-    <td width="62%"><img src="docs/images/nazare.jpg" alt="The Nazaré jar lifted: the Sítio cliff with the São Miguel Arcanjo fort and its lighthouse on the right, a turquoise wave rolling in with three small surfers, the label reading NAZARÉ, PORTUGAL 18° 15:44 4.2 m · 14 s. Beside it the forecast card lists SUN to THU, each with a peak wave height under the day name; SUN is underlined and shaded as today, and the bottom strip reads sunrise 07:38, sunset 18:30 above a thin arc with the sun dot near its right end." width="530"></td>
+    <td width="62%"><img src="docs/images/nazare-sunset.jpg" alt="The Nazaré jar lifted at 17:02, twenty minutes before sunset: the sun low over the Atlantic in a pink and violet sky, a green wave breaking toward the Sítio cliff, a jet ski on the water, the fort and its red lighthouse on top of the cliff with a zigzag path down its face, and a red flag on the beach. The card lists five days, each with its peak wave height, then sunrise 07:18, sunset 17:22, the four tide times with their heights and a tide curve." width="530"></td>
     <td width="38%">
-      <b>A wave sized by the real sea.</b> The Sítio cliff, the São Miguel Arcanjo fort and its red-roofed lighthouse stand above the Praia do Norte wave. By day a few surfers ride it; at night the lighthouse beam sweeps the foam.<br><br>
-      The wave's size follows the real wave height off the coast: <b>calm</b> under 1 m, <b>moderate</b> 1–3 m, <b>big</b> 3–6 m, <b>giant</b> from 6 m. With no reading it shows a moderate two-metre day.<br><br>
-      The label adds the swell (height · period) as a fourth line, and the forecast card gives each day's peak wave height and today's high and low tide times, each with its height in metres, under a small tide curve with a dot for now. Slide the time ahead through the day and the wave resizes to the forecast swell for that hour. The waves roll in at a gentle pace. The jar keeps Lisbon time and wears a tin lid instead of Warsaw's cork.
+      <b>A wave sized by the real sea.</b> The Sítio headland, the São Miguel Arcanjo fort and its lighthouse stand above the Praia do Norte wave. The view faces west, so this jar has its own sun, which sets into the sea.<br><br>
+      The label adds the swell (height · period) as a fourth line. The card gives each day's peak wave height and today's high and low tides with their heights, over a small tide curve with a dot for now. Slide the time ahead and the wave resizes to the forecast swell for that hour.<br><br>
+      By day surfers ride the wave and people watch from the fort's roof. On a warm, fair, gentle day umbrellas come out on the sand; on a big day the red flag goes up. At night the lighthouse beam sweeps the foam and fishing boats show their lights on the horizon. The jar keeps Lisbon time and wears a tin lid.
     </td>
   </tr>
 </table>
 
-### The third jar: El Chaltén
-
-Not the town but the view from the east shore of Laguna de los Tres, looking
-west: the southern night sky, the blade of Poincenot and the fin of Fitz Roy
-with smaller needles stepping down to the right, the glacier, the big brown
-moraine, the turquoise lake and a gravel shore with a rock, a few shrubs and a
-hiker by day. It answers the question the whole town asks each morning, *can
-you see Fitz Roy today?*, from the real cloud, weather kind and wind, and the
-label's fourth line says which: `FITZ ROY · CLEAR`, `SMOKING` (cloud under
-60 % and wind from 25 km/h: a banner cloud streams off the summit the way the
-wind blows), `CAPPED` (cloud 60 % and over: a deck sits on the summits) or
-`HIDDEN` (cloud 85 % and over, or fog, drizzle, rain, snow, storm: the wall is
-gone). With no reading the peak is drawn clear with a short plume and there is
-no fourth line. First light lands on the summit and walks down the wall after
-sunrise and the lake mirrors it in still air; the sun sets behind the wall; a
-few headlamps wait on the shore in the last ninety minutes before sunrise; the
-seasons run the southern way round (a frozen white lake from June to August).
-The rock is faceted granite built once from a fixed seed and shaded by the
-hour. The jar keeps El Chaltén's own time (`America/Argentina/Rio_Gallegos`) and
-wears a cork lid. It has no screenshot among the pictures above yet; the smoke
-check writes `el-chalten-*.png` to `test-output/`.
+The wave follows the real wave height off the coast, in four sizes. With no
+reading it shows a moderate two-metre day.
 
 <table>
   <tr>
-    <td width="62%"><img src="docs/images/storm.jpg" alt="The lifted jar in a thunderstorm, caught at the moment of a lightning flash: the sky inside the jar turned white, rain streaking down, the floodlit Palace still glowing." width="530"></td>
-    <td width="38%"><img src="docs/images/phone.jpg" alt="The page on a phone, portrait: the lifted jar fills the screen in the rain at night, and the five-day forecast runs as a row under it." width="300"></td>
+    <td width="25%"><img src="docs/images/wave-calm.jpg" alt="Nazaré at noon with a 0.6 m swell: a low ripple of a wave." width="210"></td>
+    <td width="25%"><img src="docs/images/wave-moderate.jpg" alt="Nazaré at noon with a 2 m swell: a modest breaking wave with surfers." width="210"></td>
+    <td width="25%"><img src="docs/images/wave-big.jpg" alt="Nazaré at noon with a 4.6 m swell: a tall wave reaching partway up the cliff, the red flag on the beach." width="210"></td>
+    <td width="25%"><img src="docs/images/wave-giant.jpg" alt="Nazaré at noon with a 9.5 m swell: a tall breaking wave full of white water, spray climbing the cliff and the red flag on the beach." width="210"></td>
   </tr>
   <tr>
-    <td align="center"><b>Real weather.</b> Each jar shows rain, snow (with caps on the roofs), fog, dew on the glass, drifting clouds, wind and lightning. When a new wind reading arrives, the clouds carry on from where they are instead of jumping.</td>
-    <td align="center"><b>Phone and laptop</b> share one drawing, so the jars look the same on both. The forecast moves under the jar on a phone, and a swipe moves between jars.</td>
+    <td align="center"><b>Calm</b><br>under 1 m</td>
+    <td align="center"><b>Moderate</b><br>1–3 m</td>
+    <td align="center"><b>Big</b><br>3–6 m</td>
+    <td align="center"><b>Giant</b><br>from 6 m</td>
   </tr>
 </table>
+
+### El Chaltén
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/el-chalten-first-light.jpg" alt="The El Chaltén jar lifted at 06:22, just after sunrise: Fitz Roy and its needles glowing orange in the first light, the glacier below them, and the whole wall mirrored in a still turquoise lake. A hiker stands on the gravel shore. The label reads EL CHALTÉN, ARGENTINA 4° 06:22 FITZ ROY · CLEAR." width="430"></td>
+    <td width="50%"><img src="docs/images/el-chalten-day.jpg" alt="The same jar at 12:30: grey granite towers with snow in their gullies under a blue sky, the glacier and brown moraine, the turquoise lake mirroring the wall, and hikers on the shore among green shrubs." width="430"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>First light.</b> It lands on the summit and walks down the wall after sunrise. In still air the lake mirrors it.</td>
+    <td align="center"><b>Midday.</b> Faceted granite, shaded by the hour, with hikers on the shore by day.</td>
+  </tr>
+</table>
+
+Not the town but the view from the east shore of Laguna de los Tres, looking
+west: the blade of Poincenot and the fin of Fitz Roy with smaller needles
+stepping down beside them, the glacier, the moraine, the lake and a gravel
+shore. It answers the question the whole town asks each morning, *can you see
+Fitz Roy today?*, from the real cloud, weather and wind, and the label's fourth
+line says which:
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/images/band-clear.jpg" alt="El Chaltén at midday, label FITZ ROY · CLEAR: the whole wall sharp against a blue sky." width="210"></td>
+    <td width="25%"><img src="docs/images/band-smoking.jpg" alt="El Chaltén at midday, label FITZ ROY · SMOKING: a white banner cloud streaming sideways off the summit." width="210"></td>
+    <td width="25%"><img src="docs/images/band-capped.jpg" alt="El Chaltén at midday, label FITZ ROY · CAPPED: a grey deck of cloud sitting on the summits, the lower wall still visible." width="210"></td>
+    <td width="25%"><img src="docs/images/band-hidden.jpg" alt="El Chaltén at midday in rain, label FITZ ROY · HIDDEN: the wall gone into cloud, only the lake and the shore left." width="210"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Clear</b></td>
+    <td align="center"><b>Smoking</b><br>cloud under 60 %, wind from 25 km/h: a banner cloud streams off the summit the way the wind blows</td>
+    <td align="center"><b>Capped</b><br>cloud 60 % and over: a deck sits on the summits</td>
+    <td align="center"><b>Hidden</b><br>cloud 85 % and over, or fog, rain, snow or a storm</td>
+  </tr>
+</table>
+
+With no reading the peak is drawn clear with a short plume and there is no
+fourth line. The sun sets behind the wall; a few headlamps wait on the shore in
+the last ninety minutes before sunrise; a condor circles when there is wind to
+carry it; and the seasons run the southern way round, with a frozen white lake
+from June to August. The jar keeps El Chaltén's own time
+(`America/Argentina/Rio_Gallegos`) and wears a cork lid.
+
+## Real weather
+
+Each jar is drawn under the weather its place is having now: clear, broken
+cloud, overcast, fog, drizzle, rain, snow and thunderstorms, with the wind
+setting how fast the clouds travel and how far the rain leans.
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/images/sky-rain.jpg" alt="Nazaré on a rainy night: rain falling across the dark sea and the cliff, rings on the water, drops on the glass and the lighthouse beam in the murk." width="210"></td>
+    <td width="25%"><img src="docs/images/sky-snow.jpg" alt="Warsaw at noon in snow: round flakes in three sizes falling over a grey skyline with white roofs." width="210"></td>
+    <td width="25%"><img src="docs/images/sky-fog.jpg" alt="Warsaw on a foggy morning: the towers pale and half lost, the glass misted over." width="210"></td>
+    <td width="25%"><img src="docs/images/sky-storm.jpg" alt="El Chaltén in a thunderstorm: a dark sky, heavy rain over the lake and the wall hidden." width="210"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Rain</b> falls in two layers, behind the city and in front of it, lands as rings on open water and runs down the glass in beads.</td>
+    <td align="center"><b>Snow</b> falls in three depths and settles on the roofs.</td>
+    <td align="center"><b>Fog</b> mists the inside of the glass. When it clears it leaves dew.</td>
+    <td align="center"><b>A heavy sky</b> turns grey whatever the hour, hides the sun and drains the colour from the scene.</td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="62%"><img src="docs/images/storm.jpg" alt="The Warsaw jar in a thunderstorm at 21:00, caught at the moment of a flash: the sky inside the jar white, a forked bolt coming down toward the Palace's needle, the towers in black silhouette and rain streaking across the whole scene." width="530"></td>
+    <td width="38%"><img src="docs/images/phone.jpg" alt="The page on a phone, portrait: the Nazaré jar lifted on a rainy night, and under it the five-day forecast as a row of columns with wave heights, rain chance, wind, sunrise and sunset, tide times and a tide curve; the slider with now and play at the bottom." width="300"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Lightning.</b> A storm flashes at intervals and draws a forked bolt; the flash lights the room around the jar too. When a new reading changes the sky, the old one fades into the new.</td>
+    <td align="center"><b>Phone and laptop</b> share one drawing, so the jars look the same on both. On a phone the forecast moves under the jar and a swipe moves between jars.</td>
+  </tr>
+</table>
+
+The forecast card marks today with a band and an underline (and names it
+*today* for screen readers). Each day gives its high and low, its chance of
+rain and its strongest wind with an arrow for the way it blows; a strip along
+the bottom gives today's sunrise and sunset over a thin arc whose dot shows how
+far the sun has come across the sky. If the weather cannot be fetched, the jars
+still light for the hour under a neutral sky and the label shows a dash instead
+of a temperature.
 
 ## How it's made
 
@@ -118,7 +213,8 @@ flowchart LR
   B --> C["shed.js<br/>room, window, table"]
   B --> D["shelf.js<br/>the jars"]
   D --> E["jar.js<br/>glass, cork, label"]
-  E --> F["cities/warsaw<br/>cities/nazare<br/>scene + palette"]
+  E --> F["cities/warsaw<br/>cities/nazare<br/>cities/el-chalten<br/>scene + palette"]
+  E --> S["skyweather.js<br/>sun, moon, clouds,<br/>rain, snow, lightning"]
   E --> G["look/lantern<br/>colours, glow, streaks"]
   B --> H["weatherfeed.js"]
   H -->|"GET /api/weather"| I["api/weather.js"]
@@ -134,6 +230,13 @@ flowchart LR
 - **The same moment draws the same picture.** Draw code never calls
   `Math.random` or reads the wall clock, and the smoke check hashes a pinned
   frame twice to prove it.
+- **A city only draws its place.** The sky, the weather and the glass are
+  shared (`src/skyweather.js`, `src/jar.js`); a city supplies its scene, its
+  palette and, if it wants them, a label line, a redraw interval, a rectangle
+  of open water for the rain to land on and a point for lightning to strike.
+- **Frames stay cheap.** The static art is built once, the room behind a
+  lifted jar is kept between frames, and the page only redraws as often as
+  the weather or a moving scene asks for.
 - The clock logic is adapted from Memory Lane, an earlier project by the same
   author, and credited in the file headers. None of the visual code comes from
   there.
@@ -185,7 +288,7 @@ npm test                          # unit tests (node --test)
 SMOKE_TIMING=off npm run smoke    # headless Chromium; drop SMOKE_TIMING=off to hold frame budgets
 ```
 
-The smoke check drives a real page. It pins a Warsaw night and a Warsaw
+The smoke check drives a real page in a headless browser. It pins a Warsaw night and a Warsaw
 morning and samples pixels to check the gold Palace, the blue crown, the red
 light, the reflections, the Mermaid's rim and the morning rim. For Nazaré it
 checks both labels, both lifts, moving between jars by arrow and by swipe, the
@@ -196,7 +299,7 @@ mirror, the headlamps, the bivouac light, the frozen July lake, that the facets
 are lit by the hour and that a pinned moment draws the same pixels. It also
 checks the forecast card's today mark, sunrise and sunset strip and sun arc,
 and that clouds hold their place when the wind changes. Its screenshots
-go to `test-output/`, which is where the pictures above come from. It needs a
+go to `test-output/`. It needs a
 Chromium: run `npx playwright-core install chromium-headless-shell`, or it
 falls back to an installed Chrome. The weather is stubbed in every test and in
 the smoke check, so nothing touches the network.
