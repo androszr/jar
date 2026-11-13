@@ -112,6 +112,10 @@ export const WARSAW = {
   mermaidSunlit: [244, 214, 150],
   // weather
   snowCap: [236, 242, 250],
+  cloudBaseDay: [200, 205, 210],
+  cloudBaseNight: [34, 38, 48],
+  cloudBaseGlow: [255, 170, 90],
+  fogVeil: [226, 230, 232],
   dull: [120, 130, 138],
   iceFloe: [233, 239, 244],
   iceShadow: [120, 140, 160],

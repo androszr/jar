@@ -816,6 +816,37 @@ try {
   await twoFrames(noct);
   check(!(await iceSeen()), 'no ice above the threshold');
   check(await noct.evaluate(() => window.__jar.cadence.cities.warsaw === 200), 'a thawed river asks for no more than the traffic tick');
+  // low cloud and fog with depth, at the pinned morning (the page is on the clear route)
+  const clearNeedle = await patch(noct, 'warsaw', 0.235, 0.045, 2);
+  const clearPalaceTop = await patch(noct, 'warsaw', 0.4, 0.1, 2);
+  const clearShaft = await patch(noct, 'warsaw', 0.4, 0.4, 2);
+  // measured at T_DAY over the 5x5 patch at Varso's needle: overcast luma 130..181 and channel range <= 35, clear range up to 85 (saturated blue sky)
+  const greyPale = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b >= 125 && Math.max(r, g, b) - Math.min(r, g, b) <= 36;
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(3, 100));
+  await settled(noct);
+  await twoFrames(noct);
+  check(all(await patch(noct, 'warsaw', 0.235, 0.045, 2), greyPale) && !all(clearNeedle, greyPale), "the cloud base swallows Varso's needle");
+  check(all(await patch(noct, 'warsaw', 0.4, 0.1, 2), greyPale) && !all(clearPalaceTop, greyPale), 'the cloud base swallows the Palace needle');
+  check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 30), 'the Palace shaft stands under the cloud base');
+  const overA = await noct.evaluate(() => window.__jar.hash());
+  const overB = await noct.evaluate(() => window.__jar.hash());
+  check(overA === overB, 'the overcast draws the same pixels at the same moment');
+  await noct.screenshot({ path: join(OUT, 'warsaw-overcast.png') });
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(45, 100));
+  await settled(noct);
+  await twoFrames(noct);
+  const fogShaft = await patch(noct, 'warsaw', 0.4, 0.4, 2);
+  const fogForest = await patch(noct, 'warsaw', 0.12, 0.715, 2);
+  check(luma(fogShaft) >= luma(clearShaft) + 12 && all(fogShaft, (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) <= 25) && all(clearShaft, (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) >= 30), 'the Palace is a pale shape in the fog');
+  check(luma(fogForest) <= luma(fogShaft) - 30, 'the near forest stays dark in the fog');
+  const fogA = await noct.evaluate(() => window.__jar.hash());
+  const fogB = await noct.evaluate(() => window.__jar.hash());
+  check(fogA === fogB, 'the fog draws the same pixels at the same moment');
+  await noct.screenshot({ path: join(OUT, 'warsaw-fog.png') });
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5, 21.4));
+  await settled(noct);
+  await twoFrames(noct);
+  check(!all(await patch(noct, 'warsaw', 0.235, 0.045, 2), greyPale), 'the cloud base lifts with the clear reading');
   const T_FLAG = Date.UTC(2026, 10, 11, 20, 0); // 21:00 in Warsaw on 11 November
   await noct.evaluate((t) => window.__jar.pin(t), T_FLAG);
   const white = (r, g, b) => r >= 200 && g >= 190 && b >= 180;

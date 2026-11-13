@@ -5,7 +5,7 @@ import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
-  CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver,
+  CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, fogDepth,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
@@ -1126,4 +1126,85 @@ test('W9: a lit Christmas tree stands at the foot of the Palace from 6 December 
   }
   const a = fullScene(PHASE.night, CLEAR, t);
   assert.equal(JSON.stringify(a.ctx.calls), JSON.stringify(fullScene(PHASE.night, CLEAR, t).ctx.calls), 'deterministic');
+});
+
+// ---- low cloud and fog with depth ----
+
+const OVERCAST = { ...EMPTY, known: true, kind: 'cloud', cloudCover: 100 };
+const FOG = { ...EMPTY, known: true, kind: 'fog', code: 45 };
+
+test('ceilingAmount: nothing unknown, clear or in fog, full at complete cover', () => {
+  const at = (o) => ceilingAmount({ ...EMPTY, known: true, ...o });
+  assert.equal(ceilingAmount(EMPTY), 0);
+  assert.equal(at({ kind: 'cloud', cloudCover: 100 }), 1);
+  assert.ok(Math.abs(at({ kind: 'cloud', cloudCover: 90 }) - 0.5) < 1e-9);
+  assert.equal(at({ kind: 'cloud', cloudCover: 80 }), 0);
+  assert.equal(at({ kind: 'cloud', cloudCover: 60 }), 0);
+  assert.equal(at({ kind: 'clear', cloudCover: 100 }), 0);
+  assert.equal(at({ kind: 'fog', cloudCover: 100 }), 0);
+  assert.equal(at({ kind: 'storm', cloudCover: null }), 1);
+  assert.ok(Math.abs(at({ kind: 'rain', cloudCover: null }) - 0.25) < 1e-9);
+});
+
+test('fogDepth: only a known fog', () => {
+  assert.equal(fogDepth(EMPTY), 0);
+  assert.equal(fogDepth({ ...EMPTY, known: true, kind: 'fog' }), 1);
+  assert.equal(fogDepth({ ...EMPTY, known: true, kind: 'cloud' }), 0);
+});
+
+test('the cloud base is a band in the top fifth, only under a heavy overcast', () => {
+  const band = (ctx) => ctx.calls.filter((c) => c[0] === 'fillRect' && c[1][1] === 0 && Math.abs(c[1][3] - CEILING.top * 396) < 0.5 && c[1][2] === 340);
+  assert.equal(band(paint(PHASE.noon, OVERCAST)).length, 1);
+  assert.equal(band(paint(PHASE.noon)).length, 0);
+  assert.equal(band(paint(PHASE.noon, { ...OVERCAST, cloudCover: 50 })).length, 0);
+  assert.equal(band(paint(PHASE.noon, FOG)).length, 0);
+});
+
+test('the fog veils end at the far bank and at the river, never below', () => {
+  const veils = (ctx) => ctx.calls.filter((c) => c[0] === 'fillRect' && c[1][2] === 340 && typeof c[2] === 'object' && c[1][1] + c[1][3] <= RIVER_TOP * 396 + 0.5 && (c[1][3] > 0.06 * 396));
+  const near = (a, b) => Math.abs(a - b) <= 0.5;
+  const v = veils(paint(PHASE.noon, FOG));
+  assert.ok(v.some((c) => near(c[1][1], 0) && near(c[1][1] + c[1][3], FAR_BANK * 396)), 'far veil');
+  assert.ok(v.some((c) => near(c[1][1], FAR_BANK * 396) && near(c[1][1] + c[1][3], RIVER_TOP * 396)), 'mid veil');
+});
+
+test('the fog veil takes the sky at night and is absent without fog', () => {
+  const prefix = css(mix(WARSAW.fogVeil, tint(sample(PHASE.noon)).skyLow, 0.4)).replace(/1\)$/, '');
+  assert.ok(startsWith(paint(PHASE.noon, FOG).fills, prefix).length > 0);
+  assert.equal(startsWith(paint(PHASE.noon).fills, prefix).length, 0);
+  assert.equal(startsWith(paint(PHASE.noon, OVERCAST).fills, prefix).length, 0);
+  const night = css(mix(WARSAW.fogVeil, tint(sample(PHASE.night)).skyLow, 0.9)).replace(/1\)$/, '');
+  assert.ok(startsWith(paint(PHASE.night, FOG).fills, night).length > 0, 'darker at night');
+});
+
+test('overcast and fog paint the same calls twice', () => {
+  for (const ph of Object.values(PHASE)) {
+    for (const w of [OVERCAST, FOG]) assert.equal(JSON.stringify(paint(ph, w).calls), JSON.stringify(paint(ph, w).calls));
+  }
+});
+
+test('snow under a full overcast hides the caps inside the cloud base; without a ceiling they are drawn as before', () => {
+  const edge = CEILING.top * 396;
+  const capsAbove = (w) => paint(PHASE.noon, w).calls.filter((c) => c[0] === 'fillRect' && c[1][3] === 3 && c[1][1] < edge && typeof c[2] === 'string' && c[2].startsWith(rgbaOf(WARSAW.snowCap)));
+  const alpha = (c) => Number(c[2].replace(/^.*,\s*/, '').replace(')', ''));
+  const snowFull = { ...EMPTY, known: true, kind: 'snow', cloudCover: 100 };
+  const full = capsAbove(snowFull);
+  assert.ok(full.length > 0, 'there are caps above the band edge to hide');
+  // a cap high in the band shows at most a tenth of its strength; none shows more than the base leaves
+  assert.ok(Math.min(...full.map(alpha)) <= 0.1, 'the highest cap is swallowed');
+  assert.ok(full.every((c) => alpha(c) < 1), 'every cap in the band is veiled');
+  const none = capsAbove({ ...snowFull, cloudCover: 50 });
+  assert.ok(none.length > 0);
+  assert.ok(none.every((c) => c[2] === css(WARSAW.snowCap)), 'no ceiling: the caps are drawn at full strength');
+});
+
+test('in fog the Christmas tree at the Palace foot is veiled with the Palace', () => {
+  const dec = Date.UTC(2026, 11, 20, 11);
+  const ctx = recordingCtx();
+  noRandom(() => warsaw.paint(ctx, rect, PHASE.noon, tint(sample(PHASE.noon)), FOG, buildPlates(rect.w, rect.h), dec));
+  const firStyle = css(mix(WARSAW.fir, WARSAW.firNight, 0));
+  const tree = ctx.calls.map((c, i) => (c[2] === firStyle ? i : -1)).filter((i) => i >= 0);
+  const veil = ctx.calls.findIndex((c) => c[0] === 'fillRect' && c[1][1] === 0 && c[1][2] === 340 && Math.abs(c[1][3] - FAR_BANK * 396) < 0.5 && typeof c[2] === 'object');
+  assert.ok(tree.length > 0, 'the tree is drawn in December');
+  assert.ok(veil > Math.max(...tree), 'the far veil comes after the tree');
 });
