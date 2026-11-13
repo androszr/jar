@@ -705,6 +705,10 @@ try {
   const bluish = (r, g, b) => b >= r + 30 && b >= 90;
   const rim = (r, g, b) => r >= 200 && g >= 140 && g <= 210 && b <= 130;
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), gold), 'Palace glows gold at night');
+  const clockC = luma(await patch(noct, 'warsaw', 0.4, 0.234, 1));
+  const clockL = luma(await patch(noct, 'warsaw', 0.4 - 5 / 340, 0.234, 1));
+  const clockR = luma(await patch(noct, 'warsaw', 0.4 + 5 / 340, 0.234, 1));
+  check(clockC >= clockL + 20 && clockC >= clockR + 20, `one clock face at the Palace's centre, none either side (${clockC} vs ${clockL}, ${clockR})`);
   check(some(await patch(noct, 'warsaw', 0.235, 0.17, 2), blue), 'Varso crown glows blue');
   check(some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'red aviation light at the needle tip');
   const needle = luma(await patch(noct, 'warsaw', 0.235, 0.085, 1));
