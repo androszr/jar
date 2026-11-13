@@ -60,6 +60,27 @@ test('the dev server never caches, whatever vercel.json says', async () => {
   }
 });
 
+test('the dev server serves the icons, the preview picture and the manifest with their types', async () => {
+  const { server, port } = await startServer({ port: 0 });
+  try {
+    const want = {
+      '/icon.svg': 'image/svg+xml',
+      '/icon-192.png': 'image/png',
+      '/apple-touch-icon.png': 'image/png',
+      '/share.jpg': 'image/jpeg',
+      '/manifest.webmanifest': 'application/manifest+json',
+    };
+    for (const [p, type] of Object.entries(want)) {
+      const r = await ask(port, p);
+      assert.equal(r.status, 200, p);
+      assert.equal(r.headers['content-type'], type, p);
+      assert.ok((r.headers['content-security-policy'] || '').startsWith("default-src 'self'"), `${p}: no CSP`);
+    }
+  } finally {
+    await new Promise((done) => server.close(done));
+  }
+});
+
 const stubFetch = (calls, mode = 'ok') => async (url) => {
   calls.push(String(url));
   if (mode === 'throw') throw new Error('vendor down');

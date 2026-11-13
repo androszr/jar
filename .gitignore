@@ -2,6 +2,8 @@ node_modules/
 .DS_Store
 renders/
 *.png
+# the icons under src/ are deployed files
+!src/*.png
 
 # managed by Dark Army
 .env

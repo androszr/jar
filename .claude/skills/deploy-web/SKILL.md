@@ -24,8 +24,7 @@ is the user's push.
   names. `"type": "module"` in `package.json` makes its `export default`
   handler valid.
 - The headers come from `vercel.json`: a CSP with `connect-src 'self'`,
-  `X-Robots-Tag: noindex, nofollow`, `nosniff`, `no-referrer`, HSTS,
-  Permissions-Policy, short `Cache-Control` windows, and the `/api/(.*)` rule
+  `nosniff`, `no-referrer`, HSTS, Permissions-Policy, short `Cache-Control` windows, and the `/api/(.*)` rule
   with `s-maxage=900`.
 - There is no database, no migration, no env schema and no build. A function
   needs no secret of its own.
@@ -100,8 +99,8 @@ curl -sSI "$URL/"
 
 Expect `content-security-policy` containing `connect-src 'self'` and
 `frame-ancestors 'none'`,
-`x-robots-tag: noindex, nofollow`, `x-content-type-options: nosniff` and a
-`strict-transport-security` header.
+`x-content-type-options: nosniff` and a `strict-transport-security` header,
+and **no** `x-robots-tag` (no robots header: the page is indexable).
 
 ```bash
 curl -sS -D - "$URL/api/<function>"
@@ -120,7 +119,14 @@ edge.
 curl -sS "$URL/robots.txt"
 ```
 
-Expect `Disallow: /`.
+Expect `Allow: /`.
+
+```bash
+curl -sSI "$URL/share.jpg"
+curl -sSI "$URL/manifest.webmanifest"
+```
+
+Expect 200 from both (the link-preview picture and the web-app card landed).
 
 ## Secrets the workflows expect
 

@@ -78,10 +78,11 @@ node --test test/hosting.test.js
 ### Header and function check (only when a URL was given)
 
 ```bash
-curl -sSI "$URL/" | grep -iE 'strict-transport-security|content-security-policy|x-content-type-options|x-robots-tag|referrer-policy|permissions-policy'
+curl -sSI "$URL/" | grep -iE 'strict-transport-security|content-security-policy|x-content-type-options|referrer-policy|permissions-policy'
 ```
 
-Every one of those six must be present. Also confirm the CSP contains
+Every one of those five must be present, and `x-robots-tag` must be absent
+(the page is meant to be indexed). Also confirm the CSP contains
 `connect-src 'self'` and `frame-ancestors 'none'` (clickjacking), no
 `'unsafe-eval'` and no wildcard origin.
 

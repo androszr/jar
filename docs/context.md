@@ -136,7 +136,13 @@ test surface. The canvas's `aria-label` is the lifted jar's spoken description; 
 **Hosting.** `vercel.json` publishes `src/` as it is (`framework: null`, Git
 deploys off, deploys by `.github/workflows/deploy.yml` with a pinned CLI in
 `.github/vercel-cli/`); `api/weather.js` runs beside it as a Node function.
-The CSP is self-only with `connect-src 'self'`.
+The CSP is self-only with `connect-src 'self'`. There is no robots header and
+`src/robots.txt` allows all. The page carries a description, a canonical link
+and Open Graph tags, and serves `share.jpg`, `icon.svg`, `icon-192.png`,
+`icon-512.png`, `apple-touch-icon.png` and `manifest.webmanifest`, all static
+under `src/`; the bitmaps are rendered once by `node tools/icons.mjs` and
+committed. The production address is `https://jar-pearl.vercel.app`, named in
+`src/index.html` (one commented block) and `test/hosting.test.js` (`LIVE`).
 
 ## Conventions
 
@@ -146,8 +152,10 @@ not pass. The planner reads these before writing, the implementer before
 coding.
 
 1. **Colour literals only in palettes.** `src/look/<look>/palette.js` and
-   `src/cities/<id>/palette.js` are the only files allowed `#hex`, `rgb(`,
-   `rgba(`, `hsl(`. *(lint, verifier grep)*
+   `src/cities/<id>/palette.js` are the only **scripts and stylesheets** allowed
+   `#hex`, `rgb(`, `rgba(`, `hsl(`; lint checks `.js` and `.css` under `src/`. The
+   icon SVG and the web manifest are static assets whose colours a test ties to
+   `PALETTE.page`. *(lint, verifier grep)*
 2. **The look is one module.** No file outside `src/look/` defines a gradient
    colour, a font or a glow, and `LOOK` is named in one place. *(lint, look
    test)*
@@ -184,6 +192,8 @@ the domain reviewers exist:
   `cache-control` is only visible deployed.
 - **Real-phone feel.** The lift glide, the swipe and the frame rate on a real
   device; the smoke check emulates touch in desktop Chromium.
+- **Link previews and icons.** How a messenger or search engine renders the
+  preview and the icon from the live URL.
 - **Whether the look reads as intended.** A glowing lantern on a dark table is
   a judgement about a screen.
 

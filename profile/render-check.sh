@@ -47,7 +47,7 @@ done
 
 RUN="$OUT/.claude/skills/deploy-web/SKILL.md"
 for needle in 'npm run smoke' 'api/weather' 'vercel-cli' "connect-src 'self'" 's-maxage=900' \
-              'VERCEL_PROJECT_ID' 'noindex' '## First deploy' '## How to confirm it landed'; do
+              'VERCEL_PROJECT_ID' 'robots.txt' '## First deploy' '## How to confirm it landed'; do
   grep -qF -- "$needle" "$RUN" || fail "the runbook does not name: $needle"
 done
 

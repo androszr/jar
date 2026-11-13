@@ -2,8 +2,7 @@
   both a key-exposure and a policy hole. **Lead with this one**: a widened
   `connect-src` is invisible until it is abused. Plain-language framing: "the
   page would start talking to a stranger's server."
-- **Headers and CSP.** A weaker CSP, a missing `nosniff`, HSTS or
-  `X-Robots-Tag`, or a cache window that serves a stale module after a deploy.
+- **Headers and CSP.** A weaker CSP, a missing `nosniff`, HSTS, or a cache window that serves a stale module after a deploy.
 - **The function's input and failure path.** Request input printed unvalidated,
   a stack trace in an answer, a vendor error that is not the empty shape.
 - **Dependencies and the pinned deploy tool.** A new package, or a bump of the
