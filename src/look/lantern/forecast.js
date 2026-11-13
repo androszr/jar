@@ -2,7 +2,7 @@
 // five days of icon, high and low in monospace, and the seven weather glyphs.
 // Colours only from PALETTE, text only through text().
 import { PALETTE, css } from './palette.js';
-import { text, fitSize } from './draw.js';
+import { text, fitSize, moonDisc } from './draw.js';
 import { formatTideStrip, formatTideHeight, tideCurve } from '../../weather.js';
 import { CARD } from '../../forecast.js';
 
@@ -93,15 +93,16 @@ export function weatherIcon(ctx, kind, x, y, size) {
 // Text never drops under FLOOR px (12.5 in the row, 12 in the column).
 // Where each day's cell sits on the card `rect` ({ x, y, w, h } per cell, in
 // the card's own units): the same split forecastCard draws, so a press can be
-// matched to a day. `n` cells; `sun` and `tides` as forecastCard takes them.
-export function forecastCells(rect, n, layout, sun = null, tides = []) {
+// matched to a day. `n` cells; `sun`, `tides` and `moon` as forecastCard takes them.
+export function forecastCells(rect, n, layout, sun = null, tides = [], moon = null) {
   const key = layout === 'row' ? 'row' : 'column';
   const strip = sun ? CARD.strip[key] : 0;
   const arcH = sun ? CARD.arc[key] : 0;
   const strips = formatTideStrip(tides);
   const tideH = strips ? CARD.tide[key] : 0;
   const curveH = strips ? CARD.curve[key] : 0;
-  const h = rect.h - strip - arcH - tideH - curveH;
+  const moonH = sun && moon ? CARD.moon[key] : 0;
+  const h = rect.h - strip - arcH - tideH - curveH - moonH;
   const count = Math.max(1, n);
   const out = [];
   for (let i = 0; i < count; i++) {
@@ -113,7 +114,9 @@ export function forecastCells(rect, n, layout, sun = null, tides = []) {
 }
 
 // `selected` (an index, or -1) rings the day the jar is being previewed on.
-export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null, selected = -1) {
+// `moon` is moonPhase's object or null; it is drawn only with `sun`, on a line
+// of its own between the days and the sunrise and sunset strip.
+export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null, selected = -1, moon = null) {
   const { x, y, w } = rect;
   const key = layout === 'row' ? 'row' : 'column';
   const floor = layout === 'row' ? 12.5 : 12;
@@ -122,7 +125,8 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
   const strips = formatTideStrip(tides);
   const tideH = strips ? CARD.tide[key] : 0;
   const curveH = strips ? CARD.curve[key] : 0;
-  const h = rect.h - strip - arcH - tideH - curveH;
+  const moonH = sun && moon ? CARD.moon[key] : 0;
+  const h = rect.h - strip - arcH - tideH - curveH - moonH;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
   ctx.beginPath();
@@ -210,7 +214,7 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
     });
   }
   if (selected >= 0 && selected < n) {
-    const cell = forecastCells(rect, n, layout, sun, tides)[selected];
+    const cell = forecastCells(rect, n, layout, sun, tides, moon)[selected];
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = css(PALETTE.brass, 0.95);
     ctx.beginPath();
@@ -224,14 +228,21 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
     ctx.moveTo(x + w * 0.08, y + h);
     ctx.lineTo(x + w * 0.92, y + h);
     ctx.stroke();
-    text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + strip * 0.5, Math.max(floor, strip * 0.48), PALETTE.labelDim);
+    if (moonH) {
+      // Tonight's moon on its own line, on the left margin the column's day names use.
+      const my = y + h + moonH * 0.5;
+      const mr = moonH * 0.28;
+      moonDisc(ctx, x + w * 0.1 + mr, my, mr, moon, 0.95);
+      text(ctx, moon.name.toUpperCase(), x + w * 0.1 + 2 * mr + moonH * 0.35, my, Math.max(floor, moonH * 0.5), PALETTE.labelDim, 'left');
+    }
+    text(ctx, `↑ ${sun.sunrise}  ↓ ${sun.sunset}`, x + w / 2, y + h + moonH + strip * 0.5, Math.max(floor, strip * 0.48), PALETTE.labelDim);
   }
   if (tideH) {
     // Today's tides, with or without a sun strip above: a hairline, then the
     // times with their heights (row: two lines on the left; column: one line
     // per extreme) and a small curve of the day with a dot for now (row: to the
     // right of the text; column: under it).
-    const ty = y + h + strip;
+    const ty = y + h + moonH + strip;
     ctx.lineWidth = 1;
     ctx.strokeStyle = css(PALETTE.brass, 0.35);
     ctx.beginPath();
@@ -278,7 +289,7 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
     const day = Number.isFinite(sunT) && sunT >= 0 && sunT <= 1;
     const cx = x + w / 2;
     const rx = w * 0.42;
-    const baseY = y + h + strip + tideH + curveH + arcH - 3;
+    const baseY = y + h + moonH + strip + tideH + curveH + arcH - 3;
     const ry = arcH - 6;
     ctx.beginPath();
     ctx.ellipse(cx, baseY, rx, ry, 0, Math.PI, Math.PI * 2);

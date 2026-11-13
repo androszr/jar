@@ -9,6 +9,7 @@ export const CARD = {
   tide: { column: 60, row: 44 },
   curve: { column: 36, row: 0 },
   arc: { column: 14, row: 12 },
+  moon: { column: 18, row: 16 }, // the moon line's height, present only when the card is handed a moon
   gap: 14,
   drop: 36,
   scrubBand: 72, // scene units left free under the lifted extent for the slider row

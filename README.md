@@ -193,7 +193,7 @@ setting how fast the clouds travel and how far the rain leans.
 The forecast card marks today with a band and an underline (and names it
 *today* for screen readers). Each day gives its high and low, its chance of
 rain and its strongest wind with an arrow for the way it blows; a strip along
-the bottom gives today's sunrise and sunset over a thin arc whose dot shows how
+the bottom gives today's sunrise and sunset, with tonight's moon as a small shape and its name on the line above, over a thin arc whose dot shows how
 far the sun has come across the sky. If the weather cannot be fetched, the jars
 still light for the hour under a neutral sky and the label shows a dash instead
 of a temperature.
@@ -297,7 +297,7 @@ it checks the label's four bands and the missing-weather three lines, the
 turquoise lake, the banner cloud, the deck, first light on the wall and its
 mirror, the headlamps, the bivouac light, the frozen July lake, that the facets
 are lit by the hour and that a pinned moment draws the same pixels. It also
-checks the forecast card's today mark, sunrise and sunset strip and sun arc,
+checks the forecast card's today mark, sunrise and sunset strip, moon line and sun arc,
 and that clouds hold their place when the wind changes. Its screenshots
 go to `test-output/`. It needs a
 Chromium: run `npx playwright-core install chromium-headless-shell`, or it

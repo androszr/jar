@@ -77,7 +77,7 @@ let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
 let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
 let scenes = {}; // city id -> what the scene reported painting
 let drawn = {}; // city id -> { flash, dew, drift, moon } the last frame painted with
-let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT } of the card drawn last, or null
+let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT, moon } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
 // the room behind a fully lifted jar is kept (softened, in scratch.back) and
@@ -391,6 +391,7 @@ function render(force = false) {
     const cells = forecastCells(weathers[focus], todayHere);
     const sun = sunTimesFor(weathers[focus], todayHere);
     const sunT = sunFraction(at[focus], zone, sun);
+    const moon = sun ? moonPhase(ms) : null;
     // the tide curve is today's: the dot follows the scrubbed moment while it is still today, else none
     const thatDay = localDate(at[focus], zone);
     const dayT = thatDay === todayHere ? dayFraction(at[focus], zone) : null;
@@ -404,9 +405,9 @@ function render(force = false) {
     ctx.rect(jr.x, jr.y, jr.w, jr.h);
     ctx.clip('evenodd');
     ctx.globalAlpha = pose.alpha;
-    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides, dayT, selectedDay);
+    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides, dayT, selectedDay, moon);
     ctx.restore();
-    lastForecast = { cells, rect: pose.rect, layout: pose.layout, sun, sunT, tides, dayT };
+    lastForecast = { cells, rect: pose.rect, layout: pose.layout, sun, sunT, tides, dayT, moon };
   } else {
     lastForecast = null;
   }
@@ -504,9 +505,13 @@ function syncAria() {
   const todayHere = view === 'jar' ? localDate(nowMs(), CITIES[focus].location.zone) : null;
   const cells = view === 'jar' ? forecastCells(here, todayHere) : null;
   const sun = view === 'jar' ? sunTimesFor(here, todayHere) : null;
+  const moonName = view === 'jar' ? moonPhase(nowMs()).name : '';
   const sentence = cells ? forecastSentence(cells) : '';
   const tideText = view === 'jar' ? tideSentence(tidesFor(here, todayHere)) : '';
-  const days = (sentence ? ` ${sentence}` : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '') + (tideText ? ` ${tideText}` : '');
+  const sunText = sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}` : '';
+  const days = (sentence ? ` ${sentence}` : '') + (sun ? `${sunText}, a ${moonName} moon.` : '') + (tideText ? ` ${tideText}` : '');
+  // what the "Weather updated" announcement compares: the forecast alone, so a phase name rolling over is not an update
+  const forecastText = (sentence ? ` ${sentence}` : '') + (sun ? `${sunText}.` : '') + (tideText ? ` ${tideText}` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
   const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, ${c.location.sea ? 'swell ' : ''}${l[3]}` : ''}` : placeName(c);
@@ -514,9 +519,9 @@ function syncAria() {
   if (view === 'jar') {
     const at = scrubMin > 0 ? previewMs() : nowMs();
     const ph = therePhase(at, c.location, viewerAt(at));
-    if (isNight(ph) && moonPos(ph).alt > 0) moonText = ` A ${moonPhase(at).name} moon.`;
+    if (!sun && isNight(ph) && moonPos(ph).alt > 0) moonText = ` A ${moonPhase(at).name} moon.`;
   }
-  const next = view === 'jar' ? { id: c.id, text: days.trim(), rev: feed.revision } : null;
+  const next = view === 'jar' ? { id: c.id, text: forecastText.trim(), rev: feed.revision } : null;
   const say = forecastAnnouncement(spoken, next);
   spoken = next;
   if (say !== null) liveEl.textContent = say;
@@ -741,7 +746,7 @@ function liftedTarget(p) {
   const card = lastForecast && lastForecast.rect;
   if (pressLowers(p, jar, card)) return { kind: 'away' };
   if (!pressLowers(p, jar, null)) return { kind: 'jar' };
-  const cells = forecastCellRects(card, lastForecast.cells.length, lastForecast.layout, lastForecast.sun, lastForecast.tides);
+  const cells = forecastCellRects(card, lastForecast.cells.length, lastForecast.layout, lastForecast.sun, lastForecast.tides, lastForecast.moon);
   const index = cells.findIndex((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
   return index >= 0 && lastForecast.cells[index].day !== '—' ? { kind: 'day', index } : { kind: 'card' };
 }
@@ -897,13 +902,13 @@ window.__jar = {
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
     return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
   },
-  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT } in canvas px.
+  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT, moon } in canvas px.
   get forecast() {
     if (!lastForecast) return null;
     const r = lastForecast.rect;
     const a = this.toCanvas(r.x, r.y);
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
-    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
+    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, moon: lastForecast.moon, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   // The chalk hint: null once gone, else { text, state, alpha, rect } with the lettering's box in canvas px.
   get hint() {

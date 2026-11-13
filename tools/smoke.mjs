@@ -8,7 +8,7 @@
 // a tablet, and the five-day forecast card of the lifted jar (beside the jar on
 // a laptop, below it on a phone, absent on the table, dashes without a daily
 // block), with today marked (and named today for screen readers) and the sunrise and sunset, with a sun arc under the sunrise
-// and sunset line, and a polite live region that announces a refreshed forecast while a jar is lifted. Two jars stand on the
+// and sunset line and the moon's phase glyph and name above them, and a polite live region that announces a refreshed forecast while a jar is lifted. Two jars stand on the
 // table, Warsaw and Nazare (Lisbon time, its wave sized by a stub sea reading):
 // both labels, both lifts, the arrow and a phone swipe reaching the second, the
 // four swell bands and their surfers, the lighthouse beam at night, and the real moon phase (a new moon and a full
@@ -391,7 +391,8 @@ try {
   await page.evaluate((b) => window.__jar.applyWeather(b), bumped);
   const heard = await page.waitForFunction(() => document.getElementById('announce').textContent.startsWith('Weather updated. '), null, { timeout: 3000 }).then(() => true, () => false);
   const [live1, aria1] = await page.evaluate(() => [document.getElementById('announce').textContent, document.getElementById('view').getAttribute('aria-label')]);
-  const spokenOf = (a) => a.slice(a.indexOf('Next five days: '), a.indexOf(' Press Escape'));
+  // the announcement is the forecast alone: the sentence without the moon clause
+  const spokenOf = (a) => a.slice(a.indexOf('Next five days: '), a.indexOf(' Press Escape')).replace(/, a [a-z ]+ moon\./, '.');
   check(heard && live1 === `Weather updated. ${spokenOf(aria1)}` && spokenOf(aria1) !== spokenOf(aria) && live1.includes('Sunrise '), 'live region announces a refreshed forecast while lifted');
   await page.evaluate((b) => window.__jar.applyWeather(b), bumped);
   await twoFrames(page);
@@ -557,8 +558,23 @@ try {
   const brightSky = luma(await patch(sea, 'nazare', fullMoon.x, fullMoon.y, 3));
   check(brightSky > dimSky + 15, `the full moon is brighter on the glass than the new moon (${brightSky.toFixed(0)} vs ${dimSky.toFixed(0)})`);
   // the accessible name is synced on the next frame after a pin, so wait for it
-  const namesFull = await sea.waitForFunction(() => /A full moon\./.test(document.getElementById('view').getAttribute('aria-label') || ''), null, { timeout: 3000 }).then(() => true, () => false);
+  // `sea` has had stub readings applied that carry no daily block (so no sunrise strip); a page fresh from the fixture has one
+  const seaSun = await desk.newPage();
+  const seaSunSeen = watch(seaSun, origin);
+  await routeWeather(seaSun);
+  await seaSun.goto(`${origin}/?jar=nazare`);
+  await ready(seaSun);
+  await viewIs(seaSun, 'jar');
+  await settled(seaSun);
+  await pinAt(seaSun, T_FULL);
+  const namesFull = await seaSun.waitForFunction(() => /, a full moon\./.test(document.getElementById('view').getAttribute('aria-label') || ''), null, { timeout: 3000 }).then(() => true, () => false);
   check(namesFull, 'the lifted sentence names the full moon');
+  check(seaSunSeen.errors.length === 0 && seaSunSeen.off.length === 0, 'no console errors or off-origin requests on the sunrise-strip moon page');
+  await seaSun.close();
+  // without a sunrise strip the stand-alone sentence still speaks the moon, once
+  const lone = await sea.waitForFunction(() => (document.getElementById('view').getAttribute('aria-label') || '').includes('The jar is lifted. A full moon.'), null, { timeout: 3000 }).then(() => true, () => false);
+  const loneLabel = await sea.evaluate(() => document.getElementById('view').getAttribute('aria-label') || '');
+  check(lone && (loneLabel.match(/moon\./g) || []).length === 1, 'with no sunrise strip the lifted sentence still names the moon once');
   await sea.screenshot({ path: join(OUT, 'nazare-full-moon.png') });
   await pinAt(sea, T_DARK);
   check(seaSeen.errors.length === 0 && seaSeen.off.length === 0, `no console errors or off-origin requests in the sea run${seaSeen.errors.length ? `: ${seaSeen.errors.join(' | ')}` : ''}`);
@@ -698,6 +714,7 @@ try {
   await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
   const fn = await noct.evaluate(() => window.__jar.forecast);
   check(!!fn && !!fn.sun && fn.sunT < 0, 'forecast card sun arc has no dot at 01:30 in Warsaw');
+  check(!!fn && !!fn.moon && fn.moon.name === 'new' && fn.moon.illumination < 0.02, 'forecast card names the new moon on a new-moon night');
   const gold = (r, g, b) => r >= 140 && r >= g + 20 && r >= b + 60;
   const blue = (r, g, b) => b >= 180 && b >= r + 40;
   const red = (r, g, b) => r >= 180 && r >= g + 60 && r >= b + 60;
@@ -744,6 +761,7 @@ try {
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   const fd = await noct.evaluate(() => window.__jar.forecast);
   check(!!fd && !!fd.sun && Math.abs(fd.sunT - 0.327) < 0.01, 'forecast card sun arc puts the dot a third of the way at 10:30 in Warsaw');
+  check(!!fd && !!fd.moon && fd.moon.name === 'new', 'forecast card keeps the moon line by day');
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 30), 'Palace is warm sandstone by day');
   check(!some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'no aviation light by day');
   const dayDeck = await deckScan(noct);
@@ -800,6 +818,16 @@ try {
   await twoFrames(noct);
   const springForest = await forest(noct);
   check(all(springForest, (r, g, b) => g >= r + 15) && luma(springForest) >= luma(summerForest) + 20, 'the forest is a fresh lighter green in spring');
+  await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
+  await twoFrames(noct);
+  const T_CARD_FULL = Date.UTC(2026, 5, 29, 23, 30); // 01:30 in Warsaw, a full moon
+  await noct.evaluate((t) => window.__jar.pin(t), T_CARD_FULL);
+  await twoFrames(noct);
+  const ff = await noct.evaluate(() => window.__jar.forecast);
+  const ariaFull = await noct.evaluate(() => document.getElementById('view').getAttribute('aria-label'));
+  check(!!ff && !!ff.moon && ff.moon.name === 'full' && ff.moon.illumination > 0.98, 'forecast card names the full moon');
+  check(typeof ariaFull === 'string' && /sunset \d\d:\d\d, a full moon\./.test(ariaFull) && (ariaFull.match(/moon\./g) || []).length === 1, 'the lifted sentence names the moon once, after sunset');
+  await noct.screenshot({ path: join(OUT, 'warsaw-full-moon-card.png') });
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   await twoFrames(noct);
   // ice on the river in a hard frost, none above the threshold
@@ -876,6 +904,7 @@ try {
   await settled(xp);
   const xf = await xp.evaluate(() => window.__jar.forecast);
   check(!!xf && xf.sun === null && xf.sunT === null && xf.cells.length === 5 && xf.cells[0].high !== '—°' && xSeen.errors.length === 0, 'forecast card omits the sun strip without sun times');
+  check(!!xf && xf.moon === null, 'no sunrise means no moon line either');
   {
     const wp0 = await nos.newPage();
     await routeWeather(wp0);
