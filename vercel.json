@@ -4,6 +4,7 @@
   "buildCommand": null,
   "installCommand": "npm ci --omit=dev",
   "outputDirectory": "src",
+  "regions": ["fra1"],
   "cleanUrls": false,
   "git": {
     "deploymentEnabled": {

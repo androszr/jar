@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WeatherFeed, REFRESH_MS, STALE_MS } from '../src/weatherfeed.js';
+import { WeatherFeed, REFRESH_MS, RETRY_MS, STALE_MS } from '../src/weatherfeed.js';
 import { EMPTY, NO_ANCHOR, cloudTravel } from '../src/weather.js';
 
 const body = (temp, code = 61) => ({ v: 1, cities: { warsaw: { temperature: temp, code, cloudCover: 50, isDay: 1 } } });
@@ -344,4 +344,42 @@ test('hourly rows reach get(id).hourly, default [], and an hourly-only change bu
   assert.equal(f.get('warsaw').hourly[0].temperature, 16);
   assert.equal(f.applyResponse({ v: 1, cities: { warsaw: { temperature: 1, code: 61, cloudCover: 50, isDay: 1, hourly: [row(17)] } } }), true);
   assert.equal(f.revision, r0 + 2);
+});
+
+// ---- a failed attempt is tried again soon ----
+
+test('retry: after a failure the next attempts come at 5, 15, 30 and 60 s, then on the 15-minute schedule', async () => {
+  let clock = 0;
+  let calls = 0;
+  const f = new WeatherFeed({ fetchImpl: async () => { calls += 1; return { ok: false, status: 502 }; }, now: () => clock });
+  await f.start();
+  assert.deepEqual([calls, f.fails], [1, 1]);
+  assert.deepEqual(RETRY_MS, [5000, 15000, 30000, 60000]);
+  for (const [i, wait] of RETRY_MS.entries()) {
+    assert.equal(f.tick(clock + wait - 1), null, `not before ${wait} ms`);
+    clock += wait;
+    await f.tick(clock);
+    assert.equal(calls, i + 2);
+  }
+  assert.equal(f.tick(clock + 60000), null, 'the quick tries are spent');
+  assert.equal(f.tick(clock + REFRESH_MS - 1), null);
+  clock += REFRESH_MS;
+  await f.tick(clock);
+  assert.equal(calls, 6);
+});
+
+test('retry: a good answer ends the quick tries and a thrown fetch counts as a failure', async () => {
+  let clock = 0;
+  let mode = 'throw';
+  const f = new WeatherFeed({ fetchImpl: async () => { if (mode === 'throw') throw new Error('offline'); return { ok: true, json: async () => body(7) }; }, now: () => clock });
+  await f.start();
+  assert.equal(f.fails, 1);
+  assert.equal(f.dueAt(), RETRY_MS[0]);
+  mode = 'ok';
+  clock = RETRY_MS[0];
+  await f.tick(clock);
+  assert.equal(f.fails, 0);
+  assert.equal(f.get('warsaw').temperature, 7);
+  assert.equal(f.dueAt(), clock + REFRESH_MS);
+  assert.equal(f.tick(clock + 60000), null);
 });

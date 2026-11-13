@@ -123,7 +123,7 @@ test('a failed vendor call is never memoised', async () => {
   const r = fakeRes();
   await handler({ method: 'GET' }, r, { fetchImpl, nowMs: NOW });
   await handler({ method: 'GET' }, fakeRes(), { fetchImpl, nowMs: NOW + 1000 });
-  assert.equal(n, 2);
+  assert.equal(n, 4, 'each request asks the vendor twice');
   assert.equal(r.statusCode, 502);
 });
 
@@ -476,4 +476,47 @@ test('normaliseMarine folds tides onto each daily row, [] without hourly', () =>
   assert.deepEqual(d[0].tides.map((e) => e.kind), ['high', 'low', 'high', 'low']);
   const { hourly, ...noHourly } = fixture('marine.json');
   assert.ok(normaliseMarine(noHourly, [nazare]).nazare.daily.every((r) => Array.isArray(r.tides) && r.tides.length === 0));
+});
+
+// ---- the second try, and the log ----
+
+test('a weather call that fails once is asked again and the answer is good', async () => {
+  let n = 0;
+  const lines = [];
+  const fetchImpl = async () => {
+    n += 1;
+    if (n === 1) throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+    return { ok: true, json: async () => fixture('weather.json') };
+  };
+  const r = await fetchWeather([warsaw], { fetchImpl, nowMs: NOW, log: (l) => lines.push(l) });
+  assert.equal(r.ok, true);
+  assert.equal(n, 2);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /first vendor call failed \(TimeoutError: /);
+});
+
+test('two failed weather calls answer the empty shape and log both reasons, never the address', async () => {
+  let n = 0;
+  const lines = [];
+  const fetchImpl = async () => { n += 1; return { ok: false, status: 429 }; };
+  const r = await fetchWeather([warsaw], { fetchImpl, nowMs: NOW, log: (l) => lines.push(l) });
+  assert.deepEqual([r.ok, r.cities], [false, {}]);
+  assert.equal(n, 2, 'twice and no more');
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /status 429/);
+  assert.match(lines[1], /second vendor call failed \(status 429\)/);
+  for (const l of lines) assert.doesNotMatch(l, /https?:|latitude/);
+});
+
+test('a failed marine call is logged and asked only once', async () => {
+  let sea = 0;
+  const lines = [];
+  const fetchImpl = async (url) => {
+    if (new URL(url).host === 'marine-api.open-meteo.com') { sea += 1; throw new Error('sea down'); }
+    return { ok: true, json: async () => fixture('weather-two-cities.json') };
+  };
+  const r = await fetchWeather(bothPlaces, { fetchImpl, nowMs: NOW, log: (l) => lines.push(l) });
+  assert.equal(r.ok, true);
+  assert.equal(sea, 1);
+  assert.deepEqual(lines, ['weather: the marine call failed (sea down)']);
 });

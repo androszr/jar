@@ -200,28 +200,53 @@ export function normalise(payload, places, nowMs = Date.now(), marinePayload = n
 
 const empty = (nowMs) => ({ v: 1, fetchedAt: new Date(nowMs).toISOString(), ok: false, cities: {} });
 
-export async function fetchWeather(places, { fetchImpl = globalThis.fetch, nowMs = Date.now() } = {}) {
+// One vendor call, read to the end inside its own 4 s limit; anything but a
+// good answer rejects with a short reason (a status, or the error's name).
+const VENDOR_MS = 4000;
+function ask(fetchImpl, url) {
+  return Promise.resolve()
+    .then(() => fetchImpl(url, { signal: AbortSignal.timeout(VENDOR_MS) }))
+    .then((r) => {
+      if (r && r.ok) return r.json();
+      throw new Error(`status ${r ? r.status : 'none'}`);
+    });
+}
+const reason = (e) => (e && e.name && e.name !== 'Error' ? `${e.name}: ${e.message}` : String((e && e.message) || e));
+
+// `log` gets one line per failed vendor call (the function's own log on
+// Vercel), so an outage can be told from a slow vendor afterwards.
+export async function fetchWeather(places, { fetchImpl = globalThis.fetch, nowMs = Date.now(), log = console.error } = {}) {
   try {
     // The marine call runs beside the weather call, only for places with a sea
     // point, and never decides `ok`: any failure of it is null seas.
     const marine = async () => {
       if (seaPlaces(places).length === 0) return null;
       try {
-        const r = await fetchImpl(marineUrl(places), { signal: AbortSignal.timeout(4000) });
-        return r && r.ok ? await r.json() : null;
-      } catch {
+        return await ask(fetchImpl, marineUrl(places));
+      } catch (e) {
+        log(`weather: the marine call failed (${reason(e)})`);
         return null;
       }
     };
-    // The weather body is read inside its own chain, so the marine call's wait
-    // can never leave it unread past its own timeout.
-    const weatherP = Promise.resolve(fetchImpl(openMeteoUrl(places), { signal: AbortSignal.timeout(4000) }))
-      .then((r) => (r && r.ok ? r.json() : null));
+    // The weather call is tried twice: the vendor is one hop away and a single
+    // slow answer should not leave every visitor of the next minutes without
+    // a reading. The body is read inside its own chain, so the marine call's
+    // wait can never leave it unread past its own timeout.
+    const weatherP = ask(fetchImpl, openMeteoUrl(places))
+      .catch((e) => {
+        log(`weather: the first vendor call failed (${reason(e)}), trying once more`);
+        return ask(fetchImpl, openMeteoUrl(places));
+      })
+      .catch((e) => {
+        log(`weather: the second vendor call failed (${reason(e)})`);
+        return null;
+      });
     const [payload, marinePayload] = await Promise.all([weatherP, marine()]);
     if (payload === null) return empty(nowMs);
     return normalise(payload, places, nowMs, marinePayload);
-  } catch {
+  } catch (e) {
     // A down or malformed vendor answers the empty shape; the page degrades.
+    log(`weather: the answer could not be read (${reason(e)})`);
     return empty(nowMs);
   }
 }
@@ -235,7 +260,7 @@ export function resetMemo() {
   memo = null;
 }
 
-export default async function handler(req, res, { fetchImpl, nowMs } = {}) {
+export default async function handler(req, res, { fetchImpl, nowMs, log } = {}) {
   if (req.method !== 'GET') {
     res.statusCode = 405;
     res.setHeader('allow', 'GET');
@@ -248,7 +273,7 @@ export default async function handler(req, res, { fetchImpl, nowMs } = {}) {
   if (memo && now >= memo.at && now - memo.at < MEMO_MS) {
     body = memo.body;
   } else {
-    body = await fetchWeather(PLACES, { fetchImpl, nowMs: now });
+    body = await fetchWeather(PLACES, { fetchImpl, nowMs: now, log });
     if (body.ok) memo = { at: now, body };
   }
   res.statusCode = body.ok ? 200 : 502;

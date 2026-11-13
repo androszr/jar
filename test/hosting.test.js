@@ -31,6 +31,10 @@ test('vercel.json publishes src/ as it is, with no build and no Git deploys', ()
   assert.equal(v.git.deploymentEnabled.main, false);
 });
 
+test('the weather function runs in Frankfurt, next to the weather vendor', () => {
+  assert.deepEqual(hosting().regions, ['fra1']);
+});
+
 test('one header rule covers every path', () => {
   assert.ok(allRule(), 'no headers rule with source "/(.*)"');
 });
