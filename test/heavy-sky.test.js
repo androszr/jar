@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gloom, GLOOM_CLOUD, GLOOM_KIND, EMPTY, FLASH } from '../src/weather.js';
-import { boltPath, BOLT_STEPS, cloudColour, lowSun, drawPrecipitation } from '../src/skyweather.js';
+import { gloom, GLOOM_CLOUD, GLOOM_KIND, EMPTY, FLASH, nextFlashPeak } from '../src/weather.js';
+import { readFileSync } from 'node:fs';
+import { boltPath, BOLT_STEPS, cloudColour, lowSun, drawPrecipitation, drawStormFlash } from '../src/skyweather.js';
 import * as look from '../src/look/index.js';
 
 const w = (kind, cloudCover = null) => ({ known: true, kind, cloudCover });
@@ -96,4 +97,26 @@ test('precipitation: a far layer behind the city and a near one in front, togeth
   }
   assert.equal(count('clear', 'near'), 0);
   assert.equal(count('cloud', 'far'), 0);
+});
+
+test('drawStormFlash: `bolt: false` leaves out the bolt, the default draws one', () => {
+  const rect = { x: 0, y: 0, w: 260, h: 330 };
+  const storm = { known: true, kind: 'storm', code: 95 };
+  const strokes = (opts) => {
+    let n = 0;
+    const ctx = new Proxy({}, { get: (t, k) => (k === 'stroke' ? () => { n++; } : k in t ? t[k] : () => ({ addColorStop() {} })), set: (t, k, v) => { t[k] = v; return true; } });
+    drawStormFlash(ctx, rect, storm, nextFlashPeak(95, 0), opts);
+    return n;
+  };
+  assert.ok(strokes({}) > 0, 'the default draws the bolt');
+  assert.equal(strokes({ bolt: false }), 0);
+  assert.ok(strokes({ bolt: true }) > 0);
+});
+
+test('Warsaw opts out of the shared bolt and the jar hands that through to the sky', async () => {
+  const warsaw = (await import('../src/cities/warsaw/index.js')).default;
+  assert.equal(warsaw.sky.bolt, false);
+  // paintInterior needs a real canvas; the closest seam is its source line
+  const src = readFileSync(new URL('../src/jar.js', import.meta.url), 'utf8');
+  assert.match(src, /bolt: !\(city\.sky && city\.sky\.bolt === false\)/);
 });

@@ -101,7 +101,7 @@ export function paintInterior(interior, city, phase, tint, weather, nowMs, plate
     ictx.scale(shift.scale, shift.scale);
     ictx.translate(-local.w / 2, -local.h / 2);
   }
-  const sky = drawJarSky(ictx, local, phase, tint, weather, nowMs, { ...opts, sun: !(city.sky && city.sky.sun === false), backdrop: typeof city.backdrop === 'function' ? (c, r) => city.backdrop(c, r, phase, tint, weather) : null, strike: (city.sky && city.sky.strike) || null });
+  const sky = drawJarSky(ictx, local, phase, tint, weather, nowMs, { ...opts, sun: !(city.sky && city.sky.sun === false), backdrop: typeof city.backdrop === 'function' ? (c, r) => city.backdrop(c, r, phase, tint, weather) : null, strike: (city.sky && city.sky.strike) || null, bolt: !(city.sky && city.sky.bolt === false) });
   const scene = city.paint(ictx, local, phase, tint, weather, plates, nowMs) ?? null;
   // rain lands on the city's open water as rings
   if (typeof city.water === 'function') drawSplashes(ictx, city.water(local, scene), weather, nowMs);

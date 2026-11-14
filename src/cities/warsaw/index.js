@@ -6,13 +6,15 @@
 // hard frost (below -5 C) ice floes drift right on the river and steam rises off
 // the roofs. The traffic's tick carries the ice too. The near bank is rows of
 // trees behind a strip of beach (forest.js); the boat, the birds, the steam, the
-// New Year fireworks and the Christmas tree are in life.js.
+// New Year fireworks and the Christmas tree are in life.js. In a storm each flash
+// brings a bolt down to the Palace's needle (none under reduced motion).
 import { PLACES } from '../places.js';
-import { layout, buildPlates, drawSkyline, drawRiver, drawMermaid, nightAmount, sunLight, seasonWeights, SEASONS, SKYLINE, PALACE, FAR_BANK } from './scene.js';
+import { layout, buildPlates, drawSkyline, drawRiver, drawMermaid, drawLightning, nightAmount, sunLight, seasonWeights, SEASONS, SKYLINE, PALACE, FAR_BANK } from './scene.js';
 import { drawBridge } from './bridge.js';
 import { drawNearBank } from './forest.js';
 import { drawBoat, drawBirds, drawSteam, drawFireworks, drawTree, lifeCadence } from './life.js';
 
+// Read once, here, never inside a draw call.
 const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const place = PLACES.find((p) => p.id === 'warsaw');
@@ -26,7 +28,8 @@ export default {
   lid: 'cork',
   label: { inks: { plate: 'plate', ink: 'labelInk' } },
   // lightning finds the tip of the Palace's needle (fractions of the jar interior)
-  sky: { strike: [PKIN.x, FAR_BANK - PALACE.needle] },
+  // (the bolt itself is drawn by paint, on every flash, so the shared sky draws none)
+  sky: { strike: [PKIN.x, FAR_BANK - PALACE.needle], bolt: false },
   buildPlates,
   // the bridge traffic's 200 ms tick (400 reduced) is never slower than the ice needs (250 / 500);
   // the New Year fireworks ask for 100 ms while they last
@@ -54,6 +57,7 @@ export default {
     const bank = drawNearBank(ctx, L, tint, night, weather, nowMs, light);
     const bridge = drawBridge(ctx, rect, phase, tint, weather, nowMs, reduced, light);
     drawMermaid(ctx, rect, phase, tint, weather);
+    drawLightning(ctx, rect, weather, nowMs, reduced);
     const w = seasonWeights(nowMs);
     return {
       season: SEASONS.reduce((a, b) => (w[b] > w[a] ? b : a)),

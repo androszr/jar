@@ -180,4 +180,8 @@ export const WARSAW = {
   firNight: [12, 34, 30],
   firLights: [[255, 210, 116], [255, 96, 84], [120, 200, 255], [255, 246, 222]],
   firStar: [255, 236, 170],
+  // lightning on the needle
+  boltCore: [255, 255, 255],
+  boltHalo: [40, 50, 190],
+  boltSpark: [70, 90, 230],
 };
