@@ -1382,7 +1382,8 @@ test('full cloud by day flattens the rims, the Palace shade and the glint; night
     return JSON.stringify({ calls: ctx.calls, fills: [...ctx.fills], strokes: [...ctx.strokes] });
   };
   for (const ph of [PHASE.night, 0.88, 0.95]) {
-    const dark = skyline(ph, grey);
+    // no low deck (cloudLow 0): the cloud base, a separate card, does draw at night under a low overcast
+    const dark = skyline(ph, { ...grey, cloudLow: 0 });
     assert.ok(dark.length > 1000);
     assert.deepEqual(dark, skyline(ph, EMPTY), `the skyline at phase ${ph} is unchanged by full cloud`);
   }
