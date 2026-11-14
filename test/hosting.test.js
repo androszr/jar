@@ -145,14 +145,14 @@ test('the page introduces itself for a link preview', () => {
 
 test('the icons and the manifest are served from src/', () => {
   const html = read('src/index.html');
-  once(html, '<link rel="icon" href="icon.svg" type="image/svg+xml">');
-  once(html, '<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">');
-  once(html, '<link rel="apple-touch-icon" href="apple-touch-icon.png">');
+  once(html, '<link rel="icon" href="icons/jar.svg" type="image/svg+xml">');
+  once(html, '<link rel="icon" href="icons/jar-192.png" type="image/png" sizes="192x192">');
+  once(html, '<link rel="apple-touch-icon" href="icons/jar-180.png">');
   once(html, '<link rel="manifest" href="manifest.webmanifest">');
-  assert.deepEqual(readFileSync(join(ROOT, 'src/icon.svg')), readFileSync(join(ROOT, 'docs/images/jar-icon.svg')));
-  assert.deepEqual(pngSize('src/apple-touch-icon.png'), [180, 180]);
-  assert.deepEqual(pngSize('src/icon-192.png'), [192, 192]);
-  assert.deepEqual(pngSize('src/icon-512.png'), [512, 512]);
+  assert.deepEqual(readFileSync(join(ROOT, 'src/icons/jar.svg')), readFileSync(join(ROOT, 'docs/images/jar-icon.svg')));
+  assert.deepEqual(pngSize('src/icons/jar-180.png'), [180, 180]);
+  assert.deepEqual(pngSize('src/icons/jar-192.png'), [192, 192]);
+  assert.deepEqual(pngSize('src/icons/jar-512.png'), [512, 512]);
   const manifest = JSON.parse(read('src/manifest.webmanifest'));
   const page = '#' + PALETTE.page.map((c) => c.toString(16).padStart(2, '0')).join('');
   assert.equal(manifest.name, 'Jars');
@@ -167,9 +167,8 @@ test('the icons and the manifest are served from src/', () => {
     const [w, h] = pngSize(`src/${icon.src.replace(/^\//, '')}`);
     assert.equal(icon.sizes, `${w}x${h}`, icon.src);
   }
-  const lines = read('.gitignore').split('\n');
-  const star = lines.indexOf('*.png');
-  assert.ok(star >= 0 && lines.indexOf('!src/*.png') > star, '.gitignore swallows the icons');
+  // the root .gitignore drops *.png; src/icons/ takes its PNGs back
+  assert.ok(read('.gitignore').split('\n').includes('*.png') && read('src/icons/.gitignore').split('\n').includes('!*.png'), '.gitignore swallows the icons');
   const c = headersFor('/manifest.webmanifest')['content-security-policy'];
   assert.ok(c.startsWith("default-src 'self'"));
   // the install card names manifest-src explicitly; it may only ever be the page's own origin

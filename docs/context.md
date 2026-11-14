@@ -140,9 +140,10 @@ deploys off, deploys by `.github/workflows/deploy.yml` with a pinned CLI in
 `.github/vercel-cli/`); `api/weather.js` runs beside it as a Node function.
 The CSP is self-only with `connect-src 'self'`. There is no robots header and
 `src/robots.txt` allows all but `/api/`. The page carries a description, a canonical link
-and Open Graph tags, and serves `share.jpg`, `icon.svg`, `icon-192.png`,
-`icon-512.png`, `apple-touch-icon.png` and `manifest.webmanifest`, all static
-under `src/`; the bitmaps are rendered once by `node tools/icons.mjs` and
+and Open Graph tags, and serves `share.jpg`, one icon set under `src/icons/`
+(`jar.svg`, `jar-180.png` as the apple-touch-icon on the page colour,
+`jar-192.png`, `jar-512.png`, `jar-maskable.svg` and `jar-maskable-512.png`) and
+`manifest.webmanifest`, all static under `src/`; the bitmaps are rendered once by `node tools/icons.mjs` and
 committed. The production address is `https://jar-pearl.vercel.app`, named in
 `src/index.html` (one commented block) and `test/hosting.test.js` (`LIVE`).
 

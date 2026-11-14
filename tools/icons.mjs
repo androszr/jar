@@ -3,12 +3,11 @@
 // at deploy, and this is not a gate. Re-run only when an icon SVG changes; the
 // bytes may differ between Chromium versions, the tests check size and signature.
 //
-// Two sets, drawn from the same jar:
-// - the page's own icons (apple-touch-icon.png 180, icon-192.png, icon-512.png)
-//   from src/icon.svg. The SVG has transparent top and bottom bands, so the
-//   page colour is painted behind it, from the palette (no colour literal here).
-// - the install manifest's icons under src/icons/ (jar-180/192/512.png from
-//   jar.svg, jar-maskable-512.png from jar-maskable.svg), kept transparent.
+// One set, under src/icons/, named by the page and the install manifest:
+// jar-180/192/512.png from jar.svg and jar-maskable-512.png from jar-maskable.svg.
+// jar-180.png is the apple-touch-icon: iOS shows transparency as black, and the
+// SVG has transparent top and bottom bands, so the page colour is painted behind
+// it, from the palette (no colour literal here). The others stay transparent.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { PALETTE, css } from '../src/look/lantern/palette.js';
@@ -16,10 +15,7 @@ import { PALETTE, css } from '../src/look/lantern/palette.js';
 const SRC = new URL('../src/', import.meta.url);
 // [svg under src/, png under src/, size, page colour behind it]
 const JOBS = [
-  ['icon.svg', 'apple-touch-icon.png', 180, true],
-  ['icon.svg', 'icon-192.png', 192, true],
-  ['icon.svg', 'icon-512.png', 512, true],
-  ['icons/jar.svg', 'icons/jar-180.png', 180, false],
+  ['icons/jar.svg', 'icons/jar-180.png', 180, true],
   ['icons/jar.svg', 'icons/jar-192.png', 192, false],
   ['icons/jar.svg', 'icons/jar-512.png', 512, false],
   ['icons/jar-maskable.svg', 'icons/jar-maskable-512.png', 512, false],

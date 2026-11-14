@@ -64,9 +64,9 @@ test('the dev server serves the icons, the preview picture and the manifest with
   const { server, port } = await startServer({ port: 0 });
   try {
     const want = {
-      '/icon.svg': 'image/svg+xml',
-      '/icon-192.png': 'image/png',
-      '/apple-touch-icon.png': 'image/png',
+      '/icons/jar.svg': 'image/svg+xml',
+      '/icons/jar-192.png': 'image/png',
+      '/icons/jar-180.png': 'image/png',
       '/share.jpg': 'image/jpeg',
       '/manifest.webmanifest': 'application/manifest+json; charset=utf-8',
     };
