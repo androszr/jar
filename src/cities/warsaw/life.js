@@ -176,11 +176,11 @@ export function fireworksOn(nowMs) {
   return (c.md === '12-31' && c.min >= 23 * 60 + 55) || (c.md === '01-01' && c.min <= 20);
 }
 
-// The Christmas tree stands from 6 December to 6 January.
+// The Christmas tree stands through December, Warsaw time (1 to 31 December).
 export function treeUp(nowMs) {
   const c = clockOf(nowMs);
   if (!c) return false;
-  return (c.md >= '12-06' && c.md <= '12-31') || (c.md >= '01-01' && c.md <= '01-06');
+  return c.md >= '12-01' && c.md <= '12-31';
 }
 
 // A new shell every FIREWORKS.every ms, each alive for FIREWORKS.life: where it
@@ -279,10 +279,9 @@ export function drawTree(ctx, L, night, nowMs, reduced = false) {
     ctx.closePath();
   }
   ctx.fill();
-  // its lights, a few colours, twinkling slowly; brighter after dark
+  // its lights, a few colours, twinkling slowly; off by day, on with the dark
   const t = reduced || !Number.isFinite(nowMs) ? 0 : nowMs / 1000;
-  const lit = 0.55 + 0.45 * night;
-  for (let i = 0; i < FIR.lights; i++) {
+  for (let i = 0; night > 0 && i < FIR.lights; i++) {
     const v = 0.14 + 0.8 * ((i + 0.5) / FIR.lights); // how far down the tree
     const half = hw * (0.16 + 0.62 * v);
     const lx = x + (hash2(i, 261) * 2 - 1) * half;
@@ -290,14 +289,15 @@ export function drawTree(ctx, L, night, nowMs, reduced = false) {
     if (ly > foot) continue;
     const c = WARSAW.firLights[i % WARSAW.firLights.length];
     const tw = 0.7 + 0.3 * Math.sin(t * (1.3 + hash2(i, 262)) + 6 * hash2(i, 263));
-    ctx.fillStyle = css(c, lit * tw);
+    ctx.fillStyle = css(c, night * tw);
     ctx.beginPath();
     ctx.arc(lx, ly, 0.8 * L.sx, 0, Math.PI * 2);
     ctx.fill();
   }
   if (night > 0) glow(ctx, x, top + 0.55 * h, 15 * L.sx, WARSAW.firLights[0], 0.28 * night);
   // the star on top
-  ctx.fillStyle = css(WARSAW.firStar, 0.75 + 0.25 * night);
+  // a dull brass star by day, gold once it is dark
+  ctx.fillStyle = css(mix(WARSAW.firStar, WARSAW.stoneShade, 0.5 * (1 - night)), 0.75 + 0.25 * night);
   ctx.beginPath();
   ctx.arc(x, top - 0.6 * L.sy, 1.3 * L.sx, 0, Math.PI * 2);
   ctx.fill();

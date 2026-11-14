@@ -822,6 +822,18 @@ try {
   const flagRed = (r, g, b) => r >= 160 && r >= g + 80 && r >= b + 80;
   check(all(await patch(noct, 'warsaw', 0.4, 0.32, 2), white) && all(await patch(noct, 'warsaw', 0.4, 0.47, 2), flagRed), 'the Palace is floodlit white over red on 11 November');
   await noct.screenshot({ path: join(OUT, 'warsaw-flag.png') });
+  // December: the Christmas tree at the Palace's foot (FIR in src/cities/warsaw/life.js: x 0.485, top about 0.509, foot 0.587)
+  const T_XMAS = Date.UTC(2026, 11, 15, 20, 0); // 21:00 in Warsaw on 15 December
+  await noct.evaluate((t) => window.__jar.pin(t), T_XMAS);
+  const green = (r, g, b) => g >= r + 8 && g >= b;
+  check(some(await patch(noct, 'warsaw', 0.485, 0.53, 2), green), 'a green tree stands at the Palace foot in December');
+  check(some(await patch(noct, 'warsaw', 0.485, 0.5075, 3), (r, g, b) => r >= 220 && g >= 170 && b <= 200), 'a warm star tops the tree');
+  const xmasA = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_XMAS);
+  const xmasB = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_XMAS);
+  check(xmasA === xmasB, 'the tree draws the same pixels at the same moment');
+  await noct.screenshot({ path: join(OUT, 'warsaw-december.png') });
+  await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
+  check(!some(await patch(noct, 'warsaw', 0.485, 0.53, 2), green), 'no tree in June');
   check(noctSeen.errors.length === 0, `no console errors on the nocturne page${noctSeen.errors.length ? `: ${noctSeen.errors.join(' | ')}` : ''}`);
 
   check(deepSeen.errors.length === 0 && seen.errors.length === 0, `no console errors on the desktop pages${[...seen.errors, ...deepSeen.errors].length ? `: ${[...seen.errors, ...deepSeen.errors].join(' | ')}` : ''}`);

@@ -10,7 +10,7 @@ import {
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
 import {
-  boatAt, BIRDS, birdSpots, FROST as FROST_AT, STEAM, steaming, steamPuffs, fireworksOn, treeUp, FIREWORKS, fireworkBursts, drawFireworks, FIR,
+  boatAt, BIRDS, birdSpots, FROST as FROST_AT, STEAM, steaming, steamPuffs, fireworksOn, treeUp, FIREWORKS, fireworkBursts, drawFireworks, drawTree, FIR,
 } from '../src/cities/warsaw/life.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
 import { hash2 } from '../src/skyweather.js';
@@ -1101,29 +1101,46 @@ test('W9: New Year fireworks from 23:55 on 31 December to 00:20 on 1 January, Wa
   assert.equal(warsaw.cadenceMs(CLEAR, {}), 200);
 });
 
-test('W9: a lit Christmas tree stands at the foot of the Palace from 6 December to 6 January', () => {
+test('W9: a lit Christmas tree stands at the foot of the Palace through December, Warsaw time', () => {
   const noonOn = (y, mo, d) => Date.UTC(y, mo - 1, d, 11);
-  assert.equal(treeUp(noonOn(2026, 12, 5)), false);
-  assert.equal(treeUp(noonOn(2026, 12, 6)), true);
+  assert.equal(treeUp(Date.UTC(2026, 11, 15, 12)), true);
+  assert.equal(treeUp(Date.UTC(2026, 10, 30, 23, 30)), true, '00:30 on 1 December');
   assert.equal(treeUp(noonOn(2026, 12, 24)), true);
-  assert.equal(treeUp(noonOn(2027, 1, 1)), true);
-  assert.equal(treeUp(noonOn(2027, 1, 6)), true);
-  assert.equal(treeUp(noonOn(2027, 1, 7)), false);
+  assert.equal(treeUp(Date.UTC(2026, 10, 15, 12)), false);
+  assert.equal(treeUp(Date.UTC(2026, 10, 30, 22, 30)), false, '23:30 on 30 November');
+  assert.equal(treeUp(Date.UTC(2026, 11, 31, 23, 30)), false, '00:30 on 1 January');
+  assert.equal(treeUp(noonOn(2027, 1, 3)), false);
   assert.equal(treeUp(noonOn(2026, 6, 15)), false);
   assert.equal(treeUp(NaN), false);
   const pkin = SKYLINE.find((t) => t.id === 'pkin');
   assert.ok(Math.abs(FIR.x - pkin.x) < pkin.hw, 'in front of the Palace');
   assert.ok(FIR.foot >= FAR_BANK && FIR.foot < RIVER_TOP, 'its foot behind the low city');
   assert.ok(FIR.h / 396 > 0.06 && FIR.h / 396 < PALACE.masses[0].top, 'rises over the roofs, lower than the wings');
-  const t = noonOn(2026, 12, 20);
-  for (const ph of [PHASE.noon, PHASE.night]) {
-    const on = fullScene(ph, CLEAR, t);
-    assert.equal(on.scene.tree, true);
-    assert.ok(WARSAW.firLights.every((c) => startsWith(on.ctx.fills, rgbaOf(c)).length > 0), 'its lights');
-    const off = fullScene(ph, CLEAR, noonOn(2026, 6, 15));
-    assert.equal(off.scene.tree, false);
-    assert.equal(startsWith(off.ctx.fills, rgbaOf(WARSAW.firStar)).length, 0);
-  }
-  const a = fullScene(PHASE.night, CLEAR, t);
-  assert.equal(JSON.stringify(a.ctx.calls), JSON.stringify(fullScene(PHASE.night, CLEAR, t).ctx.calls), 'deterministic');
+  const t = Date.UTC(2026, 11, 15, 20); // 21:00 in Warsaw
+  const noon = noonOn(2026, 12, 20);
+  const nov = Date.UTC(2026, 10, 15, 20);
+  const night = fullScene(PHASE.night, CLEAR, t);
+  assert.equal(night.scene.tree, true);
+  assert.ok(WARSAW.firLights.every((c) => startsWith(night.ctx.fills, rgbaOf(c)).length > 0), 'its lights');
+  assert.ok(startsWith(night.ctx.fills, rgbaOf(WARSAW.firStar)).length > 0, 'its star');
+  const day = fullScene(PHASE.noon, CLEAR, noon);
+  assert.equal(day.scene.tree, true);
+  assert.ok(WARSAW.firLights.every((c) => startsWith(day.ctx.fills, rgbaOf(c)).length === 0), 'no lights by day');
+  const starDay = recordingCtx();
+  noRandom(() => drawTree(starDay, L0, 0, noon));
+  const [sr, sg] = [...starDay.fills].pop().match(/\d+/g).map(Number);
+  assert.ok(sr >= sg, 'the star by day is brass, not green');
+  const none = fullScene(PHASE.night, CLEAR, nov);
+  assert.equal(none.scene.tree, false);
+  assert.ok(WARSAW.firLights.every((c) => startsWith(none.ctx.fills, rgbaOf(c)).length === 0), 'no lights in November');
+  assert.equal(startsWith(none.ctx.fills, rgbaOf(WARSAW.firStar)).length, 0, 'no star in November');
+  const calls = (at, reduced) => {
+    const c = recordingCtx();
+    noRandom(() => drawTree(c, L0, 1, at, reduced));
+    return JSON.stringify(c.calls);
+  };
+  assert.equal(JSON.stringify(night.ctx.calls), JSON.stringify(fullScene(PHASE.night, CLEAR, t).ctx.calls), 'deterministic');
+  assert.equal(calls(t), calls(t), 'the same moment twice');
+  assert.notEqual(calls(t), calls(t + 400), 'the lights twinkle at night');
+  assert.equal(calls(t, true), calls(t + 400, true), 'steady under reduced motion');
 });

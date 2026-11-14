@@ -80,9 +80,9 @@ her sword raised. Around them the jar has a small life of its own:
   and traffic runs over the bridge;
 - in a hard frost the river carries **ice** and **steam** rises from a few
   roofs, leaning with the wind;
-- a **Christmas tree** stands at the Palace's foot from 6 December to
-  6 January, and there are **fireworks** over the skyline from 23:55 on New
-  Year's Eve to 00:20;
+- a **Christmas tree** stands at the Palace's foot through December, its
+  lights lit at night only, and there are **fireworks** over the skyline from
+  23:55 on New Year's Eve to 00:20;
 - in a thunderstorm, every other bolt strikes the Palace's needle.
 
 ### Nazaré
