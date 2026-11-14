@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_WIND, HIDDEN_COVER, CAPPED_COVER, SMOKING_WIND, BANDS, coverOf, windOf, visibilityBand, plumeLength, plumeSide, glowLine, glowStrength,
-  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf, snowAmount,
+  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf, snowAmount, summitWindOf, summitSideOf, plumeWindOf, snowLineShare, SUMMIT_M, LAKE_M,
 } from '../src/cities/el-chalten/massif.js';
 import { EMPTY, KINDS } from '../src/weather.js';
 
@@ -227,4 +227,34 @@ test('snowAmount: winter 1, February least, frost adds a quarter, never above 1'
   assert.equal(snowAmount('summer', null, 0), 0.4, 'no month reads as an ordinary summer day');
   assert.equal(snowAmount('summer', 1, 1), 0.65);
   assert.ok(snowAmount('summer', 2, 1) > snowAmount('summer', 2, 0));
+});
+
+test('the summit wind: the 700 hPa figure when present, clamped, else the town wind', () => {
+  assert.equal(summitWindOf(reading({ windSpeed: 5, windSpeed700: 70 })), 70);
+  assert.equal(summitWindOf(reading({ windSpeed: 5, windSpeed700: 1e9 })), MAX_WIND);
+  assert.equal(summitWindOf(reading({ windSpeed: 5 })), windOf(reading({ windSpeed: 5 })));
+  assert.equal(summitWindOf(null), windOf(null));
+  assert.ok(summitSideOf(reading({ windDir: 315, windDir700: 240 })) > 0);
+  assert.equal(summitSideOf(reading({ windDir: 225 })), plumeSide(225));
+  assert.equal(plumeWindOf(reading({ windSpeed700: 3 })), 'summit');
+  assert.equal(plumeWindOf(reading({})), 'town');
+});
+
+test('the band smokes on the summit wind, not the town\'s', () => {
+  assert.equal(visibilityBand(reading({ cloudCover: 20, windSpeed: 5, windSpeed700: 70 })), 'smoking');
+  assert.equal(visibilityBand(reading({ cloudCover: 20, windSpeed: 60, windSpeed700: 10 })), 'clear');
+  assert.equal(visibilityBand(reading({ cloudCover: 70, windSpeed: 5, windSpeed700: 70 })), 'capped');
+});
+
+test('the cadence ticks for the plume on the summit wind', () => {
+  assert.equal(cadenceOf(reading({ windSpeed: 4, windSpeed700: 30 }), { nowMs: T_NOON }, location), 250);
+});
+
+test('the snow line: null without a figure, 0 above the summit, 1 at the lake, linear between', () => {
+  assert.equal([SUMMIT_M, LAKE_M].join(), '3405,1170');
+  assert.equal(snowLineShare(null), null);
+  assert.equal(snowLineShare('2000'), null);
+  assert.equal(snowLineShare(4000), 0);
+  assert.equal(snowLineShare(1000), 1);
+  assert.ok(Math.abs(snowLineShare(2287.5) - 0.5) < 1e-9);
 });

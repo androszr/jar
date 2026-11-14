@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import elChalten from '../src/cities/el-chalten/index.js';
-import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS, snowAmount } from '../src/cities/el-chalten/massif.js';
+import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS, snowAmount, summitWindOf } from '../src/cities/el-chalten/massif.js';
 import { DECK_SOFT, lensSpot, sunSpot } from '../src/cities/el-chalten/air.js';
 import { condorAt, lapAt, CONDOR_LOOP_MS } from '../src/cities/el-chalten/shore.js';
-import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
+import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, snowAt, shownSnow, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
 import { visibleSnow, polyArea, bbox, chainY, occlusion, boxHitsPoly } from '../src/cities/el-chalten/snow.js';
 import { MIRROR_SQUASH } from '../src/cities/el-chalten/water.js';
 import { EL_CHALTEN as EC } from '../src/cities/el-chalten/palette.js';
@@ -293,9 +293,9 @@ test('the hiker\'s rock and every headlamp keep clear of both glass streaks, whi
   assert.ok(ROCK.y + ROCK.h <= plateShare + 1e-9);
 });
 
-test('paint returns the ten keys of the test surface', () => {
+test('paint returns the twelve keys of the test surface', () => {
   assert.deepEqual(Object.keys(paint(PHASE.noon, reading({})).out).sort(),
-    ['band', 'condor', 'frozen', 'glow', 'headlamps', 'hiker', 'mirror', 'plume', 'season', 'tourists']);
+    ['band', 'condor', 'frozen', 'glow', 'headlamps', 'hiker', 'mirror', 'plume', 'plumeWind', 'season', 'snowLine', 'tourists']);
 });
 
 test('a clear noon in summer: the condor and the hiker are out, no plume, the lake mirrors', () => {
@@ -575,4 +575,43 @@ test('the foreground: scrub clumps and boulders with a shaded side; the water la
   const april = paint(PHASE.noon, reading({}), Date.UTC(2026, 3, 15, 16, 0));
   assert.equal(april.out.season, 'autumn');
   assert.ok(red(april) > red(paint(PHASE.noon, reading({}))));
+});
+
+test('a summit gale over a calm valley: the peak smokes, the plume is the summit\'s, and the lake still mirrors', () => {
+  const g = paint(PHASE.noon, reading({ cloudCover: 20, windSpeed: 5, windSpeed700: 70, windDir700: 240 }));
+  assert.equal(g.out.band, 'smoking');
+  assert.ok(g.out.plume > 0.2);
+  assert.equal(g.out.plumeWind, 'summit');
+  assert.equal(g.out.mirror, 1);
+  assert.equal(g.out.condor, false);
+  assert.equal(paint(PHASE.noon, reading({ windSpeed: 5 })).out.plumeWind, 'town');
+});
+
+test('the snow line: a low freezing level whitens the moraine and the shore at a summer noon, a high one leaves them bare', () => {
+  const dark = css(EC.moraineRock, 0.85 * 0.95);
+  const low = paint(PHASE.noon, reading({ windSpeed: 5, freezingLevel: 1100 }));
+  const mid = paint(PHASE.noon, reading({ windSpeed: 5, freezingLevel: 2500 }));
+  const high = paint(PHASE.noon, reading({ windSpeed: 5, freezingLevel: 4000 }));
+  assert.equal(low.out.snowLine, 1);
+  assert.equal(high.out.snowLine, 0);
+  assert.ok(mid.out.snowLine > 0 && mid.out.snowLine < 1);
+  assert.ok(low.fills.has(dark) && !high.fills.has(dark), 'the moraine is snowed in and bare');
+  const m = mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5, freezingLevel: 1100 }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
+  const trodden = css(snowTone(m, 1), 0.8);
+  assert.ok(low.fills.has(trodden) && !high.fills.has(trodden), 'trodden snow on the gravel');
+  // the wall: slivers only above the line
+  const mm = mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5, freezingLevel: 2500 }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
+  const tops = plates.fitzroy.streaks.map((s) => s[0][1]);
+  assert.ok(tops.some((y) => snowAt(mm, y)) && tops.some((y) => !snowAt(mm, y)), 'a line across the ledges');
+  assert.ok(high.calls.length < mid.calls.length && mid.calls.length < low.calls.length);
+});
+
+test("no figure draws exactly today's picture", () => {
+  const a = paint(PHASE.noon, reading({ windSpeed: 60, windDir: 225 }));
+  const b = paint(PHASE.noon, reading({ windSpeed: 60, windDir: 225, windSpeed700: undefined, freezingLevel: undefined }));
+  assert.deepEqual(a.calls, b.calls);
+  assert.equal(a.out.plumeWind, 'town');
+  assert.equal(a.out.snowLine, null);
+  assert.equal(summitWindOf(reading({ windSpeed: 60 })), 60);
+  assert.equal(paint(PHASE.noon, reading({ windSpeed: 4 }), T_WINTER).out.frozen, true);
 });

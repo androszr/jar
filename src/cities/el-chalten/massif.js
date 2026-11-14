@@ -47,13 +47,39 @@ export function windOf(weather) {
   return typeof w === 'number' && Number.isFinite(w) ? clamp(w, 0, MAX_WIND) : DEFAULT_WIND;
 }
 
+const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+
+// The wind at summit height (the 700 hPa reading), km/h held between 0 and
+// MAX_WIND; without it the town wind, as before.
+export function summitWindOf(weather) {
+  const w = weather ? weather.windSpeed700 : null;
+  return finite(w) ? clamp(w, 0, MAX_WIND) : windOf(weather);
+}
+// The side the summit wind carries the plume to; the town's direction without one.
+export function summitSideOf(weather) {
+  const d = weather ? weather.windDir700 : null;
+  return plumeSide(finite(d) ? d : weather ? weather.windDir : null);
+}
+// What drove the plume: the summit reading, or the town wind.
+export const plumeWindOf = (weather) => (weather && finite(weather.windSpeed700) ? 'summit' : 'town');
+
+// The summit of Fitz Roy and the surface of Laguna de los Tres, in metres.
+export const SUMMIT_M = 3405;
+export const LAKE_M = 1170;
+// Where the freezing level lies between them: null without a figure, 0 at or
+// above the summit (no snow beyond the permanent fields), 1 at the lake or below.
+export function snowLineShare(freezingLevel) {
+  if (!finite(freezingLevel)) return null;
+  return clamp((SUMMIT_M - freezingLevel) / (SUMMIT_M - LAKE_M), 0, 1);
+}
+
 // Can you see Fitz Roy today? With no reading the peak is clear.
 export function visibilityBand(weather) {
   if (!weather || !weather.known) return 'clear';
   const cover = coverOf(weather);
   if (WET.has(weather.kind) || cover >= HIDDEN_COVER) return 'hidden';
   if (cover >= CAPPED_COVER) return 'capped';
-  if (windOf(weather) >= SMOKING_WIND) return 'smoking';
+  if (summitWindOf(weather) >= SMOKING_WIND) return 'smoking';
   return 'clear';
 }
 
@@ -212,7 +238,7 @@ export function cadenceOf(weather, opts, location) {
   const o = opts || {};
   const band = visibilityBand(weather);
   const picks = [];
-  if (windOf(weather) >= PLUME_FROM || band === 'capped' || band === 'hidden') picks.push(250);
+  if (summitWindOf(weather) >= PLUME_FROM || band === 'capped' || band === 'hidden') picks.push(250);
   if (headlampCount(minutesToSunrise(o.nowMs, location)) > 0) picks.push(400);
   const base = picks.length ? Math.min(...picks) : 0;
   return o.reduced ? base * 2 : base;

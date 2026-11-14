@@ -157,7 +157,7 @@ line says which:
   </tr>
   <tr>
     <td align="center"><b>Clear</b></td>
-    <td align="center"><b>Smoking</b><br>cloud under 60 %, wind from 25 km/h: a banner cloud streams off the summit the way the wind blows</td>
+    <td align="center"><b>Smoking</b><br>cloud under 60 %, wind at summit height from 25 km/h: a banner cloud streams off the summit the way the wind blows</td>
     <td align="center"><b>Capped</b><br>cloud 60 % and over: a deck sits on the summits</td>
     <td align="center"><b>Hidden</b><br>cloud 85 % and over, or fog, rain, snow or a storm</td>
   </tr>

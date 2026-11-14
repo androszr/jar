@@ -126,7 +126,15 @@ const tidy = (code, cover, temperature = 9, more = {}, warsawMore = {}) => ({ v:
 // Nazare, clear and light of wind, with a wave `h` metres high off the coast.
 const seaBody = (h) => tidy(0, 5, 9, { nazare: { temperature: 18, code: 0, cloudCover: 5, isDay: 1, windSpeed: 5, windDir: 300, sea: { waveHeight: h, wavePeriod: 12, waveDir: 300 } } });
 // El Chalten, as __jar.applyWeather takes it: cloud %, wind km/h from `dir` degrees, a vendor code, a temperature.
-const chaltenBody = ({ cloud = 10, wind = 5, dir = 225, code = 0, temperature = 8 } = {}) => tidy(0, 5, 9, { 'el-chalten': { temperature, code, cloudCover: cloud, isDay: 1, windSpeed: wind, windDir: dir } });
+// `summitWind` / `summitDir` / `freezing` (the 700 hPa wind and the freezing level in metres) are written only when given: no key is the older cached body.
+const chaltenBody = ({ cloud = 10, wind = 5, dir = 225, code = 0, temperature = 8, summitWind, summitDir, freezing } = {}) => tidy(0, 5, 9, {
+  'el-chalten': {
+    temperature, code, cloudCover: cloud, isDay: 1, windSpeed: wind, windDir: dir,
+    ...(summitWind === undefined ? {} : { windSpeed700: summitWind }),
+    ...(summitDir === undefined ? {} : { windDir700: summitDir }),
+    ...(freezing === undefined ? {} : { freezingLevel: freezing }),
+  },
+});
 // Mean luminance of the jar's body on the table, and of the strip under its foot.
 const jarLum = async (page) => {
   const d = await page.evaluate(() => window.__jar.dpr);
@@ -707,6 +715,19 @@ try {
   check(await cp.evaluate(() => { const c = window.__jar.cadence.cities['el-chalten']; return c > 0 && c <= 250; }), 'the plume asks for a tick of 250 ms or quicker');
   check(some(await patch(cp, 'el-chalten', 0.66, 0.135, 3), (r, g, b) => r > 150 && g > 150 && b > 150), 'the banner cloud streams to the right of the summit');
   await cp.screenshot({ path: join(OUT, 'el-chalten-smoking.png') });
+  check(smoking.plumeWind === 'town', 'a body without the summit wind drives the plume from the town wind');
+  // the summit wind alone: a calm valley under a streaming peak
+  const summit = await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 5, summitWind: 70, summitDir: 240 }));
+  check(summit.band === 'smoking' && summit.plume > 0.2 && summit.plumeWind === 'summit' && summit.mirror === 1 && (await lineOf()) === 'FITZ ROY · SMOKING', 'a summit gale over a calm valley: the peak smokes and the lake still mirrors');
+  check(some(await patch(cp, 'el-chalten', 0.66, 0.135, 3), (r, g, b) => r > 150 && g > 150 && b > 150), 'the banner streams off the summit on the summit wind alone');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-summit-wind.png') });
+  // the snow line: the same hill under a high and a low freezing level
+  const bare = await at(T_NOON_C, chaltenBody({ cloud: 10, wind: 5, freezing: 4000 }));
+  const bareLuma = luma(await patch(cp, 'el-chalten', 0.15, 0.44, 2));
+  const low = await at(T_NOON_C, chaltenBody({ cloud: 10, wind: 5, freezing: 1300 }));
+  check(bare.snowLine === 0 && low.snowLine > 0.9 && luma(await patch(cp, 'el-chalten', 0.15, 0.44, 2)) > bareLuma + 20, 'a 1,300 m freezing level lays snow on the moraine at a summer noon');
+  await cp.screenshot({ path: join(OUT, 'el-chalten-snow-line.png') });
+  await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 60, dir: 225 }));
   await at(T_NOON_C);
   const smokeA = await jarHash(cp);
   await at(T_NOON_C);

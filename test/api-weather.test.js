@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { openMeteoUrl, hourlyRows, marineHourlyRows, marineUrl, tideExtremes, TIDE_LIMIT_M, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
+import handler, { openMeteoUrl, hourlyRows, currentHourRow, marineHourlyRows, marineUrl, tideExtremes, TIDE_LIMIT_M, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
 import { PLACES } from '../src/cities/places.js';
 import { readFileSync } from 'node:fs';
 
@@ -36,7 +36,7 @@ test('normalise: the one-city object body', () => {
   assert.equal(r.v, 1);
   assert.equal(r.ok, true);
   assert.equal(r.fetchedAt, new Date(NOW).toISOString());
-  assert.deepEqual({ ...r.cities.warsaw, daily: undefined, hourly: undefined }, { temperature: 12.3, code: 61, cloudCover: 80, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: 1, windSpeed: 18.4, windDir: 250, daily: undefined, hourly: undefined, sea: null });
+  assert.deepEqual({ ...r.cities.warsaw, daily: undefined, hourly: undefined }, { temperature: 12.3, code: 61, cloudCover: 80, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: 1, windSpeed: 18.4, windDir: 250, windSpeed700: null, windDir700: null, freezingLevel: null, daily: undefined, hourly: undefined, sea: null });
   assert.equal(r.cities.warsaw.daily.length, 5);
 });
 
@@ -57,12 +57,12 @@ test('normalise: a body without current gives no city and ok false', () => {
 
 test('normalise: missing fields are null, non-numeric fields are null', () => {
   const r = normalise({ current: { temperature_2m: '12', weather_code: 3, cloud_cover: NaN } }, [warsaw], NOW);
-  assert.deepEqual(r.cities.warsaw, { temperature: null, code: 3, cloudCover: null, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null, daily: [], hourly: [], sea: null });
+  assert.deepEqual(r.cities.warsaw, { temperature: null, code: 3, cloudCover: null, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null, windSpeed700: null, windDir700: null, freezingLevel: null, daily: [], hourly: [], sea: null });
 });
 
 test('normalise: extra keys are ignored', () => {
   const r = normalise({ current: { temperature_2m: 1, weather_code: 0, cloud_cover: 0, is_day: 0, wind: 9 }, hourly: {} }, [warsaw], NOW);
-  assert.deepEqual(Object.keys(r.cities.warsaw).sort(), ['cloudCover', 'cloudHigh', 'cloudLow', 'cloudMid', 'code', 'daily', 'hourly', 'isDay', 'sea', 'temperature', 'windDir', 'windSpeed']);
+  assert.deepEqual(Object.keys(r.cities.warsaw).sort(), ['cloudCover', 'cloudHigh', 'cloudLow', 'cloudMid', 'code', 'daily', 'freezingLevel', 'hourly', 'isDay', 'sea', 'temperature', 'windDir', 'windDir700', 'windSpeed', 'windSpeed700']);
 });
 
 test('a partly short array still answers the cities it has', () => {
@@ -384,7 +384,7 @@ test('a marine call that waits out its timeout never fails the weather body', as
 test('openMeteoUrl asks for the hourly list once and 120 forecast hours (five days)', () => {
   const u = new URL(openMeteoUrl([warsaw]));
   assert.equal(u.searchParams.getAll('hourly').length, 1);
-  assert.equal(u.searchParams.get('hourly'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high');
+  assert.equal(u.searchParams.get('hourly'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_700hPa,wind_direction_700hPa,freezing_level_height');
   assert.equal(u.searchParams.get('forecast_hours'), '120');
   assert.equal(openMeteoUrl([warsaw]).split('hourly=').length - 1, 1);
 });
@@ -420,8 +420,8 @@ test('hourlyRows: a missing or junk block gives []', () => {
 test('hourlyRows: unequal arrays give nulls, a bad time drops the row, 120 at most', () => {
   const rows = hourlyRows({ time: ['2026-10-18T00:00', 'later', '2026-10-18T02:00'], temperature_2m: [5, 6], weather_code: null, cloud_cover: ['9', 1, 2] });
   assert.deepEqual(rows, [
-    { time: '2026-10-18T00:00', temperature: 5, code: null, cloudCover: null, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null },
-    { time: '2026-10-18T02:00', temperature: null, code: null, cloudCover: 2, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null },
+    { time: '2026-10-18T00:00', temperature: 5, code: null, cloudCover: null, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null, windSpeed700: null, windDir700: null, freezingLevel: null },
+    { time: '2026-10-18T02:00', temperature: null, code: null, cloudCover: 2, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null, windSpeed700: null, windDir700: null, freezingLevel: null },
   ]);
   const long = Array.from({ length: 200 }, (_, i) => `2026-10-${String(1 + Math.floor(i / 24)).padStart(2, '0')}T${String(i % 24).padStart(2, '0')}:00`);
   assert.equal(hourlyRows({ time: long }).length, 120);
@@ -575,4 +575,43 @@ test('hourlyRows carries the cloudLow, cloudMid and cloudHigh of each hour, null
   assert.deepEqual([rows[0].cloudLow, rows[1].cloudLow], [30, null]);
   assert.deepEqual([rows[0].cloudMid, rows[1].cloudMid], [null, null]);
   assert.deepEqual([rows[0].cloudHigh, rows[1].cloudHigh], [5, 6]);
+});
+
+const chalten = PLACES.find((p) => p.id === 'el-chalten');
+
+test('openMeteoUrl asks for the summit wind and the freezing level in the hourly list only', () => {
+  const u = new URL(openMeteoUrl([chalten]));
+  const hourly = u.searchParams.get('hourly').split(',');
+  for (const f of ['wind_speed_700hPa', 'wind_direction_700hPa', 'freezing_level_height']) {
+    assert.equal(hourly.filter((x) => x === f).length, 1, f);
+    assert.ok(!u.searchParams.get('current').includes(f), f);
+  }
+});
+
+test('hourlyRows carries windSpeed700, windDir700 and freezingLevel, null when the vendor leaves them out', () => {
+  const rows = hourlyRows(fixture('weather-el-chalten.json').hourly);
+  assert.equal(rows.length, 25);
+  assert.ok(rows.every((r) => r.windSpeed700 === 65 && r.windDir700 === 240 && r.freezingLevel === 2600));
+  const bare = hourlyRows(fixture('weather.json').hourly);
+  assert.ok(bare.every((r) => r.windSpeed700 === null && r.windDir700 === null && r.freezingLevel === null));
+});
+
+test('currentHourRow picks the row of current.time\'s hour and is null otherwise', () => {
+  const h = fixture('weather-el-chalten.json').hourly;
+  const hit = { windSpeed700: 65, windDir700: 240, freezingLevel: 2600 };
+  const miss = { windSpeed700: null, windDir700: null, freezingLevel: null };
+  assert.deepEqual(currentHourRow(h, '2026-11-11T12:00'), hit);
+  assert.deepEqual(currentHourRow(h, '2026-11-11T12:45'), hit);
+  assert.deepEqual(currentHourRow(h, '2026-11-13T12:00'), miss);
+  for (const from of [undefined, 'junk', {}, null]) assert.deepEqual(currentHourRow(h, from), miss, String(from));
+  for (const bad of [undefined, null, 'x', {}, { time: 'x' }]) assert.deepEqual(currentHourRow(bad, '2026-11-11T12:00'), miss);
+});
+
+test('normalise lifts the current hour\'s summit wind and freezing level onto the city, null for a body without them', () => {
+  const r = normalise(fixture('weather-el-chalten.json'), [chalten], NOW);
+  const c = r.cities['el-chalten'];
+  assert.deepEqual([c.windSpeed700, c.windDir700, c.freezingLevel], [65, 240, 2600]);
+  assert.equal(r.v, 1);
+  const w = normalise(fixture('weather.json'), [warsaw], NOW).cities.warsaw;
+  assert.deepEqual([w.windSpeed700, w.windDir700, w.freezingLevel], [null, null, null]);
 });

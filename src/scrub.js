@@ -90,7 +90,7 @@ export function previewSea(sea, atMs, zone) {
 }
 
 // `weather` as it will be at `atMs`: the same object when neither an hourly
-// weather row nor an hourly sea row applies, else a copy whose six current
+// weather row nor an hourly sea row applies, else a copy whose nine current
 // fields (and kind, known) come from the weather row and whose sea comes from
 // previewSea, whichever apply.
 export function previewWeather(weather, atMs, zone) {
@@ -112,6 +112,9 @@ export function previewWeather(weather, atMs, zone) {
     isDay: row.isDay ?? null,
     windSpeed: row.windSpeed ?? null,
     windDir: row.windDir ?? null,
+    windSpeed700: row.windSpeed700 ?? null,
+    windDir700: row.windDir700 ?? null,
+    freezingLevel: row.freezingLevel ?? null,
     kind: weatherKind(code),
     known: code !== null,
   };

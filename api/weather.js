@@ -17,8 +17,10 @@ const MARINE_DAILY = 'wave_height_max,wave_period_max';
 const MARINE_HOURLY = 'wave_height,sea_level_height_msl';
 const FORECAST_DAYS = 5;
 // Five days hour by hour (the lifted jar's scrub, and a day pressed on its
-// forecast card): the same nine fields as `current`, 120 rows.
-const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high';
+// forecast card): the same nine fields as `current`, 120 rows, plus the
+// summit-height wind (700 hPa, about 3,000 m) and the freezing level, hourly
+// only: the current-hour row of each is lifted onto the city.
+const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_700hPa,wind_direction_700hPa,freezing_level_height';
 const FORECAST_HOURS = 120;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
@@ -26,7 +28,8 @@ export function openMeteoUrl(places) {
   const lat = places.map((p) => p.lat).join(',');
   const lon = places.map((p) => p.lon).join(',');
   // Each location's own zone, so daily.time is that city's local date. (current.time
-  // is therefore local too; it is not read.)
+  // is therefore local too, and currentHourRow matches it against hourly.time, so both
+  // must stay in the same zone.)
   const zones = places.map((p) => encodeURIComponent(p.zone)).join(',');
   return `${ENDPOINT}?latitude=${lat}&longitude=${lon}&current=${FIELDS}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&hourly=${HOURLY_FIELDS}&forecast_hours=${FORECAST_HOURS}&forecast_days=${FORECAST_DAYS}&timezone=${zones}`;
 }
@@ -158,7 +161,7 @@ function dailyRows(d) {
 }
 
 // The vendor's hourly block (parallel arrays) -> at most 120
-// { time, temperature, code, cloudCover, cloudLow, cloudMid, cloudHigh, isDay, windSpeed, windDir }. `time` is
+// { time, temperature, code, cloudCover, cloudLow, cloudMid, cloudHigh, isDay, windSpeed, windDir, windSpeed700, windDir700, freezingLevel }. `time` is
 // the vendor's local ISO "YYYY-MM-DDTHH:MM", kept as a string; bad rows dropped.
 export function hourlyRows(h) {
   if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return [];
@@ -178,14 +181,32 @@ export function hourlyRows(h) {
       isDay: at(h.is_day, i),
       windSpeed: at(h.wind_speed_10m, i),
       windDir: at(h.wind_direction_10m, i),
+      windSpeed700: at(h.wind_speed_700hPa, i),
+      windDir700: at(h.wind_direction_700hPa, i),
+      freezingLevel: at(h.freezing_level_height, i),
     });
   }
   return rows;
 }
 
+// The summit wind and the freezing level of the hour containing `from` (the
+// entry's `current.time`, local ISO): the row whose time equals that hour, and
+// nulls when there is none. Never the first row: a wrong hour is worse than a blank.
+export function currentHourRow(h, from) {
+  const out = { windSpeed700: null, windDir700: null, freezingLevel: null };
+  if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return out;
+  const m = typeof from === 'string' && /^(\d{4}-\d{2}-\d{2}T\d{2}):\d{2}/.exec(from);
+  if (!m) return out;
+  const i = h.time.indexOf(`${m[1]}:00`);
+  if (i < 0) return out;
+  const at = (a) => (Array.isArray(a) ? num(a[i]) : null);
+  return { windSpeed700: at(h.wind_speed_700hPa), windDir700: at(h.wind_direction_700hPa), freezingLevel: at(h.freezing_level_height) };
+}
+
 // The vendor body (an object for one place, an array for several) ->
 // { v, fetchedAt, ok, cities }. Six numeric fields (wind in km/h and degrees
-// the wind comes from), the low/mid/high cloud split (null when the vendor omits it) and the daily rows are kept, plus `sea` (the wave
+// the wind comes from), the low/mid/high cloud split (null when the vendor omits it), the summit wind and
+// freezing level of the current hour (null without them) and the daily rows are kept, plus `sea` (the wave
 // reading, or null) from the optional marine body, and `hourly` (the next 120
 // hours, [] when the vendor leaves it out).
 export function normalise(payload, places, nowMs = Date.now(), marinePayload = null) {
@@ -205,6 +226,7 @@ export function normalise(payload, places, nowMs = Date.now(), marinePayload = n
       isDay: num(cur.is_day),
       windSpeed: num(cur.wind_speed_10m),
       windDir: num(cur.wind_direction_10m),
+      ...currentHourRow(list[i].hourly, cur.time),
       daily: dailyRows(list[i].daily),
       hourly: hourlyRows(list[i].hourly),
       sea: seas[p.id] || null,
