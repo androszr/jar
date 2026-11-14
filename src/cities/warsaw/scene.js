@@ -505,6 +505,62 @@ function windowDots(ctx, trace, L, night, out = 0) {
   ctx.restore();
 }
 
+// Low cloud and fog with depth. Under a heavy overcast a ragged cloud base
+// hangs across the top of the body and swallows the needles and the tallest
+// tops; in fog the far things go pale first and the near bank stays dark.
+export const CEILING = { from: 0.8, full: 1, top: 0.2 };
+
+// 0 for no reading, a clear sky or fog (fog has its own veils); 1 at complete cover.
+export function ceilingAmount(weather) {
+  if (!weather || !weather.known) return 0;
+  if (weather.kind === 'clear' || weather.kind === 'fog') return 0;
+  return clamp((cloudAmount(weather.cloudCover, weather.kind) - CEILING.from) / (CEILING.full - CEILING.from));
+}
+
+export function fogDepth(weather) {
+  return weather && weather.known && weather.kind === 'fog' ? 1 : 0;
+}
+
+// How opaque the cloud base is at height y (px), by the gradient drawCloudBase lays: 0.98 at the top, 0.92 at
+// three quarters of the band, none at its lower edge, all scaled by the ceiling `c`.
+export function cloudBaseAlpha(L, y, c) {
+  const t = (y - L.oy) / (CEILING.top * L.h);
+  if (c <= 0 || t >= 1) return 0;
+  return c * (t < 0.75 ? 0.98 - (0.06 * Math.max(0, t)) / 0.75 : 0.92 * (1 - t) / 0.25);
+}
+
+function drawCloudBase(ctx, L, tint, night, c) {
+  if (c <= 0) return;
+  const y1 = L.oy + CEILING.top * L.h;
+  const base = mix(tone(WARSAW.cloudBaseDay, WARSAW.cloudBaseNight, WARSAW.cloudBaseNight, night), tint.skyLow, 0.25);
+  const g = ctx.createLinearGradient(0, L.oy, 0, y1);
+  g.addColorStop(0, css(base, 0.98 * c));
+  g.addColorStop(0.75, css(base, 0.92 * c));
+  g.addColorStop(1, css(base, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(L.ox, L.oy, L.w, y1 - L.oy);
+  for (let i = 0; i < 16; i++) {
+    const x = L.ox + (i / 15) * L.w + (hash2(i, 101) - 0.5) * 8 * L.sx;
+    const y = L.oy + (0.13 + 0.03 * hash2(i, 102)) * L.h;
+    const r = (22 + 18 * hash2(i, 103)) * L.sx;
+    const p = ctx.createRadialGradient(x, y, 0, x, y, r);
+    p.addColorStop(0, css(base, 0.95 * c));
+    p.addColorStop(1, css(base, 0));
+    ctx.fillStyle = p;
+    ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  if (night > 0) glow(ctx, L.X(TOWER.pkin.x), y1, L.w * 0.3, WARSAW.cloudBaseGlow, 0.25 * night * c);
+}
+
+function fogVeil(ctx, L, tint, night, y0, y1, a0, a1) {
+  const v = mix(WARSAW.fogVeil, tint.skyLow, 0.4 + 0.5 * night);
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, css(v, a0));
+  g.addColorStop(1, css(v, a1));
+  ctx.fillStyle = g;
+  ctx.fillRect(L.ox, y0, L.w, y1 - y0);
+}
+
 // `layers` lets the city slip its own things between the skyline's layers:
 // `behind(L, night)` before any tower (fireworks), `foot(L, night)` in front of
 // the Palace and behind the low city's roofs (the Christmas tree), `roofs(L,
@@ -530,7 +586,8 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   };
   const cap = (x0, x1, yTop) => {
     if (!snow) return;
-    ctx.fillStyle = css(WARSAW.snowCap);
+    // a cap under the cloud base is veiled as the tower beneath it is
+    ctx.fillStyle = css(WARSAW.snowCap, 1 - cloudBaseAlpha(L, yTop, ceilingAmount(weather)));
     ctx.fillRect(x0, yTop, x1 - x0, 3); // sits on the roof line, never above it
   };
   const cx = (id) => L.X(TOWER[id].x);
@@ -700,7 +757,12 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
     }
     ctx.restore();
   }
+  // the Palace's foot (the Christmas tree) is as far away as the Palace, so the far veil comes after it
   if (layers.foot) layers.foot(L, night);
+  // fog and low cloud, over everything painted so far, before the low town
+  const fog = fogDepth(weather);
+  if (fog > 0) fogVeil(ctx, L, tint, night, L.oy, L.gy, 0.82 * fog, 0.45 * fog);
+  drawCloudBase(ctx, L, tint, night, ceilingAmount(weather));
 
   // the low city in front: first the unbroken roofs behind, muted toward the
   // background grey, then each block its own façade (plaster, brick, concrete),
@@ -744,6 +806,9 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
     ctx.fillStyle = css(WARSAW.cityGolden, 0.2 * golden);
     ctx.fillRect(L.ox, L.gy, L.w, L.river.top - L.gy);
   }
+
+  // the mid fog veil: the low town only, nothing below the river
+  if (fog > 0) fogVeil(ctx, L, tint, night, L.gy, L.river.top, 0.3 * fog, 0.12 * fog);
 
   // snow on every roof and every setback
   if (snow) {
