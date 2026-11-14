@@ -194,7 +194,7 @@ export function drawStormFlash(ctx, rect, weather, nowMs, opts = {}) {
   if (!(weather && weather.known && weather.kind === 'storm')) return;
   const f = flashIntensity(weather.code, nowMs, { reduced: !!opts.reduced });
   if (f > 0) {
-    const b = opts.reduced ? null : boltPath(weather.code, nowMs, opts.strike);
+    const b = opts.reduced || opts.bolt === false ? null : boltPath(weather.code, nowMs, opts.strike);
     if (b) {
       const at = (pts) => pts.map(([x, y]) => [rect.x + x * rect.w, rect.y + y * rect.h]);
       bolt(ctx, at(b.points), b.forks.map(at), f);

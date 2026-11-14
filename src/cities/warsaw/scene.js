@@ -14,7 +14,7 @@ import { hash2 } from '../../skyweather.js';
 import { localDate, dayFraction } from '../../placeclock.js';
 import { moonPhase, moonGlow } from '../../moon.js';
 import { WARSAW } from './palette.js';
-import { isUsable, gloom, cloudAmount } from '../../weather.js';
+import { isUsable, gloom, cloudAmount, FLASH, flashIntensity } from '../../weather.js';
 
 // The bands, top to bottom, as shares of the body height.
 export const FAR_BANK = 0.575; // the towers stand here
@@ -1064,4 +1064,71 @@ export function drawMermaid(ctx, rect, phase, tint, weather) {
     }
   }
   figure(ctx, m.bx, m.by, m.u, css(body), css(mix(WARSAW.mermaidShield, mix(body, WARSAW.clockFace, 0.18), night)));
+}
+
+// ---- lightning on the needle -------------------------------------------------
+// A storm's flash comes with a jagged bolt from the top of the body to the tip of
+// the Palace's needle and a spark where it lands. fromX: where the bolt starts
+// (share of the width); jitter: sideways wander of each joint, reference px.
+export const BOLT = { fromX: 0.3, segments: 6, jitter: 11 };
+const PKIN_X = SKYLINE.find((t) => t.id === 'pkin').x;
+
+// One seed per storm period: the double flicker inside a period re-lights the same bolt.
+export function boltSeed(code, nowMs) {
+  const f = FLASH[code];
+  if (!f || typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return null;
+  return Math.floor(nowMs / f.periodMs);
+}
+
+// Drawn last in Warsaw's paint so it lies over the Palace and the sky. Under
+// reduced motion there is no bolt: the page's soft glow is the whole storm.
+export function drawLightning(ctx, rect, weather, nowMs, reduced = false) {
+  if (!(weather && weather.kind === 'storm') || reduced) return;
+  const f = flashIntensity(weather.code, nowMs);
+  const seed = boltSeed(weather.code, nowMs);
+  if (!(f > 0) || seed === null) return;
+  const L = layout(rect.w, rect.h, rect.x, rect.y);
+  const tx = L.X(PKIN_X);
+  const ty = L.Y(PALACE.needle);
+  const sx0 = L.X(BOLT.fromX);
+  const pts = [[sx0, L.oy]];
+  for (let i = 1; i < BOLT.segments; i++) {
+    const t = i / BOLT.segments;
+    pts.push([sx0 + (tx - sx0) * t + (hash2(i, seed) - 0.5) * 2 * BOLT.jitter * L.sx, L.oy + (ty - L.oy) * t]);
+  }
+  pts.push([tx, ty]);
+  // The spark (drawn first, so the bolt's last point stays the tip): a small dark-edged star at the tip with a white heart, spikes
+  // of uneven length drawn from the period's seed (filled, not stroked).
+  const star = (r, colour, a) => {
+    ctx.fillStyle = css(colour, a);
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const k = i % 2 ? 0.3 : 0.75 + 0.25 * hash2(i, seed + 7);
+      const x = tx + Math.cos(ang) * r * k;
+      const y = ty + Math.sin(ang) * r * k;
+      if (i) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  };
+  star(9 * L.sx, WARSAW.boltSpark, 0.95 * f);
+  star(5.5 * L.sx, WARSAW.boltCore, f);
+  ctx.save();
+  // Sharp corners and square ends: round ones are what turn a short bolt into a ribbon.
+  ctx.lineJoin = 'miter';
+  ctx.miterLimit = 4;
+  ctx.lineCap = 'butt';
+  // The flash whitens the whole sky after this is drawn, so the bolt is a dark
+  // saturated outline round a white core: it stays readable on a near-white sky.
+  for (const [colour, a, width] of [[WARSAW.boltHalo, 0.95 * f, 4], [WARSAW.boltCore, f, 2]]) {
+    ctx.strokeStyle = css(colour, a);
+    ctx.lineWidth = width * L.sx;
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke();
+  }
+  ctx.restore();
 }

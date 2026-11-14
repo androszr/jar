@@ -1083,15 +1083,26 @@ try {
   const lumCalm = await jarLum(sp);
   const flashCalm = await sp.evaluate(() => window.__jar.flash('warsaw'));
   const footCalm = await footLum(sp);
+  const calmTip = luma(await patch(sp, 'warsaw', 0.4, 0.095, 2));
+  const calmSide = luma(await patch(sp, 'warsaw', 0.47, 0.095, 2));
+  // at the first, brightest burst the sky is near white; the bolt is a dark blue outline round a white core, so it shows as a drop in luma at the tip
+  await pin(sp, PEAK);
+  const boltTip = luma(await patch(sp, 'warsaw', 0.4, 0.095, 2));
+  const boltSide = luma(await patch(sp, 'warsaw', 0.47, 0.095, 2));
   check(lumPeak > lumCalm + 1 && flashPeak >= 0.99 && flashCalm === 0, `storm flash lights the jar (${lumPeak.toFixed(1)} vs ${lumCalm.toFixed(1)})`);
   check(footPeak > footCalm, `storm spills on the table (${footPeak.toFixed(1)} vs ${footCalm.toFixed(1)})`);
+  check(Math.abs(boltTip - boltSide) >= 25, `storm bolt lands on the needle (${boltTip.toFixed(1)} vs ${boltSide.toFixed(1)})`);
+  check(Math.abs(calmTip - calmSide) < 12, `no bolt between flashes (${calmTip.toFixed(1)} vs ${calmSide.toFixed(1)})`);
   await sp.emulateMedia({ reducedMotion: 'reduce' });
   await sp.reload();
   await ready(sp);
   await labelIs(sp, 1, '17°');
   await pin(sp, PEAK);
   const soft = await sp.evaluate(() => window.__jar.flash('warsaw'));
+  const redTip = luma(await patch(sp, 'warsaw', 0.4, 0.095, 2));
+  const redSide = luma(await patch(sp, 'warsaw', 0.47, 0.095, 2));
   check(soft > 0 && soft <= 0.5, `reduced motion softens the flash (${soft.toFixed(2)})`);
+  check(Math.abs(redTip - redSide) < 12, `reduced motion draws no bolt (${redTip.toFixed(1)} vs ${redSide.toFixed(1)})`);
   await sp.emulateMedia({ reducedMotion: 'no-preference' });
   await sp.reload();
   await ready(sp);

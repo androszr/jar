@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import warsaw from '../src/cities/warsaw/index.js';
 import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
-  buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
+  buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, boltSeed, drawLightning, BOLT, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
   CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver,
 } from '../src/cities/warsaw/scene.js';
@@ -14,7 +14,7 @@ import {
 } from '../src/cities/warsaw/life.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
 import { hash2 } from '../src/skyweather.js';
-import { EMPTY } from '../src/weather.js';
+import { EMPTY, FLASH, nextFlashPeak } from '../src/weather.js';
 import { css, mix, tint, STREAKS } from '../src/look/index.js';
 import { sample } from '../src/clock.js';
 import { LABEL } from '../src/jar-geometry.js';
@@ -150,6 +150,7 @@ test('painting never touches Math.random, at noon, dusk or night, in clear or sn
     paint(p);
     paint(p, { ...EMPTY, kind: 'snow' });
   }
+  paint(PHASE.night, { ...EMPTY, kind: 'storm', code: 95, known: true }, nextFlashPeak(95, 0));
 });
 
 test('the aviation light and the spire edge glow at night, dusk blends, noon has neither', () => {
@@ -966,7 +967,12 @@ test('W7: rain, drizzle and storm wet the ground: longer and stronger reflection
 });
 
 test('W7: lightning is aimed at the tip of the Palace needle', () => {
+  // sky.strike no longer drives Warsaw's bolt (sky.bolt is false); it must still name the tip drawLightning aims at
+  const ctx = recordingCtx();
+  drawLightning(ctx, rect, { ...EMPTY, kind: 'storm', code: 95, known: true }, nextFlashPeak(95, 0));
+  const last = ctx.calls.filter(([m]) => m === 'lineTo').pop()[1];
   const [x, y] = warsaw.sky.strike;
+  assert.ok(Math.abs(last[0] - x * rect.w) < 1e-9 && Math.abs(last[1] - y * rect.h) < 1e-9, 'drawLightning and sky.strike name the same point');
   assert.equal(x, SKYLINE.find((t) => t.id === 'pkin').x);
   assert.ok(Math.abs(y * 396 - L0.Y(PALACE.needle)) < 1e-9, 'the needle tip, as a fraction of the interior');
   assert.ok(x > 0 && x < 1 && y > 0 && y < 0.3);
@@ -1126,4 +1132,68 @@ test('W9: a lit Christmas tree stands at the foot of the Palace from 6 December 
   }
   const a = fullScene(PHASE.night, CLEAR, t);
   assert.equal(JSON.stringify(a.ctx.calls), JSON.stringify(fullScene(PHASE.night, CLEAR, t).ctx.calls), 'deterministic');
+});
+
+// ---- lightning on the needle ------------------------------------------------
+const STORM_NOW = { ...EMPTY, kind: 'storm', code: 95, known: true };
+const BOLT_PEAK = nextFlashPeak(95, 0);
+function bolt(weather, nowMs, reduced = false) {
+  const ctx = recordingCtx();
+  noRandom(() => drawLightning(ctx, rect, weather, nowMs, reduced));
+  return ctx;
+}
+const boltStrokes = (ctx, colour) => {
+  const out = [];
+  let cur = null;
+  for (const [m, a] of ctx.calls) {
+    if (m === 'beginPath') cur = [];
+    else if (m === 'moveTo' || m === 'lineTo') cur.push([m, a]);
+    else if (m === 'stroke') out.push(cur);
+  }
+  return out;
+};
+const strokeStyles = (ctx) => [...ctx.strokes];
+
+test('boltSeed is one number per storm period, null without a storm code or a clock', () => {
+  assert.equal(boltSeed(95, 123456), Math.floor(123456 / FLASH[95].periodMs));
+  assert.equal(boltSeed(95, NaN), null);
+  assert.equal(boltSeed(0, 1000), null);
+});
+
+test('bolt: the stroke ends exactly on the needle tip and stays above it', () => {
+  const L = layout(340, 396);
+  const ctx = bolt(STORM_NOW, BOLT_PEAK);
+  const styles = strokeStyles(ctx);
+  const rgb = (c) => `rgba(${c.join(', ')}`;
+  assert.ok(styles.some((s) => s.startsWith(rgb(WARSAW.boltCore))), 'core');
+  assert.ok(styles.some((s) => s.startsWith(rgb(WARSAW.boltHalo))), 'halo');
+  const strokes = boltStrokes(ctx);
+  assert.equal(strokes.length, 2);
+  for (const pts of strokes) {
+    assert.equal(pts.length, BOLT.segments + 1);
+    const [, [x, y]] = pts[pts.length - 1];
+    assert.ok(Math.abs(x - L.X(SKYLINE.find((t) => t.id === 'pkin').x)) < 1e-9);
+    assert.ok(Math.abs(y - L.Y(PALACE.needle)) < 1e-9);
+    for (const [, [, py]] of pts) assert.ok(py >= -1e-9 && py <= L.Y(PALACE.needle) + 1e-6);
+  }
+});
+
+test('bolt: the same moment draws the same bolt, the next period another', () => {
+  const path = (calls) => calls.filter(([m]) => m === 'moveTo' || m === 'lineTo');
+  const a = path(bolt(STORM_NOW, BOLT_PEAK).calls);
+  assert.ok(a.length > 0);
+  assert.deepEqual(path(bolt(STORM_NOW, BOLT_PEAK).calls), a);
+  const xs = (calls) => calls.filter(([m]) => m === 'lineTo').map(([, p]) => p[0]);
+  const b = path(bolt(STORM_NOW, BOLT_PEAK + FLASH[95].periodMs).calls);
+  const xa = xs(a);
+  const xb = xs(b);
+  assert.ok(xa.slice(0, BOLT.segments - 2).some((x, i) => Math.abs(x - xb[i]) > 1e-6), 'an interior joint moved');
+});
+
+test('bolt: none in rain, between flashes, under reduced motion or with no reading', () => {
+  const none = (ctx) => assert.equal(strokeStyles(ctx).length, 0);
+  none(bolt({ ...STORM_NOW, kind: 'rain', code: 63 }, BOLT_PEAK));
+  none(bolt(STORM_NOW, BOLT_PEAK + 5000));
+  none(bolt(STORM_NOW, BOLT_PEAK, true));
+  none(bolt(EMPTY, BOLT_PEAK));
 });
