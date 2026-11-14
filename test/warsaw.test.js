@@ -7,6 +7,7 @@ import {
   SEASONS, seasonWeights, canopyColour, tone,
   CLOCK_R, HANDS, clockHands, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, ceilingTop, fogDepth,
 } from '../src/cities/warsaw/scene.js';
+import { reflectionScale, REFLECT_FOG_DIM } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
 import {
@@ -1285,4 +1286,64 @@ test('the band reaches to ceilingTop, and a high-only overcast draws none; both 
   for (const w of [LOW(90), { ...LOW(0), cloudHigh: 100 }]) {
     assert.equal(JSON.stringify(paint(PHASE.noon, w).calls), JSON.stringify(paint(PHASE.noon, w).calls));
   }
+});
+
+// ---- the river follows what hides the lights ----
+
+const maxA = (ds) => Math.max(...ds.map((d) => alphaOf(d[4])));
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+const REFL = [WARSAW.reflectPalace, WARSAW.reflectVarso, WARSAW.reflectSpire, WARSAW.reflectZlota].map(rgbaOf);
+
+test('reflectionScale: whole in clear or unknown weather, thinner in fog, gone at complete cover', () => {
+  assert.deepEqual(reflectionScale(EMPTY), { all: 1, hidden: 1 });
+  assert.deepEqual(reflectionScale(CLEAR), { all: 1, hidden: 1 });
+  const over = reflectionScale(OVERCAST);
+  assert.equal(over.all, 1);
+  assert.equal(over.hidden, 0);
+  assert.ok(near(reflectionScale({ ...OVERCAST, cloudCover: 90 }).hidden, 0.5));
+  const fog = reflectionScale(FOG);
+  assert.ok(near(fog.all, 1 - REFLECT_FOG_DIM));
+  assert.ok(near(fog.hidden, 1 - REFLECT_FOG_DIM));
+  const rain = reflectionScale(RAIN);
+  assert.equal(rain.all, 1);
+  assert.equal(rain.hidden, 0);
+  assert.ok(REFLECT_FOG_DIM > 0 && REFLECT_FOG_DIM < 1);
+});
+
+test('overcast night: the red thread and Varso reflection are gone, the Palace stays', () => {
+  const clear = paint(PHASE.night, CLEAR);
+  const over = paint(PHASE.night, OVERCAST);
+  const half = paint(PHASE.night, { ...OVERCAST, cloudCover: 90 });
+  assert.equal(dashes(over, AVIATION).length, 0);
+  assert.equal(dashes(over, rgbaOf(WARSAW.reflectVarso)).length, 0);
+  for (const c of [WARSAW.reflectPalace, WARSAW.reflectSpire, WARSAW.reflectZlota]) {
+    const p = rgbaOf(c);
+    assert.equal(dashes(over, p).length, dashes(clear, p).length);
+    assert.ok(near(maxA(dashes(over, p)), maxA(dashes(clear, p))));
+  }
+  for (const p of [AVIATION, rgbaOf(WARSAW.reflectVarso)]) {
+    assert.ok(near(maxA(dashes(half, p)), 0.5 * maxA(dashes(clear, p))));
+    assert.equal(dashes(half, p).length, dashes(clear, p).length);
+  }
+});
+
+test('foggy night: every tower reflection and the red thread at two fifths, lamps untouched', () => {
+  const clear = paint(PHASE.night, CLEAR);
+  const fog = paint(PHASE.night, FOG);
+  for (const p of [...REFL, AVIATION]) {
+    assert.equal(dashes(fog, p).length, dashes(clear, p).length);
+    assert.ok(near(maxA(dashes(fog, p)), (1 - REFLECT_FOG_DIM) * maxA(dashes(clear, p))));
+  }
+  const lamp = rgbaOf(WARSAW.quayLamp);
+  assert.deepEqual(dashes(fog, lamp), dashes(clear, lamp));
+});
+
+test('river reflections unchanged where nothing hides the lights, and by day', () => {
+  const light = { ...OVERCAST, cloudCover: 50 };
+  for (const p of [AVIATION, rgbaOf(WARSAW.reflectVarso), rgbaOf(WARSAW.reflectPalace)]) {
+    assert.deepEqual(dashes(paint(PHASE.night, EMPTY), p), dashes(paint(PHASE.night, light), p));
+  }
+  const day = rgbaOf(WARSAW.reflectDayPalace);
+  assert.deepEqual(dashes(paint(PHASE.noon, OVERCAST), day), dashes(paint(PHASE.noon, light), day));
+  assert.ok(near(maxA(dashes(paint(PHASE.noon, FOG), day)), 0.5 * maxA(dashes(paint(PHASE.noon, CLEAR), day))));
 });
