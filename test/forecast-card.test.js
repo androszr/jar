@@ -39,12 +39,12 @@ function fake() {
 const cells = (todayAt = -1) => Array.from({ length: 5 }, (_, i) => ({ day: 'SUN', kind: 'clear', high: '1°', low: '0°', today: i === todayAt }));
 const RECT = (layout) => ({ x: 100, y: 50, w: CARD[layout].w, h: CARD[layout].h });
 
-function paint(layout, cs, sun, sunT = null, tides = [], dayT = null, note = null) {
+function paint(layout, cs, sun, sunT = null, tides = [], dayT = null, note = null, moon = null) {
   const real = Math.random;
   Math.random = () => { throw new Error('Math.random in a draw function'); };
   try {
     const ctx = fake();
-    forecastCard(ctx, RECT(layout), cs, layout, sun, sunT, tides, dayT, -1, note);
+    forecastCard(ctx, RECT(layout), cs, layout, sun, sunT, tides, dayT, -1, note, moon);
     return ctx;
   } finally {
     Math.random = real;
@@ -376,3 +376,46 @@ for (const layout of ['column', 'row']) {
     assert.ok(ctx.texts.some((t) => t.s === 'no weather yet'));
   });
 }
+// ---- the moon line ----------------------------------------------------------
+const MOON = { fraction: 0.35, illumination: 0.8, waxing: true, name: 'waxing gibbous' };
+const NEW = { fraction: 0, illumination: 0, waxing: true, name: 'new' };
+const smallDiscs = (ctx) => ctx.calls.filter(([k, a]) => k === 'ellipse' && a[2] <= 10);
+const moonFills = (ctx) => ctx.calls.filter(([k, , style]) => k === 'fill' && typeof style === 'string' && style.startsWith(css(PALETTE.moon, 0).slice(0, 18)));
+
+for (const layout of ['column', 'row']) {
+  test(`${layout}: moon line sits between the days and the strip`, () => {
+    const ctx = paint(layout, cells(0), SUN, 0.5, [], null, null, MOON);
+    const r = RECT(layout);
+    const name = ctx.texts.filter((t) => t.s === 'WAXING GIBBOUS');
+    assert.equal(name.length, 1);
+    const strip = ctx.texts.find((t) => t.s.includes('↑'));
+    for (const t of ctx.texts.filter((k) => k !== strip && k !== name[0])) assert.ok(t.y < name[0].y, `${t.s} above the moon line`);
+    assert.ok(name[0].y < strip.y);
+    assert.equal(smallDiscs(ctx).length, 1);
+    assert.equal(moonFills(ctx).length, 1);
+    assert.ok(Math.abs(strip.y - (r.y + r.h - CARD.arc[layout] - CARD.strip[layout] * 0.5)) < 1e-9);
+  });
+
+  test(`${layout}: a new moon writes NEW and a faint disc`, () => {
+    const ctx = paint(layout, cells(0), SUN, 0.5, [], null, null, NEW);
+    assert.ok(ctx.texts.some((t) => t.s === 'NEW'));
+    assert.equal(smallDiscs(ctx).length, 0);
+    const fills = moonFills(ctx);
+    assert.equal(fills.length, 1);
+    assert.ok(fills[0][2].startsWith('rgba(222, 234, 242, 0.07'), fills[0][2]);
+  });
+}
+
+test('no moon: no name and no disc', () => {
+  const without = paint('column', cells(0), SUN, 0.5);
+  const withMoon = paint('column', cells(0), SUN, 0.5, [], null, null, MOON);
+  assert.equal(withMoon.texts.length, without.texts.length + 1);
+  assert.equal(smallDiscs(without).length, 0);
+});
+
+test('a moon without a sun strip draws nothing extra', () => {
+  const ctx = paint('row', cells(0), null, null, [], null, null, MOON);
+  assert.ok(!ctx.texts.some((t) => t.s === 'WAXING GIBBOUS'));
+  assert.equal(smallDiscs(ctx).length, 0);
+  assert.equal(moonFills(ctx).length, 0);
+});

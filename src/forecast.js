@@ -10,6 +10,7 @@ export const CARD = {
   curve: { column: 36, row: 0 },
   arc: { column: 14, row: 12 },
   note: { column: 22, row: 20 }, // the freshness line at the card's foot
+  moon: { column: 18, row: 16 }, // the moon line's height, present only when the card is handed a moon
   gap: 14,
   drop: 36,
   scrubBand: 72, // scene units left free under the lifted extent for the slider row
