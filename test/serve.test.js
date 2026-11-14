@@ -228,3 +228,21 @@ test('a fetchImpl answering from a fixture file reaches /api/weather with its wi
     await new Promise((done) => server.close(done));
   }
 });
+
+test('the dev server serves the install manifest and icons with their own types', async () => {
+  const { server, port } = await startServer({ port: 0 });
+  try {
+    const m = await ask(port, '/manifest.webmanifest');
+    assert.equal(m.status, 200);
+    assert.match(m.headers['content-type'], /application\/manifest\+json/);
+    assert.ok((m.headers['content-security-policy'] || '').includes("manifest-src 'self'"), 'no CSP on the manifest');
+    const png = await ask(port, '/icons/jar-192.png');
+    assert.equal(png.status, 200);
+    assert.equal(png.headers['content-type'], 'image/png');
+    const svg = await ask(port, '/icons/jar.svg');
+    assert.equal(svg.status, 200);
+    assert.equal(svg.headers['content-type'], 'image/svg+xml');
+  } finally {
+    await new Promise((done) => server.close(done));
+  }
+});

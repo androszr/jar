@@ -3,11 +3,15 @@
   "short_name": "Jars",
   "description": "A garden shed at night: glass jars on a potting table, each holding a tiny city lit for its real time and weather.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#050909",
   "theme_color": "#050909",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/icons/jar.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/jar-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/jar-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/jar-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -1641,6 +1641,142 @@ try {
   check(await calm.pg.evaluate(() => window.__jar.shake() === false && !window.__jar.shaking && window.__jar.cadence.room === 0), 'reduced motion: the jar does not shake and the room is still');
   await calm.cx.close();
 
+  // ---- lantern mode: the corner button, the fake wake lock, the home-screen launch -------
+  const FAKE_LOCK = () => {
+    window.__lock = { requests: 0, released: 0 };
+    window.__vis = 'visible';
+    const sentinel = () => {
+      const s = new EventTarget();
+      s.release = async () => { window.__lock.released++; s.dispatchEvent(new Event('release')); };
+      return s;
+    };
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__lock.requests++; return sentinel(); } } });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => window.__vis });
+  };
+  const NO_APIS = () => {
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: undefined });
+    Object.defineProperty(Element.prototype, 'requestFullscreen', { configurable: true, value: undefined });
+    Object.defineProperty(Document.prototype, 'fullscreenEnabled', { configurable: true, get: () => false });
+  };
+  const STANDALONE = () => {
+    const real = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (q === '(display-mode: standalone)' ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : real(q));
+  };
+  const lanternPage = async (ctxOpts, ...inits) => {
+    const cx = await browser.newContext(ctxOpts);
+    const pg = await cx.newPage();
+    for (const init of inits) await pg.addInitScript(init);
+    const seen = watch(pg, origin);
+    await routeWeather(pg);
+    await pg.goto(`${origin}/`);
+    await ready(pg);
+    await labelIs(pg, 1, '12°');
+    return { cx, pg, seen };
+  };
+  const lanternRect = (pg) => pg.evaluate(() => { const r = document.getElementById('lantern').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const meets = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const LANTERN_IDS = ['warsaw', 'nazare', 'el-chalten'];
+  const jarBoxesOf = (pg) => pg.evaluate((ids) => ids.map((id) => {
+    const a = window.__jar.bodyPx(id, 0, 0); const b = window.__jar.bodyPx(id, 1, 1); const d = window.__jar.dpr;
+    return { id, x: a.x / d, y: a.y / d, w: (b.x - a.x) / d, h: (b.y - a.y) / d };
+  }), LANTERN_IDS);
+  const creditRect = (pg) => pg.evaluate(() => { const r = document.getElementById('credit').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const lockOf = (pg) => pg.evaluate(() => ({ ...window.__lock }));
+  const hiddenShown = async (pg, vis) => {
+    await pg.evaluate((v) => { window.__vis = v; document.dispatchEvent(new Event('visibilitychange')); }, vis);
+    await pg.waitForTimeout(50);
+  };
+
+  // the desktop: the button, the lock, the visibility dance, the forecast card
+  const lan_ld = await lanternPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 }, FAKE_LOCK);
+  const lan_ldState = await lan_ld.pg.evaluate(() => ({ vis: !document.getElementById('lantern').hidden, pressed: document.getElementById('lantern').getAttribute('aria-pressed'), l: window.__jar.lantern }));
+  check(lan_ldState.vis && lan_ldState.pressed === 'false' && lan_ldState.l.on === false && lan_ldState.l.supports.wakeLock, 'lantern button is shown, off, in the corner (desktop)');
+  const lan_ldRect = await lanternRect(lan_ld.pg);
+  const lan_ldJars = await jarBoxesOf(lan_ld.pg);
+  check(lan_ldJars.every((j) => !meets(lan_ldRect, j)), 'lantern button clears every jar (desktop)');
+  check(!meets(lan_ldRect, await creditRect(lan_ld.pg)), 'lantern button clears the credit link (desktop)');
+  await lan_ld.pg.click('#lantern');
+  await lan_ld.pg.waitForFunction(() => window.__jar.lantern.lock === 'held');
+  const lan_ld1 = await lan_ld.pg.evaluate(() => ({ on: window.__jar.lantern.on, pressed: document.getElementById('lantern').getAttribute('aria-pressed'), text: document.getElementById('lantern').textContent }));
+  check(lan_ld1.on === true && (await lockOf(lan_ld.pg)).requests === 1 && lan_ld1.pressed === 'true' && lan_ld1.text === 'leave lantern', 'lantern button turns the mode on and asks for the wake lock once (desktop)');
+  await hiddenShown(lan_ld.pg, 'hidden');
+  check((await lockOf(lan_ld.pg)).released === 1, 'lantern releases the wake lock when the page is hidden');
+  await hiddenShown(lan_ld.pg, 'visible');
+  check((await lockOf(lan_ld.pg)).requests === 2, 'lantern asks for the wake lock again when the page is visible');
+  await lan_ld.pg.click('#lantern');
+  await lan_ld.pg.waitForFunction(() => window.__jar.lantern.on === false);
+  check((await lockOf(lan_ld.pg)).released === 2 && (await lan_ld.pg.evaluate(() => window.__jar.lantern.lock)) === 'idle', 'lantern button turns the mode off and releases the wake lock');
+  await lan_ld.pg.evaluate(() => window.__jar.lift('warsaw'));
+  await viewIs(lan_ld.pg, 'jar');
+  await settled(lan_ld.pg);
+  const lan_ldCard = await lan_ld.pg.evaluate(() => { const f = window.__jar.forecast; const d = window.__jar.dpr; return f && { x: f.rect.x / d, y: f.rect.y / d, w: f.rect.w / d, h: f.rect.h / d }; });
+  const lan_ldRect2 = await lanternRect(lan_ld.pg);
+  check(!!lan_ldCard && !meets(lan_ldRect2, lan_ldCard), 'lantern button clears the forecast card (desktop)');
+  const lan_ldBack = await lan_ld.pg.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  check(!meets(lan_ldRect2, lan_ldBack), 'lantern button clears the back button (desktop)');
+  check(lan_ld.seen.errors.length === 0 && lan_ld.seen.off.length === 0, `no lantern errors or off-origin requests (desktop)${lan_ld.seen.errors.length ? `: ${lan_ld.seen.errors.join(' | ')}` : ''}`);
+  await lan_ld.cx.close();
+
+  // the phone: a fingertip-sized button that clears the jar and the card
+  const phoneL = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true };
+  const lan_lp = await lanternPage(phoneL, FAKE_LOCK);
+  const lan_lpRect = await lanternRect(lan_lp.pg);
+  const lan_lpJars = await jarBoxesOf(lan_lp.pg);
+  check((await lan_lp.pg.evaluate(() => !document.getElementById('lantern').hidden)) && lan_lpRect.h >= 44 && lan_lpRect.w >= 44, `lantern button is at least 44 px (phone, ${Math.round(lan_lpRect.w)}x${Math.round(lan_lpRect.h)})`);
+  check(lan_lpJars.every((j) => !meets(lan_lpRect, j)), 'lantern button clears every jar (phone)');
+  check(!meets(lan_lpRect, await creditRect(lan_lp.pg)), 'lantern button clears the credit link (phone)');
+  await lan_lp.pg.tap('#lantern');
+  await lan_lp.pg.waitForFunction(() => window.__jar.lantern.lock === 'held');
+  check(Math.abs((await lanternRect(lan_lp.pg)).w - lan_lpRect.w) < 0.5, 'lantern button keeps its width when toggled (phone)');
+  check((await lan_lp.pg.evaluate(() => window.__jar.lantern.on)) === true && (await lockOf(lan_lp.pg)).requests === 1, 'lantern tap turns the mode on and asks for the wake lock once (phone)');
+  await lan_lp.pg.evaluate(() => window.__jar.lift('warsaw'));
+  await viewIs(lan_lp.pg, 'jar');
+  await settled(lan_lp.pg);
+  const lan_lpCard = await lan_lp.pg.evaluate(() => { const f = window.__jar.forecast; const d = window.__jar.dpr; return f && { x: f.rect.x / d, y: f.rect.y / d, w: f.rect.w / d, h: f.rect.h / d }; });
+  const lan_lpRect2 = await lanternRect(lan_lp.pg);
+  check(!!lan_lpCard && !meets(lan_lpRect2, lan_lpCard), 'lantern button clears the forecast card (phone)');
+  const lan_lpBox = await lan_lp.pg.evaluate(() => window.__jar.jarBox('warsaw'));
+  const lan_lpD = await lan_lp.pg.evaluate(() => window.__jar.dpr);
+  check(!meets(lan_lpRect2, { x: lan_lpBox.x / lan_lpD, y: lan_lpBox.y / lan_lpD, w: lan_lpBox.w / lan_lpD, h: lan_lpBox.h / lan_lpD }), 'lantern button clears the lifted jar (phone)');
+  check(lan_lp.seen.errors.length === 0 && lan_lp.seen.off.length === 0, `no lantern errors or off-origin requests (phone)${lan_lp.seen.errors.length ? `: ${lan_lp.seen.errors.join(' | ')}` : ''}`);
+  await lan_lp.cx.close();
+
+  // a narrow phone: the credit wraps to two lines and the button sits below it, tappable
+  for (const width of [320, 360]) {
+    const nar = await lanternPage({ viewport: { width, height: 700 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, FAKE_LOCK);
+    const nr = await lanternRect(nar.pg);
+    const hit = await nar.pg.evaluate(() => { const r = document.getElementById('lantern').getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + 2)?.id; });
+    check(!meets(nr, await creditRect(nar.pg)) && hit === 'lantern', `lantern button clears the credit and takes the tap on a ${width} px phone`);
+    await nar.pg.evaluate(() => window.__jar.lift('warsaw'));
+    await viewIs(nar.pg, 'jar');
+    await settled(nar.pg);
+    await twoFrames(nar.pg);
+    const nr2 = await lanternRect(nar.pg);
+    const nb = await nar.pg.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+    const nHit = await nar.pg.evaluate(() => { const r = document.getElementById('back').getBoundingClientRect(); return document.elementFromPoint(r.right - 2, r.bottom - 2)?.id; });
+    const nCard = await nar.pg.evaluate(() => { const f = window.__jar.forecast; const d = window.__jar.dpr; return f && { x: f.rect.x / d, y: f.rect.y / d, w: f.rect.w / d, h: f.rect.h / d }; });
+    const nJar = await nar.pg.evaluate(() => { const j = window.__jar.jarBox('warsaw'); const d = window.__jar.dpr; return { x: j.x / d, y: j.y / d, w: j.w / d, h: j.h / d }; });
+    check(!meets(nr2, nb) && nHit === 'back' && !!nCard && !meets(nr2, nCard) && !meets(nr2, nJar) && !meets(nr2, await creditRect(nar.pg)), `lantern button clears back, the card, the lifted jar and the credit on a ${width} px phone`);
+    check(nar.seen.errors.length === 0, `no lantern errors on a ${width} px phone`);
+    await nar.cx.close();
+  }
+
+  // no fullscreen and no wake lock: no button, the page as before
+  const lan_ln = await lanternPage({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 }, NO_APIS);
+  const lan_lnState = await lan_ln.pg.evaluate(() => ({ hidden: document.getElementById('lantern').hidden, l: window.__jar.lantern, view: window.__jar.view }));
+  check(lan_lnState.hidden && !lan_lnState.l.supports.fullscreen && !lan_lnState.l.supports.wakeLock && lan_lnState.l.lock === 'unsupported', 'lantern button is absent where neither API exists');
+  check(lan_lnState.view === 'table' && lan_ln.seen.errors.length === 0 && lan_ln.seen.off.length === 0, `lantern with no APIs: the table draws with no errors${lan_ln.seen.errors.length ? `: ${lan_ln.seen.errors.join(' | ')}` : ''}`);
+  await lan_ln.cx.close();
+
+  // launched from a home screen: on from the first frame, no corner button
+  const lan_lh = await lanternPage(phoneL, FAKE_LOCK, STANDALONE);
+  await lan_lh.pg.waitForFunction(() => window.__lock.requests >= 1);
+  const lan_lhState = await lan_lh.pg.evaluate(() => ({ l: window.__jar.lantern, hidden: document.getElementById('lantern').hidden }));
+  check(lan_lhState.l.on === true && lan_lhState.l.standalone === true, 'lantern is on from the first frame when launched standalone');
+  check(lan_lhState.hidden && (await lockOf(lan_lh.pg)).requests === 1, 'lantern button is hidden and the wake lock held once when launched standalone');
+  check(lan_lh.seen.errors.length === 0 && lan_lh.seen.off.length === 0, `no lantern errors or off-origin requests (standalone)${lan_lh.seen.errors.length ? `: ${lan_lh.seen.errors.join(' | ')}` : ''}`);
+  await lan_lh.cx.close();
+
   check(vendorCalls.length === 0, 'the smoke never reached the vendor stub (the browser only asks its own route)');
 } finally {
   await browser.close();

@@ -160,10 +160,11 @@ test('the icons and the manifest are served from src/', () => {
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.theme_color, page);
   assert.equal(manifest.background_color, page);
-  assert.equal(manifest.icons.length, 2);
-  for (const icon of manifest.icons) {
-    assert.equal(icon.type, 'image/png');
-    const [w, h] = pngSize(`src/${icon.src}`);
+  // the install manifest also carries a scalable SVG (see test/install.test.js); every PNG is the size it says
+  const pngs = manifest.icons.filter((icon) => icon.type === 'image/png');
+  assert.ok(pngs.length >= 2);
+  for (const icon of pngs) {
+    const [w, h] = pngSize(`src/${icon.src.replace(/^\//, '')}`);
     assert.equal(icon.sizes, `${w}x${h}`, icon.src);
   }
   const lines = read('.gitignore').split('\n');
@@ -171,7 +172,8 @@ test('the icons and the manifest are served from src/', () => {
   assert.ok(star >= 0 && lines.indexOf('!src/*.png') > star, '.gitignore swallows the icons');
   const c = headersFor('/manifest.webmanifest')['content-security-policy'];
   assert.ok(c.startsWith("default-src 'self'"));
-  assert.ok(!c.includes('manifest-src'));
+  // the install card names manifest-src explicitly; it may only ever be the page's own origin
+  assert.ok(!c.includes('manifest-src') || c.includes("manifest-src 'self';"));
 });
 
 test('the page credits Open-Meteo with one outbound link and the chrome\'s own lettering', () => {
@@ -281,6 +283,7 @@ test('the headers never deny fullscreen or the screen wake lock', () => {
     assert.doesNotMatch(pp, /screen-wake-lock=\(\)/);
   }
   assert.deepEqual(csp()['connect-src'], ["'self'"]);
+  assert.deepEqual(csp()['manifest-src'], ["'self'"], 'the install manifest is read from the page\'s own address');
   assert.ok(header('Content-Security-Policy').startsWith("default-src 'self'"));
 });
 
