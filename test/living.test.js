@@ -286,3 +286,12 @@ test('a change in the low layer alone is a new sky and fades; no split on both s
   assert.equal(pictureChanged(a, { ...a, cloudLow: null }), true);
   assert.equal(pictureChanged({ ...a, cloudLow: null }, { ...a, cloudLow: null }), false);
 });
+
+test('a change in the summit wind or the freezing level alone is a new picture and fades', () => {
+  const a = { known: true, kind: 'clear', cloudCover: 10, windSpeed700: 40, windDir700: 240, freezingLevel: 2600 };
+  assert.equal(pictureChanged(a, { ...a, windSpeed700: 70 }), true);
+  assert.equal(pictureChanged(a, { ...a, windDir700: 300 }), true);
+  assert.equal(pictureChanged(a, { ...a, freezingLevel: 1300 }), true);
+  assert.equal(pictureChanged(a, { ...a, freezingLevel: null }), true);
+  assert.equal(pictureChanged(a, { ...a }), false);
+});

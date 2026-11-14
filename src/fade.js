@@ -17,6 +17,9 @@ export function pictureKey(w) {
     isDay: w.isDay ?? null,
     windSpeed: w.windSpeed ?? null,
     windDir: w.windDir ?? null,
+    windSpeed700: w.windSpeed700 ?? null, // El Chaltén's summit wind and snow line
+    windDir700: w.windDir700 ?? null,
+    freezingLevel: w.freezingLevel ?? null,
     sea: w.sea ? { waveHeight: w.sea.waveHeight ?? null, wavePeriod: w.sea.wavePeriod ?? null, waveDir: w.sea.waveDir ?? null } : null,
   });
 }
