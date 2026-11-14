@@ -37,7 +37,7 @@ export default {
     return { x: L.ox, y: L.river.top, w: L.w, h: L.river.bottom - L.river.top };
   },
   // Returns what the scene shows, for the tests and the smoke check:
-  // { season, golden, windows, glitter, moonTrack, wet, boat, birds, steam, vehicles, lamps, fireworks, tree }
+  // { season, golden, windows, clock, glitter, moonTrack, wet, boat, birds, steam, vehicles, lamps, fireworks, tree }
   paint(ctx, rect, phase, tint, weather, plates, nowMs) {
     const L = layout(rect.w, rect.h, rect.x, rect.y);
     const night = nightAmount(tint.light);
@@ -59,6 +59,7 @@ export default {
       season: SEASONS.reduce((a, b) => (w[b] > w[a] ? b : a)),
       golden: light.golden * (1 - night),
       windows: sky.windows,
+      clock: sky.clock,
       glitter: river.glitter,
       moonTrack: river.moonTrack,
       wet: river.wet,

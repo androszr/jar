@@ -5,7 +5,7 @@ import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
-  CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver,
+  CLOCK_R, HANDS, clockHands, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
@@ -693,13 +693,14 @@ const SUMMER = (d, h, m = 0) => Date.UTC(2026, 5, d, h - 2, m);
 
 test('paint reports what the scene shows, and still paints with no reading', () => {
   const { scene } = fullScene(PHASE.noon, EMPTY, T.summer);
-  for (const k of ['season', 'golden', 'windows', 'glitter', 'moonTrack', 'wet', 'boat', 'birds', 'steam', 'vehicles', 'lamps', 'fireworks', 'tree']) assert.ok(k in scene, k);
+  for (const k of ['season', 'golden', 'windows', 'clock', 'glitter', 'moonTrack', 'wet', 'boat', 'birds', 'steam', 'vehicles', 'lamps', 'fireworks', 'tree']) assert.ok(k in scene, k);
   assert.equal(scene.fireworks, false);
   assert.equal(scene.tree, false);
   assert.equal(scene.wet, false);
   assert.equal(scene.glitter, 0, 'no sun is drawn without a reading, so no glitter either');
   assert.equal(fullScene(PHASE.noon, EMPTY, T.autumn).scene.season, 'autumn');
   assert.equal(fullScene(PHASE.noon, EMPTY, NaN).scene.season, 'summer');
+  assert.equal(fullScene(PHASE.noon, EMPTY, NaN).scene.clock, null);
 });
 
 test('W4: the Palace has one clock face, small and warm, never white, with only a faint glow', () => {
@@ -715,6 +716,39 @@ test('W4: the Palace has one clock face, small and warm, never white, with only 
   assert.ok(CLOCK_R <= 2);
   const [r, g, b] = WARSAW.clockNight;
   assert.ok(r > b + 80 && r < 230 && g < 200, 'the night face is a dim warm disc');
+});
+
+test("W5: the Palace clock has two hands on Warsaw's time, dark by day and bright at night", () => {
+  assert.equal(clockHands(NaN), null);
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const h = clockHands(SUMMER(15, 1, 30));
+  assert.ok(near(h.hour, Math.PI / 4) && near(h.minute, Math.PI));
+  assert.ok(near(clockHands(SUMMER(15, 10, 30)).hour, 1.75 * Math.PI));
+  assert.deepEqual(clockHands(SUMMER(15, 12, 0)), { hour: 0, minute: 0 });
+  assert.deepEqual(clockHands(SUMMER(15, 0, 0)), { hour: 0, minute: 0 });
+
+  const y = L0.Y(PALACE.clock);
+  const cx = L0.X(0.4);
+  const ctx = paint(PHASE.night, EMPTY, SUMMER(15, 1, 30));
+  const hands = [];
+  ctx.calls.forEach(([m, a], i) => {
+    if (m === 'moveTo' && Math.abs(a[0] - cx) < 1e-9 && Math.abs(a[1] - y) < 1e-9 && ctx.calls[i + 1][0] === 'lineTo') hands.push(ctx.calls[i + 1][1]);
+  });
+  assert.equal(hands.length, 2, 'two hands from the clock centre');
+  const iMove = ctx.calls.findIndex(([m, a]) => m === 'moveTo' && Math.abs(a[0] - cx) < 1e-9 && Math.abs(a[1] - y) < 1e-9);
+  assert.equal(ctx.calls.slice(0, iMove).reverse().find(([m]) => m === 'save' || m === 'restore')[0], 'save', 'the hands start inside a save');
+  assert.equal(ctx.calls.slice(iMove).find(([m]) => m === 'save' || m === 'restore')[0], 'restore', 'and end with its restore');
+  const [hour, minute] = hands;
+  assert.ok(Math.abs(minute[0] - cx) < 1e-6 && Math.abs(minute[1] - (y + HANDS.minute * CLOCK_R * L0.sx)) < 1e-6, 'minute hand straight down at :30');
+  assert.ok(hour[0] > cx && hour[1] < y, 'hour hand up and to the right at 01:30');
+
+  assert.equal(startsWith(ctx.strokes, rgbaOf(WARSAW.clockHandNight)).length, 1, 'bright hands at night');
+  assert.equal(startsWith(paint(PHASE.noon, EMPTY, SUMMER(15, 10, 30)).strokes, rgbaOf(WARSAW.clockHandDay)).length, 1, 'dark hands by day');
+  assert.equal(startsWith(ctx.fills, rgbaOf(WARSAW.clockFace)).length, 0);
+
+  const bad = paint(PHASE.noon, EMPTY, NaN);
+  assert.equal(bad.calls.filter(([m, a]) => m === 'moveTo' && Math.abs(a[0] - cx) < 1e-9 && Math.abs(a[1] - y) < 1e-9).length, 0, 'no hands for a bad moment');
+  assert.equal(bad.calls.filter(([m, a]) => m === 'arc' && Math.abs(a[1] - y) < 1e-9 && Math.abs(a[2] - CLOCK_R) < 1e-9).length, 1, 'the face still draws');
 });
 
 test('W1: the near bank is rows of crowns behind a strip of beach, far rows smaller', () => {
