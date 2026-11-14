@@ -263,6 +263,30 @@ async function findHours(pg) {
 
 const pinAt = (pg, ms) => pg.evaluate((t) => window.__jar.pin(t), ms);
 const jarHash = (pg) => pg.evaluate(() => window.__jar.hash());
+// Same moment, same picture - allowing raster noise only. The page draws the same calls both times
+// (same inputs, nothing in a draw reads a clock or Math.random), but its GPU-backed offscreen
+// canvases can rasterise them a unit apart (measured on a loaded machine: 2-4 pixels, one channel
+// off by 1, in any jar, lights, fades and feed unchanged); software-backing those canvases removes
+// it but slows the page past the frame-time checks. A mover in another place changes far more.
+// `picture` keeps the whole canvas in the page under `key` and returns its exact hash.
+const RASTER_PX = 32;
+const RASTER_DELTA = 2;
+const picture = (pg, key) => pg.evaluate((k) => { const c = document.getElementById('view'); (window.__smokePics = window.__smokePics || {})[k] = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; return window.__jar.hash(); }, key);
+const checkSame = async (pg, a, b, what) => {
+  const [n, max] = await pg.evaluate(([ka, kb]) => {
+    const pics = window.__smokePics || {};
+    const x = pics[ka]; const y = pics[kb];
+    delete pics[ka]; delete pics[kb];
+    if (!x || !y || x.length !== y.length) return [Infinity, Infinity];
+    let n = 0; let max = 0;
+    for (let k = 0; k < x.length; k += 4) {
+      const d = Math.max(Math.abs(x[k] - y[k]), Math.abs(x[k + 1] - y[k + 1]), Math.abs(x[k + 2] - y[k + 2]));
+      if (d) { n += 1; max = Math.max(max, d); }
+    }
+    return [n, max];
+  }, [a, b]);
+  check(n <= RASTER_PX && max <= RASTER_DELTA, n ? `${what} (raster noise: ${n} px, at most ${max} apart)` : what);
+};
 const medianFrameMs = (page) => page.evaluate(() => {
   const t = [];
   for (let i = 0; i < 9; i++) { window.__jar.pin(Date.now() + i * 60000); t.push(window.__jar.lastFrameMs); }
@@ -322,31 +346,13 @@ try {
   const away = await strip(page, far.x - 20, far.y, 40, 12);
   check(near > away + 1, `jar lights the table (${near.toFixed(1)} vs ${away.toFixed(1)})`);
 
-  // determinism: two pins of one moment, compared pixel by pixel. The page draws the same calls
-  // both times (same inputs, no clock or random in a draw), but its GPU-backed offscreen canvases
-  // can rasterise a unit apart under load (measured on a loaded machine: 2-4 pixels, one channel off
-  // by 1, in any jar, with lights, fades and feed unchanged); software-backing them instead costs
-  // the frame-time checks. So raster noise is allowed - at most RASTER_PX pixels, no channel more
-  // than RASTER_DELTA apart - and anything that moved (a mover in another place) is not.
+  // determinism: two pins of one moment (picture / checkSame allow raster noise only)
   const T = Date.UTC(2026, 5, 15, 10, 30);
-  const RASTER_PX = 32;
-  const RASTER_DELTA = 2;
   await page.evaluate((t) => window.__jar.pin(t), T);
-  const h1 = await page.evaluate(() => { const c = document.getElementById('view'); window.__smokeSnap = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; return window.__jar.hash(); });
+  await picture(page, 'table1');
   await page.evaluate((t) => window.__jar.pin(t), T);
-  const [h2, apart, worst] = await page.evaluate(() => {
-    const c = document.getElementById('view');
-    const b = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-    const a = window.__smokeSnap;
-    let n = 0; let max = 0;
-    for (let k = 0; k < a.length; k += 4) {
-      const d = Math.max(Math.abs(a[k] - b[k]), Math.abs(a[k + 1] - b[k + 1]), Math.abs(a[k + 2] - b[k + 2]));
-      if (d) { n += 1; max = Math.max(max, d); }
-    }
-    window.__smokeSnap = null;
-    return [window.__jar.hash(), n, max];
-  });
-  check(h1 === h2 || (apart <= RASTER_PX && worst <= RASTER_DELTA), `same moment draws the same pixels (${apart} px apart, at most ${worst})`);
+  await picture(page, 'table2');
+  await checkSame(page, 'table1', 'table2', 'same moment draws the same pixels');
 
   // the lamplit shed
   hours = await findHours(page);
@@ -373,9 +379,10 @@ try {
   const board = lumaOf(await rgbAt(page, 1492, 419, 0));
   const below = lumaOf(await rgbAt(page, 1492, 421, 0));
   check(board > below + 12, `the shelf board has a lit top edge (${board.toFixed(0)} over ${below.toFixed(0)})`);
-  const n1 = await jarHash(page);
+  await picture(page, 'lamp1');
   await pinAt(page, hours.darkest.t);
-  check(n1 === (await jarHash(page)), 'the lamplit night draws the same pixels');
+  await picture(page, 'lamp2');
+  await checkSame(page, 'lamp1', 'lamp2', 'the lamplit night draws the same pixels');
   await pinAt(page, hours.brightest.t);
   const wallD = await rgbAt(page, 800, 160);
   check((wallN.r - wallN.b) - (wallD.r - wallD.b) >= 6, 'the lamp is barely there by day');
@@ -486,7 +493,8 @@ try {
   await page.waitForFunction(() => window.__jar.index === 0, null, { timeout: 3000 }).catch(() => {});
   await page.click('#next');
   check(await page.waitForFunction(() => window.__jar.index === 1, null, { timeout: 3000 }).then(() => true, () => false), 'next arrow focuses the second jar');
-  timed(await medianFrameMs(page) < 33, 'desktop frame time under 33 ms');
+  const deskMs = await medianFrameMs(page);
+  timed(deskMs < 33, `desktop frame time under 33 ms (${deskMs.toFixed(1)})`);
 
   const deep = await desk.newPage();
   const deepSeen = watch(deep, origin);
@@ -554,13 +562,13 @@ try {
   await sea.screenshot({ path: join(OUT, 'nazare-giant.png') });
   // the sea rolls with the clock, and the same moment is the same picture
   await pinAt(sea, T_NOON);
-  const rollA = await jarHash(sea);
+  const rollA = await picture(sea, 'rollA');
   await pinAt(sea, T_NOON + 3000);
   const rollB = await jarHash(sea);
   await pinAt(sea, T_NOON);
-  const rollC = await jarHash(sea);
+  await picture(sea, 'rollC');
   check(rollA !== rollB, 'the sea rolls');
-  check(rollA === rollC, 'nazare draws the same pixels at the same moment');
+  await checkSame(sea, 'rollA', 'rollC', 'nazare draws the same pixels at the same moment');
   // the scrub: the wave follows the hour's forecast swell (fixture: 09:00 4.2 m, 14:00 1.2 m, 15:00 6.5 m)
   // pin first: the feed counts staleness from the pinned moment, and the fixture is dated today
   await pinAt(sea, wallToMs(`${lisbonDays[0]}T09:00`, 'Europe/Lisbon'));
@@ -574,9 +582,10 @@ try {
   const s5Hash = await jarHash(sea);
   const s6 = await scrubAt(360);
   check(!!s6.scene && s6.scene.band === 'giant' && s6.scene.surfers === 2, `scrub +6 h makes the wave giant with the tow-in pair (${s6.scene && s6.scene.band})`);
-  const s6HashA = await jarHash(sea);
-  const s6HashB = await jarHash(sea);
-  check(s6HashA === s6HashB && s6HashA !== s5Hash, 'scrub draws the same wave at the same moment');
+  const s6HashA = await picture(sea, 's6A');
+  await picture(sea, 's6B');
+  check(s6HashA !== s5Hash, 'scrub +6 h draws a different wave from +5 h');
+  await checkSame(sea, 's6A', 's6B', 'scrub draws the same wave at the same moment');
   const sBack = await scrubAt(0);
   check(!!sBack.scene && sBack.scene.band === 'big' && sBack.swell === '4.2 m · 14 s', `scrub back to now restores the wave (${sBack.scene && sBack.scene.band} ${sBack.swell})`);
   await sea.evaluate((b) => window.__jar.applyWeather(b), seaBody(4.2));
@@ -753,9 +762,10 @@ try {
   await cp.screenshot({ path: join(OUT, 'el-chalten-snow-line.png') });
   await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 60, dir: 225 }));
   await at(T_NOON_C);
-  const smokeA = await jarHash(cp);
+  await picture(cp, 'smokeA');
   await at(T_NOON_C);
-  check(smokeA === (await jarHash(cp)), 'el-chalten draws the same pixels at the same moment');
+  await picture(cp, 'smokeB');
+  await checkSame(cp, 'smokeA', 'smokeB', 'el-chalten draws the same pixels at the same moment');
   const capped = await at(T_NOON_C, chaltenBody({ cloud: 70, wind: 10 }));
   check(capped.band === 'capped' && (await lineOf()) === 'FITZ ROY · CAPPED' && all(await patch(cp, 'el-chalten', 0.566, 0.15, 2), (r, g, b) => Math.abs(r - b) < 25), 'a cloud deck caps the peak');
   const hidden = await at(T_NOON_C, chaltenBody({ cloud: 95, code: 61, wind: 40, dir: 315 }));
@@ -855,9 +865,11 @@ try {
   const edge = luma(await patch(noct, 'warsaw', 0.0425, 0.4, 1));
   const oldSpot = luma(await patch(noct, 'warsaw', 0.15, 0.4, 1)); // where the left streak used to sit
   check(edge > oldSpot + 10, 'the streaks hug the glass edges');
-  const hashA = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NIGHT);
-  const hashB = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NIGHT);
-  check(hashA === hashB, 'the nocturne draws the same pixels at the same moment');
+  await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
+  await picture(noct, 'hashA');
+  await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
+  await picture(noct, 'hashB');
+  await checkSame(noct, 'hashA', 'hashB', 'the nocturne draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-night.png') });
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   const fd = await noct.evaluate(() => window.__jar.forecast);
@@ -939,9 +951,11 @@ try {
   check(varsoFlash >= 40, `Varso flashes the low sun on its right face (${varsoFlash.toFixed(0)} brighter than its body)`);
   check(spireFlash >= 40, `the Spire flashes the low sun on its right face (${spireFlash.toFixed(0)} brighter than its body)`);
   check(varsoDayFlash < 25 && spireDayFlash < 25, `no flash in the morning (${varsoDayFlash.toFixed(0)}, ${spireDayFlash.toFixed(0)})`);
-  const hashG1 = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_GOLDEN);
-  const hashG2 = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_GOLDEN);
-  check(hashG1 === hashG2, 'golden hour draws the same pixels at the same moment');
+  await noct.evaluate((t) => window.__jar.pin(t), T_GOLDEN);
+  await picture(noct, 'hashG1');
+  await noct.evaluate((t) => window.__jar.pin(t), T_GOLDEN);
+  await picture(noct, 'hashG2');
+  await checkSame(noct, 'hashG1', 'hashG2', 'golden hour draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-golden.png') });
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   await twoFrames(noct);
@@ -1007,9 +1021,9 @@ try {
   check(all(await patch(noct, 'warsaw', 0.4, 0.1, 2), greyPale) && !all(clearPalaceTop, greyPale), 'the cloud base swallows the Palace needle');
   // the overcast look pass greys the sandstone under full cloud (measured red over blue 21..23), still warm where the cloud is blue-grey
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 12), 'the Palace shaft stands under the cloud base');
-  const overA = await noct.evaluate(() => window.__jar.hash());
-  const overB = await noct.evaluate(() => window.__jar.hash());
-  check(overA === overB, 'the overcast draws the same pixels at the same moment');
+  await picture(noct, 'overA');
+  await picture(noct, 'overB');
+  await checkSame(noct, 'overA', 'overB', 'the overcast draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-overcast.png') });
   await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(45, 100));
   await settled(noct);
@@ -1018,9 +1032,9 @@ try {
   const fogForest = await patch(noct, 'warsaw', 0.12, 0.715, 2);
   check(luma(fogShaft) >= luma(clearShaft) + 12 && all(fogShaft, (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) <= 25) && all(clearShaft, (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) >= 30), 'the Palace is a pale shape in the fog');
   check(luma(fogForest) <= luma(fogShaft) - 30, 'the near forest stays dark in the fog');
-  const fogA = await noct.evaluate(() => window.__jar.hash());
-  const fogB = await noct.evaluate(() => window.__jar.hash());
-  check(fogA === fogB, 'the fog draws the same pixels at the same moment');
+  await picture(noct, 'fogA');
+  await picture(noct, 'fogB');
+  await checkSame(noct, 'fogA', 'fogB', 'the fog draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-fog.png') });
   // the cloud base follows the low layer: low overcast = the total-cover picture, high-only overcast = tops in view
   const layer = async (warsawMore) => {
@@ -1029,15 +1043,17 @@ try {
     await twoFrames(noct);
   };
   await layer({});
-  const hLayerless = await jarHash(noct);
+  const hLayerless = await picture(noct, 'layerless');
   await layer({ cloudLow: 100, cloudMid: 0, cloudHigh: 0 });
-  check((await jarHash(noct)) === hLayerless, 'a low overcast draws the base the total cover drew');
+  await picture(noct, 'lowDeck');
+  await checkSame(noct, 'layerless', 'lowDeck', 'a low overcast draws the base the total cover drew');
   await layer({ cloudLow: 0, cloudMid: 0, cloudHigh: 100 });
-  const hHigh = await jarHash(noct);
+  const hHigh = await picture(noct, 'high1');
   check(hHigh !== hLayerless, 'a high overcast draws a different jar');
   const nHigh = await patch(noct, 'warsaw', 0.235, 0.045, 2);
   check(!all(nHigh, greyPale), "a high overcast leaves Varso's needle out of the cloud");
-  check(hHigh === (await jarHash(noct)), 'the high overcast draws the same pixels at the same moment');
+  await picture(noct, 'high2');
+  await checkSame(noct, 'high1', 'high2', 'the high overcast draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-overcast-high.png') });
   // the other two jars, on the table where they are painted: the same overcast reading, with and without the split
   const tbl = await desk.newPage();
@@ -1114,9 +1130,11 @@ try {
   const green = (r, g, b) => g >= r + 8 && g >= b;
   check(some(await patch(noct, 'warsaw', 0.485, 0.53, 2), green), 'a green tree stands at the Palace foot in December');
   check(some(await patch(noct, 'warsaw', 0.485, 0.5075, 3), (r, g, b) => r >= 220 && g >= 170 && b <= 200), 'a warm star tops the tree');
-  const xmasA = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_XMAS);
-  const xmasB = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_XMAS);
-  check(xmasA === xmasB, 'the tree draws the same pixels at the same moment');
+  await noct.evaluate((t) => window.__jar.pin(t), T_XMAS);
+  await picture(noct, 'xmasA');
+  await noct.evaluate((t) => window.__jar.pin(t), T_XMAS);
+  await picture(noct, 'xmasB');
+  await checkSame(noct, 'xmasA', 'xmasB', 'the tree draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-december.png') });
   await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
   check(!some(await patch(noct, 'warsaw', 0.485, 0.53, 2), green), 'no tree in June');
@@ -1137,9 +1155,11 @@ try {
   const skyNye = await skyBand();
   const lift = Math.max(...skyNye.map((v, i) => v - skyNight[i]));
   check(lift >= 6, `fireworks light the sky over the Palace after Warsaw's midnight (a patch ${Math.round(lift)} brighter)`);
-  const nyeA = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NYE);
-  const nyeB = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NYE);
-  check(nyeA === nyeB, 'the fireworks draw the same pixels at the same moment');
+  await noct.evaluate((t) => window.__jar.pin(t), T_NYE);
+  await picture(noct, 'nyeA');
+  await noct.evaluate((t) => window.__jar.pin(t), T_NYE);
+  await picture(noct, 'nyeB');
+  await checkSame(noct, 'nyeA', 'nyeB', 'the fireworks draw the same pixels at the same moment');
   check(await noct.evaluate(() => window.__jar.cadence.cities.warsaw === 100), 'Warsaw asks for a fast tick during the fireworks');
   await noct.screenshot({ path: join(OUT, 'warsaw-new-year.png') });
   await noct.evaluate((t) => window.__jar.pin(t), Date.UTC(2026, 0, 1, 0, 30)); // 01:30 in Warsaw
@@ -1325,9 +1345,11 @@ try {
   check(!!pnf && pnf.tides.length === 4 && pnf.tides.every((t) => Number.isFinite(t.height)) && inside(pnf.rect, pcanvas[0], pcanvas[1]), 'phone card fits with tide heights and curve');
   await pp.touchscreen.tap(30, 30);
   await viewIs(pp, 'table');
-  timed(await medianFrameMs(pp) < 25, 'phone frame time under 25 ms');
+  const phoneMs = await medianFrameMs(pp);
+  timed(phoneMs < 25, `phone frame time under 25 ms (${phoneMs.toFixed(1)})`);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-  timed(await medianFrameMs(pp) < 66, 'phone frame time under 66 ms at 4x throttle');
+  const slowMs = await medianFrameMs(pp);
+  timed(slowMs < 66, `phone frame time under 66 ms at 4x throttle (${slowMs.toFixed(1)})`);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   check(pSeen.errors.length === 0 && pSeen.off.length === 0, `no console errors or off-origin requests on the phone${pSeen.errors.length ? `: ${pSeen.errors.join(' | ')}` : ''}`);
   {
@@ -1435,9 +1457,10 @@ try {
   await ready(sp);
   await labelIs(sp, 1, '17°');
   await pin(sp, PEAK);
-  const sa = await jarHash(sp);
+  await picture(sp, 'stormA');
   await pin(sp, PEAK);
-  check(sa === (await jarHash(sp)), 'storm draws the same pixels at the same moment');
+  await picture(sp, 'stormB');
+  await checkSame(sp, 'stormA', 'stormB', 'storm draws the same pixels at the same moment');
   const lumPeak = await jarLum(sp);
   const flashPeak = await sp.evaluate(() => window.__jar.flash('warsaw'));
   const footPeak = await footLum(sp);
@@ -1573,9 +1596,10 @@ try {
 
   const cw = await cloudPage(deskOpts, 'cloudwind');
   await pin(cw.pg, CT + CD);
-  const cwA = await jarHash(cw.pg);
+  await picture(cw.pg, 'cloudA');
   await pin(cw.pg, CT + CD);
-  check(cwA === (await jarHash(cw.pg)), 'windy clouds draw the same pixels at the same moment');
+  await picture(cw.pg, 'cloudB');
+  await checkSame(cw.pg, 'cloudA', 'cloudB', 'windy clouds draw the same pixels at the same moment');
   const windDelta = await driftDelta(cw.pg);
   // The first reading starts from the shared origin, and CT is a whole number of drift widths
   // from it, so nine seconds on the wind term's fractional part is 0.075 and calm and windy
@@ -1680,10 +1704,11 @@ try {
   check(spoken[0].includes('+5 h') && spoken[0].includes('14:00') && spoken[1].startsWith('Previewing +5 h'), `scrub speaks its value (${spoken[0]})`);
   const six = await sp2.evaluate(() => { window.__jar.scrub(360); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
   check(six.p !== null && six.p.kind === 'rain' && six.l[1] === '16°' && six.l[2] === '15:00 (+6 h)', `scrub to 15:00 previews rain (${six.p && six.p.kind} ${six.l[1]} ${six.l[2]})`);
-  const hA = await jarHash(sp2);
+  const hA = await picture(sp2, 'scrubA');
   await sp2.evaluate(() => window.__jar.scrub(360));
-  const hB = await jarHash(sp2);
-  check(hA === hB && hA !== hNow, 'scrub draws the same pixels at the same moment');
+  await picture(sp2, 'scrubB');
+  check(hA !== hNow, 'scrub +6 h draws a different picture from now');
+  await checkSame(sp2, 'scrubA', 'scrubB', 'scrub draws the same pixels at the same moment');
   const snapped = await sp2.evaluate(() => { window.__jar.scrub(0); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
   check(JSON.stringify(snapped.l) === JSON.stringify(lab0) && snapped.p === null, 'scrub snaps back to now');
   check((await hashNowAt()) === hNow, 'scrub back at now draws the picture it started from');
