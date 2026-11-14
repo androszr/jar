@@ -391,7 +391,8 @@ try {
   await page.evaluate((b) => window.__jar.applyWeather(b), bumped);
   const heard = await page.waitForFunction(() => document.getElementById('announce').textContent.startsWith('Weather updated. '), null, { timeout: 3000 }).then(() => true, () => false);
   const [live1, aria1] = await page.evaluate(() => [document.getElementById('announce').textContent, document.getElementById('view').getAttribute('aria-label')]);
-  const spokenOf = (a) => a.slice(a.indexOf('Next five days: '), a.indexOf(' Press Escape'));
+  // the forecast and sun sentences, without the freshness sentence that ends them
+  const spokenOf = (a) => a.slice(a.indexOf('Next five days: '), a.indexOf(' Press Escape')).replace(/ (Updated|Weather is|No weather)[^.]*\.$|\s*Updating…$/, '');
   check(heard && live1 === `Weather updated. ${spokenOf(aria1)}` && spokenOf(aria1) !== spokenOf(aria) && live1.includes('Sunrise '), 'live region announces a refreshed forecast while lifted');
   await page.evaluate((b) => window.__jar.applyWeather(b), bumped);
   await twoFrames(page);
@@ -407,6 +408,25 @@ try {
   await viewIs(page, 'jar');
   await twoFrames(page);
   check((await live(page)) === '', 'live region is silent on a second lift');
+  // the freshness line: pin first, so the answer is dated by the pinned clock, then move the clock on
+  await pinAt(page, T);
+  await page.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5, 9));
+  await pinAt(page, T + 12 * 60_000);
+  await twoFrames(page);
+  const [fresh12, freshAria12] = await page.evaluate(() => [window.__jar.forecast, document.getElementById('view').getAttribute('aria-label')]);
+  check(!!fresh12 && fresh12.note === 'updated 12 min ago' && freshAria12.includes('Updated 12 min ago.'), 'forecast card says when the weather was updated');
+  await pinAt(page, T + 50 * 60_000);
+  await twoFrames(page);
+  const [fresh50, freshAria50] = await page.evaluate(() => [window.__jar.forecast, document.getElementById('view').getAttribute('aria-label')]);
+  check(!!fresh50 && fresh50.note === 'weather is 50 min old' && fresh50.cells[0].day === '—' && freshAria50.includes('Weather is 50 min old.'), 'forecast card says the weather is old when the dash rule fires');
+  // Put the page back as the later checks had it: the dated three-city rain answer accepted at the
+  // real time, the clock pinned at T again (an answer from the "future" is fresh), so the frame-time
+  // and arrow checks see Warsaw rain and a live feed, as before the freshness block.
+  await page.evaluate((t) => window.__jar.pin(t), Date.now());
+  await page.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
+  await pinAt(page, T);
+  await twoFrames(page);
+  check(await page.evaluate(() => window.__jar.labels.warsaw[1] === '12°' && window.__jar.forecast.cells[0].day !== '—' && window.__jar.forecast.note === 'updated just now'), 'page is restored to the dated rain answer after the freshness checks');
   await page.goBack();
   check(await viewIs(page, 'table'), 'browser back lowers the jar');
   await settled(page);
@@ -861,6 +881,8 @@ try {
   await bp.evaluate(() => window.__jar.lift('warsaw'));
   await viewIs(bp, 'jar');
   check(await bp.evaluate((d) => { const f = window.__jar.forecast; return !!f && f.cells.length === 5 && f.cells.every((c) => c.day === d[0] && c.high === d[1]); }, ['—', '—°']), 'degraded page lifts with a card of dashes');
+  check(await bp.evaluate(() => window.__jar.forecast.note === 'no weather yet'), 'degraded card says there is no weather yet');
+  check(await bp.evaluate(() => { const a = document.getElementById('view').getAttribute('aria-label'); return a.includes(' No weather yet. Press Escape') && !a.includes('….'); }), 'degraded card speaks no weather yet, with no stray full stop after an ellipsis');
   await bad.close();
 
   // ---- no daily block: the card is dashes, nothing errors ---------------------
@@ -951,6 +973,7 @@ try {
   const pfoot = await pp.evaluate(() => window.__jar.foot('warsaw'));
   const pcanvas = await pp.evaluate(() => [document.getElementById('view').width, document.getElementById('view').height]);
   check(!!pf && pf.rect.y > pfoot.y && inside(pf.rect, pcanvas[0], pcanvas[1]), 'phone forecast card sits below the jar and fits');
+  check(!!pf && typeof pf.note === 'string' && pf.note.startsWith('updated'), 'phone card carries the freshness line');
   check(!!pf && pf.cells.slice(1).every((k) => !k.today) && pf.sun !== null && pf.sun.sunrise === wantSun.sunrise, 'phone forecast card marks today and shows the sun strip');
   check(!!pf && pf.sun !== null && Number.isFinite(pf.sunT) && Math.abs(pf.sunT - sunFraction(pNow, 'Europe/Warsaw', pf.sun)) < 0.01, 'phone forecast card sun arc follows the Warsaw clock');
   check(!!pf && typeof paria === 'string' && (paria.match(/today /g) || []).length === (pf.cells[0].today ? 1 : 0), 'phone forecast card names today for screen readers');

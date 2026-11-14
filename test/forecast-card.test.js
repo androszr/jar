@@ -39,12 +39,12 @@ function fake() {
 const cells = (todayAt = -1) => Array.from({ length: 5 }, (_, i) => ({ day: 'SUN', kind: 'clear', high: '1°', low: '0°', today: i === todayAt }));
 const RECT = (layout) => ({ x: 100, y: 50, w: CARD[layout].w, h: CARD[layout].h });
 
-function paint(layout, cs, sun, sunT = null, tides = [], dayT = null) {
+function paint(layout, cs, sun, sunT = null, tides = [], dayT = null, note = null) {
   const real = Math.random;
   Math.random = () => { throw new Error('Math.random in a draw function'); };
   try {
     const ctx = fake();
-    forecastCard(ctx, RECT(layout), cs, layout, sun, sunT, tides, dayT);
+    forecastCard(ctx, RECT(layout), cs, layout, sun, sunT, tides, dayT, -1, note);
     return ctx;
   } finally {
     Math.random = real;
@@ -308,7 +308,8 @@ test('the arc sits below the tide strip', () => {
 for (const layout of ['row', 'column']) {
   test(`${layout} card legibility: no text under the floor, no two lines of a cell touching`, () => {
     const floor = layout === 'row' ? 12.5 : 12;
-    const ctx = paint(layout, fullCells(), SUN, 0.5, HTIDES, 0.5);
+    const ctx = paint(layout, fullCells(), SUN, 0.5, HTIDES, 0.5, 'updated 12 min ago');
+    assert.ok(ctx.texts.some((t) => t.s === 'updated 12 min ago'));
     for (const t of ctx.texts) assert.ok(t.size >= floor, `${t.s} is ${t.size}px`);
     const byX = new Map();
     for (const t of ctx.texts) byX.set(t.x, [...(byX.get(t.x) || []), t]);
@@ -333,12 +334,45 @@ test('every card paints with no rain, wind or tides at all (weather is optional)
 
 for (const layout of ['row', 'column']) {
   test(`${layout} card prints the tide text with tides and no sun times`, () => {
-    const ctx = paint(layout, fullCells(), null, null, TIDES);
+    const ctx = paint(layout, fullCells(), null, null, TIDES, null, 'updated 12 min ago');
     assert.ok(ctx.texts.some((t) => t.s.startsWith('tide')));
     assert.ok(ctx.texts.some((t) => t.s.includes('↓') && t.s.includes('21:50')));
     assert.ok(!ctx.texts.some((t) => t.s.includes('07:05')));
     const r = RECT(layout);
     for (const t of ctx.texts) assert.ok(t.y < r.y + r.h, `${t.s} inside the card`);
     for (const t of ctx.texts) assert.ok(t.size >= (layout === 'row' ? 12.5 : 12), `${t.s} ${t.size}px`);
+  });
+}
+
+const NOTE = 'updated 12 min ago';
+for (const layout of ['column', 'row']) {
+  test(`${layout}: no note means no freshness band`, () => {
+    const ctx = paint(layout, cells(0), SUN, 0.5);
+    assert.ok(!ctx.texts.some((t) => t.s.includes('updated') || t.s.includes('weather is')));
+  });
+
+  test(`${layout}: the note is one centred text in the last band`, () => {
+    const ctx = paint(layout, cells(0), SUN, 0.5, [], null, NOTE);
+    const r = RECT(layout);
+    const notes = ctx.texts.filter((t) => t.s === NOTE);
+    assert.equal(notes.length, 1);
+    const n = notes[0];
+    assert.equal(n.x, r.x + r.w / 2);
+    for (const t of ctx.texts) if (t !== n) assert.ok(t.y < n.y, `${t.s} above the note`);
+    assert.ok(n.y > r.y + r.h - CARD.note[layout] && n.y < r.y + r.h, 'inside the foot band');
+  });
+
+  test(`${layout}: with a note the rows sit above its band`, () => {
+    const ctx = paint(layout, cells(0), SUN, 0.5, [], null, NOTE);
+    const r = RECT(layout);
+    const lows = ctx.texts.filter((t) => t.s === '0°');
+    assert.equal(lows.length, 5);
+    for (const t of lows) assert.ok(t.y < r.y + r.h - CARD.note[layout], 'low temperature above the band');
+  });
+
+  test(`${layout}: a note paints over dash cells with no sun`, () => {
+    const dashes = Array.from({ length: 5 }, () => ({ day: '—', kind: 'clear', high: '—', low: '—', today: false }));
+    const ctx = paint(layout, dashes, null, null, [], null, 'no weather yet');
+    assert.ok(ctx.texts.some((t) => t.s === 'no weather yet'));
   });
 }

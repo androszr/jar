@@ -15,7 +15,7 @@ import { offsetLabel, previewWeather, clampScrub, clampPreview, dayPreviewMin, S
 import { ScrubBar } from './scrubbar.js';
 import { formatTemp, forecastCells, upcomingRows, forecastSentence, sunTimesFor, tidesFor, tideSentence, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
-import { WeatherFeed } from './weatherfeed.js';
+import { WeatherFeed, freshnessText } from './weatherfeed.js';
 import { forecastAnnouncement } from './announce.js';
 import { buildShedArt, drawShed, tintBucket, artScale, WINDOW, TABLE_Y, BLEED } from './shed.js';
 import { paintInterior, placeJar, measure, labelLines, bodyRect, interiorQuality, QUALITY } from './jar.js';
@@ -77,7 +77,7 @@ let weatherCadence = 0; // 50 animated, 250 windy cloud, 0 otherwise
 let cityCadences = {}; // city id -> ms the scene asks for (0 for a still one)
 let scenes = {}; // city id -> what the scene reported painting
 let drawn = {}; // city id -> { flash, dew, drift, moon } the last frame painted with
-let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT } of the card drawn last, or null
+let lastForecast = null; // { cells, rect, sun, sunT, tides, dayT, note } of the card drawn last, or null
 let cam = { cx: SCENE.w / 2, cy: SCENE.h / 2, scale: 1 };
 let scratch = null;
 // the room behind a fully lifted jar is kept (softened, in scratch.back) and
@@ -227,6 +227,8 @@ function render(force = false) {
   const phases = CITIES.map((c, i) => therePhase(at[i], c.location, viewer));
   const seen = (c, i, w) => (scrubbing && i === focus ? previewWeather(w, at[i], c.location.zone) : w);
   const weathers = CITIES.map((c, i) => seen(c, i, feed.get(c.id)));
+  // the freshness line: a string, so its change (a minute, a finished attempt) is in the key
+  const note = freshnessText(feed.ageMs(ms), { busy: feed.busy });
   const preview = scrubbing ? { offsetMin: scrubMin } : null;
   // lightning and dew per jar: functions of the moment and the feed alone
   const flashes = CITIES.map((c, i) => flashIntensity(weathers[i].code, at[i], { reduced: reduceMotion }));
@@ -257,7 +259,7 @@ function render(force = false) {
     return e;
   });
   const key = [view, lift.state, Math.round(liftP * 1000), Math.round(shelf.pos * 1000), minute,
-    feed.revision, feed.isStale(), W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
+    feed.revision, feed.isStale(), note, W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
     cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0, scrubbing ? scrubMin : 0,
     flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(','), hint, Math.round(hintA * 64),
     sh ? Math.round(sh.ageMs / 16) : -1, levels ? Math.round((t - intro) / 16) : -1, fadeE.map((e) => Math.round(e * 100)).join(','),
@@ -404,9 +406,9 @@ function render(force = false) {
     ctx.rect(jr.x, jr.y, jr.w, jr.h);
     ctx.clip('evenodd');
     ctx.globalAlpha = pose.alpha;
-    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides, dayT, selectedDay);
+    forecastCard(ctx, pose.rect, cells, pose.layout, sun, sunT, tides, dayT, selectedDay, note);
     ctx.restore();
-    lastForecast = { cells, rect: pose.rect, layout: pose.layout, sun, sunT, tides, dayT };
+    lastForecast = { cells, rect: pose.rect, layout: pose.layout, sun, sunT, tides, dayT, note };
   } else {
     lastForecast = null;
   }
@@ -506,6 +508,8 @@ function syncAria() {
   const sun = view === 'jar' ? sunTimesFor(here, todayHere) : null;
   const sentence = cells ? forecastSentence(cells) : '';
   const tideText = view === 'jar' ? tideSentence(tidesFor(here, todayHere)) : '';
+  const note = view === 'jar' ? freshnessText(feed.ageMs(nowMs()), { busy: feed.busy }) : '';
+  const fresh = note ? ` ${note[0].toUpperCase()}${note.slice(1)}${note.endsWith('…') ? '' : '.'}` : '';
   const days = (sentence ? ` ${sentence}` : '') + (sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}.` : '') + (tideText ? ` ${tideText}` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
@@ -523,7 +527,7 @@ function syncAria() {
   else if (!next && liveEl.textContent) liveEl.textContent = '';
   syncValueText();
   const text = view === 'jar'
-    ? `${view === 'jar' && scrubMin > 0 ? `Previewing ${offsetLabel(scrubMin)}: ` : ''}${facts}. The jar is lifted.${moonText}${days} Press Escape to put it back on the table.`
+    ? `${view === 'jar' && scrubMin > 0 ? `Previewing ${offsetLabel(scrubMin)}: ` : ''}${facts}. The jar is lifted.${moonText}${days}${fresh} Press Escape to put it back on the table.`
     : `A potting table with a glass jar of ${facts}. Press Enter to lift the jar.${hint !== 'none' ? ` ${hintSentence(hintText)}` : ''}`;
   if (text !== ariaText) {
     ariaText = text;
@@ -741,7 +745,7 @@ function liftedTarget(p) {
   const card = lastForecast && lastForecast.rect;
   if (pressLowers(p, jar, card)) return { kind: 'away' };
   if (!pressLowers(p, jar, null)) return { kind: 'jar' };
-  const cells = forecastCellRects(card, lastForecast.cells.length, lastForecast.layout, lastForecast.sun, lastForecast.tides);
+  const cells = forecastCellRects(card, lastForecast.cells.length, lastForecast.layout, lastForecast.sun, lastForecast.tides, lastForecast.note);
   const index = cells.findIndex((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
   return index >= 0 && lastForecast.cells[index].day !== '—' ? { kind: 'day', index } : { kind: 'card' };
 }
@@ -897,13 +901,13 @@ window.__jar = {
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
     return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
   },
-  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT } in canvas px.
+  // The forecast card last drawn: null on the table, else { cells, rect, sun, sunT, tides, dayT, note } in canvas px.
   get forecast() {
     if (!lastForecast) return null;
     const r = lastForecast.rect;
     const a = this.toCanvas(r.x, r.y);
     const b = this.toCanvas(r.x + r.w, r.y + r.h);
-    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
+    return { cells: lastForecast.cells, sun: lastForecast.sun, sunT: lastForecast.sunT, tides: lastForecast.tides, dayT: lastForecast.dayT, note: lastForecast.note, rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   // The chalk hint: null once gone, else { text, state, alpha, rect } with the lettering's box in canvas px.
   get hint() {
