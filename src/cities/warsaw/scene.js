@@ -510,6 +510,15 @@ export function fogDepth(weather) {
   return weather && weather.known && weather.kind === 'fog' ? 1 : 0;
 }
 
+// How much of a night reflection the weather leaves. `all`: fog dims every
+// reflection to 1 - REFLECT_FOG_DIM. `hidden`: the lights the cloud base
+// swallows (Varso's crown, the aviation light) go out with it as well.
+export const REFLECT_FOG_DIM = 0.6;
+export function reflectionScale(weather) {
+  const all = clamp(1 - REFLECT_FOG_DIM * fogDepth(weather));
+  return { all, hidden: all * (1 - ceilingAmount(weather)) };
+}
+
 // How opaque the cloud base is at height y (px), by the gradient drawCloudBase lays: 0.98 at the top, 0.92 at
 // three quarters of the band, none at its lower edge, all scaled by the ceiling `c`.
 export function cloudBaseAlpha(L, y, c) {
@@ -971,17 +980,18 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
   if (night > 0) {
     const k = rain ? 1.35 : 1; // a wet night: stronger, and the short ones run the river's whole depth
     const short = (rows) => (rain ? Infinity : rows);
+    const s = reflectionScale(weather);
     const palaceC = flagDay(nowMs) ? WARSAW.flagRed : WARSAW.reflectPalace;
     const lit = [
-      [L.X(TOWER.pkin.x), 40, palaceC, 0.85, 20],
-      [L.X(TOWER.varso.x), 12, WARSAW.reflectVarso, 0.75, 30],
-      [L.X(TOWER.spire.x) + 6 * L.sx, 8, WARSAW.reflectSpire, 0.6, 40],
-      [L.X(TOWER.zlota.x), 10, WARSAW.reflectZlota, 0.45, 50],
+      [L.X(TOWER.pkin.x), 40, palaceC, 0.85, 20, s.all],
+      [L.X(TOWER.varso.x), 12, WARSAW.reflectVarso, 0.75, 30, s.hidden],
+      [L.X(TOWER.spire.x) + 6 * L.sx, 8, WARSAW.reflectSpire, 0.6, 40, s.all],
+      [L.X(TOWER.zlota.x), 10, WARSAW.reflectZlota, 0.45, 50, s.all],
     ];
-    for (const [x, wid, c, a] of lit) column(ctx, L, x, wid * L.sx * (rain ? 1.25 : 1), c, 0.9 * a * night * k);
-    for (const [x, wid, c, a, seed] of lit) ripple(ctx, L, nowMs, reduced, x, wid * L.sx, c, a * night * k * 0.8, seed);
+    for (const [x, wid, c, a, , dim] of lit) if (dim > 0) column(ctx, L, x, wid * L.sx * (rain ? 1.25 : 1), c, 0.9 * a * night * k * dim);
+    for (const [x, wid, c, a, seed, dim] of lit) if (dim > 0) ripple(ctx, L, nowMs, reduced, x, wid * L.sx, c, a * night * k * 0.8 * dim, seed);
     // Varso's red aviation light, a short thin red thread beside its blue crown
-    ripple(ctx, L, nowMs, reduced, L.X(TOWER.varso.x), 3 * L.sx, WARSAW.aviation, 0.6 * night * k, 35, 0.3, short(4));
+    if (s.hidden > 0) ripple(ctx, L, nowMs, reduced, L.X(TOWER.varso.x), 3 * L.sx, WARSAW.aviation, 0.6 * night * k * s.hidden, 35, 0.3, short(4));
     // the boulevard lamps, each a short gold shiver; long wet streaks in the rain
     for (let x = L.ox + 9 * L.sx, i = 0; x < L.ox + L.w; x += 18 * L.sx, i++) {
       if (rain) column(ctx, L, x, 5 * L.sx, WARSAW.quayLamp, 0.3 * night, 0.9);
