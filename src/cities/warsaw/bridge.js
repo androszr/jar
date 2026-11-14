@@ -7,7 +7,7 @@
 // cross it. Shares of the 340 x 396 body box.
 import { css, mix, glow } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
-import { layout, nightAmount, tone, sunLight, rainy } from './scene.js';
+import { layout, nightAmount, tone, sunLight, isRainy } from './scene.js';
 import { WARSAW } from './palette.js';
 
 export const BRIDGE = {
@@ -88,7 +88,7 @@ export function drawBridge(ctx, rect, phase, tint, weather, nowMs = 0, reduced =
   const night = nightAmount(tint.light);
   const day = 1 - night;
   const snow = weather && weather.kind === 'snow';
-  const wet = rainy(weather);
+  const wet = isRainy(weather);
   const { side, golden, heavy } = light || sunLight(phase, weather);
   const x0 = L.X(BRIDGE.x0);
   const x1 = L.X(1);

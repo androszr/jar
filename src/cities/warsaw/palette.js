@@ -61,6 +61,7 @@ export const WARSAW = {
   boulevardDay: [188, 178, 158],
   boulevardNight: [46, 42, 52],
   quayLamp: [255, 214, 140],
+  wetSheen: [255, 220, 170], // the pale line of wet paving on a rainy night
   // the near (Praga) bank: forest only, its canopy following Warsaw's seasons
   // (each season a range the canopy drifts through along the bank; summer drifts around the original green)
   canopy: {
