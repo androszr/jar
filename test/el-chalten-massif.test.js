@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_WIND, HIDDEN_COVER, CAPPED_COVER, SMOKING_WIND, BANDS, coverOf, windOf, visibilityBand, plumeLength, plumeSide, glowLine, glowStrength,
-  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf,
+  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf, rimeAmount, rimeStroke,
 } from '../src/cities/el-chalten/massif.js';
 import { EMPTY, KINDS } from '../src/weather.js';
 
@@ -215,4 +215,15 @@ test('wind\'s marks: spindrift in a strong wind, a lens on a windy clear day, wh
   assert.ok(whitecapCount(40, false) > whitecapCount(28, false));
   assert.equal(whitecapCount(60, true), 0, 'none on ice');
   assert.ok(whitecapCount(1e9, false) <= 26);
+});
+
+test('rime: none on a mild day, some after frost, full in winter; the stroke follows it', () => {
+  assert.equal(rimeAmount(false, 0), 0);
+  assert.equal(rimeAmount(false, 1), 0.6);
+  assert.equal(rimeAmount(true, 0), 1);
+  assert.equal(rimeAmount(true, 1), 1);
+  assert.equal(rimeStroke(0).alpha, 0);
+  assert.ok(rimeStroke(1).width > rimeStroke(0.6).width && rimeStroke(0.6).width > rimeStroke(0).width);
+  assert.ok(rimeStroke(1).alpha > rimeStroke(0.6).alpha && rimeStroke(0.6).alpha > rimeStroke(0).alpha);
+  assert.ok(rimeStroke(1).width <= 1.3);
 });

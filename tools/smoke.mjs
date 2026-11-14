@@ -606,6 +606,11 @@ try {
   const T_NIGHT_C = Date.UTC(2026, 0, 22, 3, 0); // midnight local
   const T_LEAVING = Date.UTC(2026, 0, 22, 0, 57); // 21:57 local, 8 minutes after sunset
   const T_CHALTEN_WINTER = Date.UTC(2026, 6, 15, 16, 0); // July, 13:00 local
+  // a point on Fitz Roy's north crest between the summit cap and the shoulder cap (the FITZ chain's [0.587, 0.112]->[0.6, 0.118] segment)
+  const CREST = [0.5935, 0.115];
+  // on Fitz Roy's own face where Poincenot's crest chain ends behind it: Poincenot's rime must not show through
+  const HIDDEN_CREST = [0.4637, 0.31];
+  const rimy = (r, g, b) => r > 200 && g > 210 && b > 230 && Math.abs(r - b) < 40;
   const cp = await desk.newPage();
   const cpSeen = watch(cp, origin);
   await routeWeather(cp);
@@ -635,6 +640,7 @@ try {
   check((await lineOf()) === 'FITZ ROY · CLEAR', 'the label reads FITZ ROY · CLEAR');
   check(all(await patch(cp, 'el-chalten', 0.2, 0.62, 2), turquoise), 'the lake is turquoise at noon');
   await cp.screenshot({ path: join(OUT, 'el-chalten-noon.png') });
+  const noonRime = some(await patch(cp, 'el-chalten', CREST[0], CREST[1], 3), rimy);
   // the rock is lit by the hour, not painted on
   const left = luma(await patch(cp, 'el-chalten', 0.465, 0.33, 1));
   const right = luma(await patch(cp, 'el-chalten', 0.61, 0.2, 1));
@@ -682,6 +688,8 @@ try {
   const winter = await at(T_CHALTEN_WINTER, chaltenBody({ cloud: 10, wind: 4 }));
   check(winter.season === 'winter' && winter.frozen === true && winter.mirror === 0, 'in July the lake is frozen and mirrors nothing');
   check(luma(await patch(cp, 'el-chalten', 0.2, 0.62, 2)) > 150, 'the frozen lake is pale ice');
+  check(some(await patch(cp, 'el-chalten', CREST[0], CREST[1], 3), rimy) && !noonRime, 'a rime line runs along Fitz Roy\'s crest in July and not at a January noon');
+  check(!some(await patch(cp, 'el-chalten', HIDDEN_CREST[0], HIDDEN_CREST[1], 2), rimy), 'Poincenot\'s rime does not run across Fitz Roy\'s face in July');
   await cp.screenshot({ path: join(OUT, 'el-chalten-winter.png') });
   check(cpSeen.errors.length === 0 && cpSeen.off.length === 0, `no console errors or off-origin requests in the el-chalten run${cpSeen.errors.length ? `: ${cpSeen.errors.join(' | ')}` : ''}`);
   await cp.close();
