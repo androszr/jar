@@ -707,6 +707,10 @@ try {
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), gold), 'Palace glows gold at night');
   const clockN = await noct.evaluate(() => window.__jar.scene('warsaw').clock);
   check(!!clockN && Math.abs(clockN.hour - Math.PI / 4) < 0.01 && Math.abs(clockN.minute - Math.PI) < 0.01, 'the Palace clock reads 01:30 at the pinned Warsaw night');
+  const clockC = luma(await patch(noct, 'warsaw', 0.4, 0.234, 1));
+  const clockL = luma(await patch(noct, 'warsaw', 0.4 - 5 / 340, 0.234, 1));
+  const clockR = luma(await patch(noct, 'warsaw', 0.4 + 5 / 340, 0.234, 1));
+  check(clockC >= clockL + 20 && clockC >= clockR + 20, `one clock face at the Palace's centre, none either side (${clockC} vs ${clockL}, ${clockR})`);
   check(some(await patch(noct, 'warsaw', 0.235, 0.17, 2), blue), 'Varso crown glows blue');
   check(some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'red aviation light at the needle tip');
   const needle = luma(await patch(noct, 'warsaw', 0.235, 0.085, 1));
