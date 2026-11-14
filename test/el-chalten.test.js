@@ -4,7 +4,7 @@ import elChalten from '../src/cities/el-chalten/index.js';
 import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS, snowAmount, summitWindOf } from '../src/cities/el-chalten/massif.js';
 import { DECK_SOFT, lensSpot, sunSpot } from '../src/cities/el-chalten/air.js';
 import { condorAt, lapAt, CONDOR_LOOP_MS } from '../src/cities/el-chalten/shore.js';
-import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, snowAt, shownSnow, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
+import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, snowAt, shownSnow, rimeStyle, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
 import { visibleSnow, polyArea, bbox, chainY, occlusion, boxHitsPoly } from '../src/cities/el-chalten/snow.js';
 import { MIRROR_SQUASH } from '../src/cities/el-chalten/water.js';
 import { EL_CHALTEN as EC } from '../src/cities/el-chalten/palette.js';
@@ -296,6 +296,31 @@ test('the hiker\'s rock and every headlamp keep clear of both glass streaks, whi
 test('paint returns the twelve keys of the test surface', () => {
   assert.deepEqual(Object.keys(paint(PHASE.noon, reading({})).out).sort(),
     ['band', 'condor', 'frozen', 'glow', 'headlamps', 'hiker', 'mirror', 'plume', 'plumeWind', 'season', 'snowLine', 'tourists']);
+});
+
+test('rime: a thin line along the crests in winter and after frost, none at a summer noon, and the picture reports the same ten keys', () => {
+  const style = (phase, w, t) => {
+    const tt = tint(sample(phase));
+    return rimeStyle(phase, tt, mood(tt, w, t, elChalten.location, phase));
+  };
+  const alphaOf = (c) => Number(c.match(/([\d.]+)\)\s*$/)[1]);
+  const wr = reading({ windSpeed: 4 });
+  const w = paint(PHASE.noon, wr, T_WINTER);
+  const s = style(PHASE.noon, wr, T_WINTER);
+  assert.ok(s && w.strokes.has(s));
+  const fr = reading({ temperature: -6 });
+  const f = paint(PHASE.noon, fr, T_NOON);
+  const fs = style(PHASE.noon, fr, T_NOON);
+  assert.ok(fs && f.strokes.has(fs));
+  assert.ok(alphaOf(fs) < alphaOf(s));
+  const mild = paint(PHASE.noon, reading({}), T_NOON);
+  assert.equal(style(PHASE.noon, reading({}), T_NOON), null);
+  assert.ok(!mild.strokes.has(s));
+  assert.ok(style(PHASE.noon, EMPTY, T_WINTER));
+  const hidden = reading({ cloudCover: 95, kind: 'rain' });
+  assert.ok(!paint(PHASE.noon, hidden, T_WINTER).strokes.has(style(PHASE.noon, hidden, T_WINTER)));
+  assert.deepEqual(Object.keys(w.out).sort(), Object.keys(mild.out).sort());
+  assert.equal(w.out.frozen, true);
 });
 
 test('a clear noon in summer: the condor and the hiker are out, no plume, the lake mirrors', () => {

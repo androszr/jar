@@ -13,7 +13,7 @@ import { hash2 } from '../../skyweather.js';
 import { EL_CHALTEN as EC } from './palette.js';
 import {
   GLOW_TOP, GLOW_FOOT, visibilityBand, windOf, coverOf, plumeSide, mirrorAmount, glowLine, glowStrength, glowAt,
-  silhouetteAmount, monthAt, seasonOf, freshSnow, facetShade, moonLight, snowAmount, summitWindOf, summitSideOf, plumeWindOf, snowLineShare,
+  silhouetteAmount, monthAt, seasonOf, freshSnow, facetShade, moonLight, snowAmount, summitWindOf, summitSideOf, plumeWindOf, snowLineShare, rimeAmount, rimeStroke,
 } from './massif.js';
 import { inside, chainY, occlusion, buildSnow, buildSaddle, glacierFingers, visibleSnow } from './snow.js';
 
@@ -327,6 +327,7 @@ export function mood(tint, weather, nowMs, location, phase = null, reduced = fal
   const month = monthAt(nowMs, location && location.zone);
   const season = seasonOf(month);
   const frozen = season === 'winter';
+  const fresh = freshSnow(weather && weather.temperature);
   const n = nightAmount(tint.light);
   const cover = coverOf(weather);
   const hasPhase = typeof phase === 'number' && Number.isFinite(phase);
@@ -339,7 +340,7 @@ export function mood(tint, weather, nowMs, location, phase = null, reduced = fal
     n, band, wind, side: plumeSide(weather && weather.windDir), cover,
     summitWind: summitWindOf(weather), summitSide: summitSideOf(weather), plumeWind: plumeWindOf(weather),
     snowLine, snowLineY: snowLine === null ? null : lerp(SUMMIT.y, SHORE, snowLine),
-    month, season, frozen, fresh: freshSnow(weather && weather.temperature), snow: snowAmount(season, month, freshSnow(weather && weather.temperature)), mirror: mirrorAmount(wind, band, frozen),
+    month, season, frozen, fresh, snow: snowAmount(season, month, fresh), rime: rimeAmount(frozen, fresh), mirror: mirrorAmount(wind, band, frozen),
     kind: weather && weather.known ? weather.kind : null,
     glowK: hasPhase && band !== 'hidden' ? glowStrength(phase) : 0,
     line: hasPhase ? glowLine(phase) : 0,
@@ -440,6 +441,22 @@ export function wallSnow(phase, tint, m, facing = 0, y = SUMMIT.y, haze = HAZE.w
   return mix(c, tint.skyLow, (0.1 * haze) / HAZE.wall);
 }
 
+// The thin rime along a crest: the snow's own colour at this hour, stepped back
+// at night behind the moon rim. null when the day carries none.
+export function rimeStyle(phase, tint, m) {
+  if (!(m.rime > 0)) return null;
+  return css(wallSnow(phase, tint, m, CAP_FACING, SUMMIT.y), rimeStroke(m.rime).alpha * (1 - 0.6 * m.n));
+}
+
+export function drawRime(ctx, L, body, phase, tint, m) {
+  const style = rimeStyle(phase, tint, m);
+  if (!style) return;
+  ctx.strokeStyle = style;
+  ctx.lineWidth = rimeStroke(m.rime).width;
+  ctx.lineJoin = 'round';
+  line(ctx, L, body.outline.slice(0, -2));
+}
+
 function drawRock(ctx, L, body, phase, tint, m, haze) {
   const crack = mix(EC.graniteDeep, EC.graniteNight, m.n);
   ctx.lineWidth = 0.6;
@@ -499,9 +516,15 @@ export const HAZE = { far: 0.46, south: 0.3, wall: 0.12, foot: 0.26 };
 export function drawWall(ctx, L, phase, tint, plates, m) {
   drawRock(ctx, L, plates.far, phase, tint, m, HAZE.far);
   for (const b of plates.south) drawRock(ctx, L, b, phase, tint, m, HAZE.south);
+  // each body's rime goes on right after its own rock, so the nearer peak drawn next covers the part of the crest it hides
   drawRock(ctx, L, plates.poincenot, phase, tint, m, HAZE.wall);
+  drawRime(ctx, L, plates.poincenot, phase, tint, m);
   drawRock(ctx, L, plates.fitzroy, phase, tint, m, HAZE.wall);
-  for (const b of plates.needles) drawRock(ctx, L, b, phase, tint, m, HAZE.wall);
+  drawRime(ctx, L, plates.fitzroy, phase, tint, m);
+  for (const b of plates.needles) {
+    drawRock(ctx, L, b, phase, tint, m, HAZE.wall);
+    drawRime(ctx, L, b, phase, tint, m);
+  }
   // the caps on the crests take the sun
   for (const s of plates.caps) {
     ctx.fillStyle = css(wallSnow(phase, tint, m, CAP_FACING, s[0][1]), 0.96);

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_WIND, HIDDEN_COVER, CAPPED_COVER, SMOKING_WIND, BANDS, coverOf, windOf, visibilityBand, plumeLength, plumeSide, glowLine, glowStrength,
-  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf, snowAmount, summitWindOf, summitSideOf, plumeWindOf, snowLineShare, SUMMIT_M, LAKE_M,
+  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf, snowAmount, summitWindOf, summitSideOf, plumeWindOf, snowLineShare, SUMMIT_M, LAKE_M, rimeAmount, rimeStroke,
 } from '../src/cities/el-chalten/massif.js';
 import { EMPTY, KINDS } from '../src/weather.js';
 
@@ -257,4 +257,15 @@ test('the snow line: null without a figure, 0 above the summit, 1 at the lake, l
   assert.equal(snowLineShare(4000), 0);
   assert.equal(snowLineShare(1000), 1);
   assert.ok(Math.abs(snowLineShare(2287.5) - 0.5) < 1e-9);
+});
+
+test('rime: none on a mild day, some after frost, full in winter; the stroke follows it', () => {
+  assert.equal(rimeAmount(false, 0), 0);
+  assert.equal(rimeAmount(false, 1), 0.6);
+  assert.equal(rimeAmount(true, 0), 1);
+  assert.equal(rimeAmount(true, 1), 1);
+  assert.equal(rimeStroke(0).alpha, 0);
+  assert.ok(rimeStroke(1).width > rimeStroke(0.6).width && rimeStroke(0.6).width > rimeStroke(0).width);
+  assert.ok(rimeStroke(1).alpha > rimeStroke(0.6).alpha && rimeStroke(0.6).alpha > rimeStroke(0).alpha);
+  assert.ok(rimeStroke(1).width <= 1.3);
 });

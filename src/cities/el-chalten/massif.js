@@ -200,6 +200,13 @@ export function snowAmount(season, month, fresh) {
 }
 export const freshSnow = (temperature) => (typeof temperature === 'number' && Number.isFinite(temperature) && temperature < 0 ? 1 : 0);
 
+// How much rime the crests carry: full in winter, thinner after a freezing
+// reading in another season, none on a mild day. The strengths are the ones the
+// wall's cold ledge sliver already reads (0.9 in winter, 0.6 after frost).
+export function rimeAmount(frozen, fresh) { return frozen ? 1 : fresh ? 0.6 : 0; }
+// The rime line's width in canvas px and its alpha, both following `k`.
+export function rimeStroke(k) { return { width: 0.5 + 0.7 * clamp(k), alpha: 0.85 * clamp(k) }; }
+
 // Minutes until the city's next sunrise, from the jar's own sunrise maths; null
 // for an unknown zone or moment.
 export function minutesToSunrise(nowMs, location) {
