@@ -262,31 +262,63 @@ async function findHours(pg) {
 }
 
 const pinAt = (pg, ms) => pg.evaluate((t) => window.__jar.pin(t), ms);
-const jarHash = (pg) => pg.evaluate(() => window.__jar.hash());
-// Same moment, same picture - allowing raster noise only. The page draws the same calls both times
-// (same inputs, nothing in a draw reads a clock or Math.random), but its GPU-backed offscreen
+// Same picture / a different picture, judged against raster noise. The page draws the same calls
+// for the same inputs (nothing in a draw reads a clock or Math.random), but its GPU-backed offscreen
 // canvases can rasterise them a unit apart (measured on a loaded machine: 2-4 pixels, one channel
 // off by 1, in any jar, lights, fades and feed unchanged); software-backing those canvases removes
-// it but slows the page past the frame-time checks. A mover in another place changes far more.
-// `picture` keeps the whole canvas in the page under `key` and returns its exact hash.
+// it but slows the page past the frame-time checks. So "the same" allows at most RASTER_PX pixels
+// no more than RASTER_DELTA apart, and "different" needs strictly more than that: noise alone
+// never passes a change, and a real change is never mistaken for noise.
 const RASTER_PX = 32;
 const RASTER_DELTA = 2;
-const picture = (pg, key) => pg.evaluate((k) => { const c = document.getElementById('view'); (window.__smokePics = window.__smokePics || {})[k] = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; return window.__jar.hash(); }, key);
-const checkSame = async (pg, a, b, what) => {
-  const [n, max] = await pg.evaluate(([ka, kb]) => {
-    const pics = window.__smokePics || {};
-    const x = pics[ka]; const y = pics[kb];
-    delete pics[ka]; delete pics[kb];
-    if (!x || !y || x.length !== y.length) return [Infinity, Infinity];
-    let n = 0; let max = 0;
-    for (let k = 0; k < x.length; k += 4) {
-      const d = Math.max(Math.abs(x[k] - y[k]), Math.abs(x[k + 1] - y[k + 1]), Math.abs(x[k + 2] - y[k + 2]));
-      if (d) { n += 1; max = Math.max(max, d); }
-    }
-    return [n, max];
-  }, [a, b]);
-  check(n <= RASTER_PX && max <= RASTER_DELTA, n ? `${what} (raster noise: ${n} px, at most ${max} apart)` : what);
-};
+const isNoise = (n, max) => n <= RASTER_PX && max <= RASTER_DELTA;
+// `picture` keeps the whole canvas in the page under `key` (pinning `at` first, in the same step,
+// when given) and returns its exact hash; `blankPicture` keeps an empty canvas of the same size.
+const picture = (pg, key, at) => pg.evaluate(([k, t]) => {
+  if (t !== undefined && t !== null) window.__jar.pin(t);
+  const c = document.getElementById('view');
+  (window.__smokePics = window.__smokePics || {})[k] = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  return window.__jar.hash();
+}, [key, at ?? null]);
+const blankPicture = (pg, key) => pg.evaluate((k) => {
+  const c = document.getElementById('view');
+  (window.__smokePics = window.__smokePics || {})[k] = new Uint8ClampedArray(c.width * c.height * 4);
+}, key);
+// [pixels apart, largest channel difference] between two pixel arrays (Infinity when they cannot be compared).
+function apartOf(x, y) {
+  if (!x || !y || x.length !== y.length) return [Infinity, Infinity];
+  let n = 0; let max = 0;
+  for (let k = 0; k < x.length; k += 4) {
+    const d = Math.max(Math.abs(x[k] - y[k]), Math.abs(x[k + 1] - y[k + 1]), Math.abs(x[k + 2] - y[k + 2]));
+    if (d) { n += 1; max = Math.max(max, d); }
+  }
+  return [n, max];
+}
+// the same measure, in the page (the page's CSP refuses eval, so the loop is written out again)
+const apartIn = (pg, a, b) => pg.evaluate(([ka, kb]) => {
+  const pics = window.__smokePics || {};
+  const x = pics[ka]; const y = pics[kb];
+  if (!x || !y || x.length !== y.length) return [Infinity, Infinity];
+  let n = 0; let max = 0;
+  for (let k = 0; k < x.length; k += 4) {
+    const d = Math.max(Math.abs(x[k] - y[k]), Math.abs(x[k + 1] - y[k + 1]), Math.abs(x[k + 2] - y[k + 2]));
+    if (d) { n += 1; max = Math.max(max, d); }
+  }
+  return [n, max];
+}, [a, b]);
+// The canvas's pixels brought out to Node, for comparisons across a reload or between two pages.
+const pixelsOf = (pg, at) => pg.evaluate((t) => {
+  if (t !== undefined && t !== null) window.__jar.pin(t);
+  const c = document.getElementById('view');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let s = '';
+  for (let i = 0; i < d.length; i += 0x8000) s += String.fromCharCode.apply(null, d.subarray(i, i + 0x8000));
+  return btoa(s);
+}, at ?? null).then((b64) => Buffer.from(b64, 'base64'));
+const judgeSame = ([n, max], what) => check(isNoise(n, max), n ? `${what} (raster noise: ${n} px, at most ${max} apart)` : what);
+const judgeDiffer = ([n, max], what) => check(!isNoise(n, max), `${what} (${n} px apart, at most ${max})`);
+const checkSame = async (pg, a, b, what) => judgeSame(await apartIn(pg, a, b), what);
+const checkDiffer = async (pg, a, b, what) => judgeDiffer(await apartIn(pg, a, b), what);
 const medianFrameMs = (page) => page.evaluate(() => {
   const t = [];
   for (let i = 0; i < 9; i++) { window.__jar.pin(Date.now() + i * 60000); t.push(window.__jar.lastFrameMs); }
@@ -562,12 +594,12 @@ try {
   await sea.screenshot({ path: join(OUT, 'nazare-giant.png') });
   // the sea rolls with the clock, and the same moment is the same picture
   await pinAt(sea, T_NOON);
-  const rollA = await picture(sea, 'rollA');
+  await picture(sea, 'rollA');
   await pinAt(sea, T_NOON + 3000);
-  const rollB = await jarHash(sea);
+  await picture(sea, 'rollB');
   await pinAt(sea, T_NOON);
   await picture(sea, 'rollC');
-  check(rollA !== rollB, 'the sea rolls');
+  await checkDiffer(sea, 'rollA', 'rollB', 'the sea rolls');
   await checkSame(sea, 'rollA', 'rollC', 'nazare draws the same pixels at the same moment');
   // the scrub: the wave follows the hour's forecast swell (fixture: 09:00 4.2 m, 14:00 1.2 m, 15:00 6.5 m)
   // pin first: the feed counts staleness from the pinned moment, and the fixture is dated today
@@ -579,12 +611,12 @@ try {
   check(!!s0.scene && s0.scene.band === 'big' && s0.swell === '4.2 m · 14 s', `scrub at now keeps the big wave (${s0.scene && s0.scene.band} ${s0.swell})`);
   const s5 = await scrubAt(300);
   check(!!s5.scene && s5.scene.band === 'moderate' && s5.scene.waveSize < s0.scene.waveSize && s5.swell === '1.2 m · 14 s', `scrub +5 h shrinks the wave to the hourly swell (${s5.scene && s5.scene.band} ${s5.swell})`);
-  const s5Hash = await jarHash(sea);
+  await picture(sea, 's5');
   const s6 = await scrubAt(360);
   check(!!s6.scene && s6.scene.band === 'giant' && s6.scene.surfers === 2, `scrub +6 h makes the wave giant with the tow-in pair (${s6.scene && s6.scene.band})`);
-  const s6HashA = await picture(sea, 's6A');
+  await picture(sea, 's6A');
   await picture(sea, 's6B');
-  check(s6HashA !== s5Hash, 'scrub +6 h draws a different wave from +5 h');
+  await checkDiffer(sea, 's6A', 's5', 'scrub +6 h draws a different wave from +5 h');
   await checkSame(sea, 's6A', 's6B', 'scrub draws the same wave at the same moment');
   const sBack = await scrubAt(0);
   check(!!sBack.scene && sBack.scene.band === 'big' && sBack.swell === '4.2 m · 14 s', `scrub back to now restores the wave (${sBack.scene && sBack.scene.band} ${sBack.swell})`);
@@ -1043,13 +1075,13 @@ try {
     await twoFrames(noct);
   };
   await layer({});
-  const hLayerless = await picture(noct, 'layerless');
+  await picture(noct, 'layerless');
   await layer({ cloudLow: 100, cloudMid: 0, cloudHigh: 0 });
   await picture(noct, 'lowDeck');
   await checkSame(noct, 'layerless', 'lowDeck', 'a low overcast draws the base the total cover drew');
   await layer({ cloudLow: 0, cloudMid: 0, cloudHigh: 100 });
-  const hHigh = await picture(noct, 'high1');
-  check(hHigh !== hLayerless, 'a high overcast draws a different jar');
+  await picture(noct, 'high1');
+  await checkDiffer(noct, 'high1', 'layerless', 'a high overcast draws a different jar');
   const nHigh = await patch(noct, 'warsaw', 0.235, 0.045, 2);
   check(!all(nHigh, greyPale), "a high overcast leaves Varso's needle out of the cloud");
   await picture(noct, 'high2');
@@ -1185,8 +1217,9 @@ try {
   await bp.waitForTimeout(600);
   check(await labelIs(bp, 1, 'no weather', 'warsaw', 2000), 'label degrades to "no weather"');
   check(await bp.evaluate(() => document.getElementById('view').getAttribute('aria-label').includes('no weather')), 'and the spoken description says "no weather"');
-  const hashes = await bp.evaluate(() => [window.__jar.hash(), window.__jar.blankHash()]);
-  check(hashes[0] !== hashes[1], 'jar still draws');
+  await picture(bp, 'noWeather');
+  await blankPicture(bp, 'blank');
+  await checkDiffer(bp, 'noWeather', 'blank', 'jar still draws');
   await bp.screenshot({ path: join(OUT, 'warsaw-no-weather.png') });
   check(await bp.evaluate(() => window.__jar.labels['el-chalten'].length === 3), 'missing weather leaves the El Chaltén label at three lines');
   check(badSeen.off.length === 0, 'the degraded page stays on its own origin');
@@ -1507,7 +1540,7 @@ try {
   await ready(wp);
   await labelIs(wp, 1, '12°');
   await pin(wp, T0);
-  const windy = await jarHash(wp);
+  const windy = await pixelsOf(wp);
   await wp.evaluate(() => window.__jar.lift('warsaw'));
   await viewIs(wp, 'jar');
   await settled(wp);
@@ -1521,7 +1554,7 @@ try {
   await ready(wp);
   await labelIs(wp, 1, '12°');
   await pin(wp, T0);
-  check(windy !== (await jarHash(wp)), 'wind slants the rain');
+  judgeDiffer(apartOf(windy, await pixelsOf(wp)), 'wind slants the rain');
   await windCtx.close();
 
   const dewCtx = await browser.newContext({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 });
@@ -1537,7 +1570,7 @@ try {
   const dewFull = await dp.evaluate(() => window.__jar.dew('warsaw'));
   check(dewBefore === 0 && dewFull === 1, 'dew appears after fog clears');
   await pin(dp, T0 + 60000);
-  const withDew = await jarHash(dp);
+  await picture(dp, 'withDew');
   await dp.evaluate(() => window.__jar.lift('warsaw'));
   await viewIs(dp, 'jar');
   await settled(dp);
@@ -1553,7 +1586,8 @@ try {
   await dp.evaluate((b) => window.__jar.applyWeather(b), tidy(45, 100, 6));
   await dp.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5));
   await pin(dp, T0 + 60000);
-  check(withDew !== (await jarHash(dp)), 'dew changes the picture');
+  await picture(dp, 'dewGone');
+  await checkDiffer(dp, 'withDew', 'dewGone', 'dew changes the picture');
   check(dewSeen.errors.length === 0 && dewSeen.off.length === 0, 'no console errors or off-origin requests in the dew run');
   await dewCtx.close();
 
@@ -1604,11 +1638,12 @@ try {
   // The first reading starts from the shared origin, and CT is a whole number of drift widths
   // from it, so nine seconds on the wind term's fractional part is 0.075 and calm and windy
   // differ. FETCHED only makes the stubbed answer identical across runs.
-  const windHash = await jarHash(cw.pg);
+  const windPx = await pixelsOf(cw.pg);
   const cc = await cloudPage(deskOpts, 'cloudcalm');
   await pin(cc.pg, CT + CD);
-  const calmHash = await jarHash(cc.pg);
-  check(Math.abs(windDelta - wantDelta) < 1e-9 && windHash !== calmHash, `wind moves the clouds (${windDelta.toFixed(4)} jar widths in ${CD} ms)`);
+  const calmPx = await pixelsOf(cc.pg);
+  check(Math.abs(windDelta - wantDelta) < 1e-9, `wind moves the clouds (${windDelta.toFixed(4)} jar widths in ${CD} ms)`);
+  judgeDiffer(apartOf(windPx, calmPx), 'windy and calm clouds draw different pictures');
   check((await cw.pg.evaluate(() => window.__jar.cadence.weather)) === 250, 'windy clouds redraw four times a second at most');
   await cw.pg.screenshot({ path: join(OUT, 'warsaw-clouds-wind.png') });
   const readDrift = (pg) => pg.evaluate(() => window.__jar.drift('warsaw'));
@@ -1618,13 +1653,14 @@ try {
   const cwChalten = JSON.parse(bodyOf(cloudyWind)).cities['el-chalten'];
   const eastBody = (speed, nazare = cwNazare, chalten = cwChalten) => ({ v: 1, cities: { warsaw: { temperature: 14, code: 3, cloudCover: 85, isDay: 1, windSpeed: speed, windDir: 90 }, nazare, 'el-chalten': chalten } });
   await pin(cw.pg, CT + CD);
-  const wh1 = await jarHash(cw.pg);
+  await picture(cw.pg, 'wind1');
   const wd1 = await readDrift(cw.pg);
   check(Math.abs(wd1 - cloudTravel(30, 270, CT + CD)) < 1e-9, 'the first reading draws where every fresh page draws it');
   await cw.pg.evaluate((b) => window.__jar.applyWeather(b), eastBody(12));
   const wd2 = await readDrift(cw.pg);
-  const wh2 = await jarHash(cw.pg);
-  check(Math.abs(wd2 - wd1) < 1e-9 && wh1 === wh2, 'a new wind reading keeps the clouds where they are');
+  await picture(cw.pg, 'wind2');
+  check(Math.abs(wd2 - wd1) < 1e-9, 'a new wind reading keeps the drift where it was');
+  await checkSame(cw.pg, 'wind1', 'wind2', 'a new wind reading keeps the clouds where they are');
   await pin(cw.pg, CT + 2 * CD);
   const wd3 = await readDrift(cw.pg);
   check(Math.abs(wd3 - wd2 - cloudDrift(12, 90, CD)) < 1e-7 && wd3 < wd2, 'the new reading sets the pace from then on');
@@ -1694,8 +1730,7 @@ try {
   const nazare0 = await sp2.evaluate(() => window.__jar.labels.nazare.slice());
   // Re-pin and hash in one step: the pin forces a render of the settled lift, so the
   // hash is of the finished frame and not of whichever frame the loop last got to.
-  const hashNowAt = () => sp2.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T9);
-  const hNow = await hashNowAt();
+  await picture(sp2, 'now0', T9);
   const got5 = await sp2.evaluate(() => { window.__jar.scrub(300); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview, n: window.__jar.labels.nazare.slice() }; });
   check(got5.l[1] === '18°' && got5.l[2] === '14:00 (+5 h)', `scrub +5 h shows the hourly temperature and the preview mark (${got5.l[1]} ${got5.l[2]})`);
   check(JSON.stringify(got5.n) === JSON.stringify(nazare0), 'shed and the other jar stay on now while scrubbing');
@@ -1704,14 +1739,15 @@ try {
   check(spoken[0].includes('+5 h') && spoken[0].includes('14:00') && spoken[1].startsWith('Previewing +5 h'), `scrub speaks its value (${spoken[0]})`);
   const six = await sp2.evaluate(() => { window.__jar.scrub(360); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
   check(six.p !== null && six.p.kind === 'rain' && six.l[1] === '16°' && six.l[2] === '15:00 (+6 h)', `scrub to 15:00 previews rain (${six.p && six.p.kind} ${six.l[1]} ${six.l[2]})`);
-  const hA = await picture(sp2, 'scrubA');
+  await picture(sp2, 'scrubA');
   await sp2.evaluate(() => window.__jar.scrub(360));
   await picture(sp2, 'scrubB');
-  check(hA !== hNow, 'scrub +6 h draws a different picture from now');
+  await checkDiffer(sp2, 'scrubA', 'now0', 'scrub +6 h draws a different picture from now');
   await checkSame(sp2, 'scrubA', 'scrubB', 'scrub draws the same pixels at the same moment');
   const snapped = await sp2.evaluate(() => { window.__jar.scrub(0); return { l: window.__jar.labels.warsaw.slice(), p: window.__jar.preview }; });
   check(JSON.stringify(snapped.l) === JSON.stringify(lab0) && snapped.p === null, 'scrub snaps back to now');
-  check((await hashNowAt()) === hNow, 'scrub back at now draws the picture it started from');
+  await picture(sp2, 'now1', T9);
+  await checkSame(sp2, 'now0', 'now1', 'scrub back at now draws the picture it started from');
   await sp2.focus('#scrub');
   await sp2.keyboard.press('ArrowRight');
   const afterArrow = await sp2.evaluate(() => window.__jar.scrubMin);
@@ -1839,23 +1875,27 @@ try {
 
   // a pointer over a jar: the cursor says it can be pressed, and the glass catches the light
   const wc = await jarCentre(fp, 'warsaw');
-  const plainHash = await jarHash(fp);
+  await picture(fp, 'plain');
   await fp.mouse.move(wc.x, wc.y);
   await fp.waitForFunction(() => window.__jar.hover === 'warsaw', null, { timeout: 2000 }).catch(() => {});
   await fp.waitForTimeout(300);
-  const overHash = await fp.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_FX);
+  await picture(fp, 'over', T_FX);
   check(await fp.evaluate(() => window.__jar.hover === 'warsaw' && window.__jar.cursor === 'pointer'), 'a pointer over a jar shows the hand');
-  check(overHash !== plainHash, 'the jar under the pointer catches the light');
+  await checkDiffer(fp, 'over', 'plain', 'the jar under the pointer catches the light');
   await fp.mouse.move(640, 60);
   await fp.waitForFunction(() => window.__jar.hover === null, null, { timeout: 2000 }).catch(() => {});
   await fp.waitForTimeout(300);
   check(await fp.evaluate(() => window.__jar.hover === null && window.__jar.cursor === ''), 'off the jars the hand goes');
-  check((await fp.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_FX)) === plainHash, 'and the picture is as it was');
+  await picture(fp, 'plainAgain', T_FX);
+  await checkSame(fp, 'plain', 'plainAgain', 'and the picture is as it was');
 
   // where the viewer stands: the dioramas and the highlights shift, and come back
-  const parHash = await fp.evaluate(() => { window.__jar.parallax(1, 0.5); return window.__jar.hash(); });
-  const backHash = await fp.evaluate(() => { window.__jar.parallax(0, 0); return window.__jar.hash(); });
-  check(parHash !== plainHash && backHash === plainHash, 'parallax shifts the picture and returns it exactly');
+  await fp.evaluate(() => window.__jar.parallax(1, 0.5));
+  await picture(fp, 'par');
+  await fp.evaluate(() => window.__jar.parallax(0, 0));
+  await picture(fp, 'parBack');
+  await checkDiffer(fp, 'par', 'plain', 'parallax shifts the picture');
+  await checkSame(fp, 'parBack', 'plain', 'parallax returns the picture exactly');
 
   // the opening moment: dark, then lit, then exactly the picture it always was
   await fp.evaluate(() => window.__jar.intro());
@@ -1865,7 +1905,8 @@ try {
   await twoFrames(fp);
   const litLum = await lumAt(fp, 640, 480, 600, 400);
   check(introStart && introStart.room < 0.3 && introStart.jars.every((j) => j === 0) && darkLum < litLum * 0.5, `the opening starts in the dark (${darkLum.toFixed(1)} against ${litLum.toFixed(1)})`);
-  check((await fp.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_FX)) === plainHash, 'and ends on the ordinary picture');
+  await picture(fp, 'afterIntro', T_FX);
+  await checkSame(fp, 'plain', 'afterIntro', 'and ends on the ordinary picture');
 
   // a new reading fades in (when asked to, as a live refresh does), and the fade ends
   const rainBody = { current: { temperature_2m: 6, weather_code: 63, cloud_cover: 100, is_day: 0, wind_speed_10m: 12, wind_direction_10m: 240 } };
