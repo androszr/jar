@@ -5,7 +5,7 @@ import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
-  CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver,
+  overcastAmount, CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
@@ -1126,4 +1126,46 @@ test('W9: a lit Christmas tree stands at the foot of the Palace from 6 December 
   }
   const a = fullScene(PHASE.night, CLEAR, t);
   assert.equal(JSON.stringify(a.ctx.calls), JSON.stringify(fullScene(PHASE.night, CLEAR, t).ctx.calls), 'deterministic');
+});
+
+test('overcastAmount: 0 for EMPTY and under 70% cover, half at 85%, 1 at full', () => {
+  assert.equal(overcastAmount(EMPTY), 0);
+  assert.equal(overcastAmount({ ...EMPTY, cloudCover: 70 }), 0);
+  assert.ok(Math.abs(overcastAmount({ ...EMPTY, cloudCover: 85 }) - 0.5) < 1e-9);
+  assert.equal(overcastAmount({ ...EMPTY, cloudCover: 100 }), 1);
+  assert.equal(overcastAmount({ ...EMPTY, kind: 'clear' }), 0);
+  assert.equal(overcastAmount(null), 0);
+});
+
+test('full cloud by day flattens the rims, the Palace shade and the glint; night is unchanged', () => {
+  const grey = { ...EMPTY, cloudCover: 100, known: true };
+  const part = { ...EMPTY, cloudCover: 85 };
+  const alphas = (ctx, c) => startsWith(ctx.fills, css(c).replace(/1\)$/, '')).map((s) => parseFloat(s.slice(s.lastIndexOf(',') + 1)));
+  const top = (ctx, c) => Math.max(...alphas(ctx, c));
+  const clear = paint(PHASE.noon);
+  const full = paint(PHASE.noon, grey);
+  const half = paint(PHASE.noon, part);
+  const rimC = tone(mix(WARSAW.rimDay, tint(sample(PHASE.noon)).skyLow, 0.25), WARSAW.rimDusk, WARSAW.rimNight, nightAmount(tint(sample(PHASE.noon)).light));
+  const rimClear = top(clear, rimC);
+  assert.ok(rimClear >= 0.55, 'the towers have a rim on a clear day');
+  assert.ok(top(full, rimC) <= 0.2, 'the rim fades under full cloud');
+  assert.ok(top(half, rimC) < rimClear && top(half, rimC) > top(full, rimC), 'partial cloud is in between');
+  assert.ok(top(full, WARSAW.stoneShade) <= 0.1, 'the Palace shade fades under full cloud');
+  assert.ok(top(clear, WARSAW.stoneShade) >= 0.55, 'the Palace shade is there on a clear day');
+  assert.equal(alphas(full, WARSAW.needleGlint).length, 0, 'no needle glint under full cloud');
+  assert.ok(alphas(clear, WARSAW.needleGlint).length > 0);
+  // night: the skyline alone (the sky and river react to weather on their own) draws call for call the same
+  const skyline = (phase, weather) => {
+    const ctx = recordingCtx();
+    noRandom(() => drawSkyline(ctx, rect, phase, tint(sample(phase)), buildPlates(rect.w, rect.h), weather, 0));
+    // serialised: a gradient object carries its own closure, which never deep-equals another's
+    return JSON.stringify({ calls: ctx.calls, fills: [...ctx.fills], strokes: [...ctx.strokes] });
+  };
+  for (const ph of [PHASE.night, 0.88, 0.95]) {
+    const dark = skyline(ph, grey);
+    assert.ok(dark.length > 1000);
+    assert.deepEqual(dark, skyline(ph, EMPTY), `the skyline at phase ${ph} is unchanged by full cloud`);
+  }
+  const shade = (ctx) => top(ctx, WARSAW.stoneShade);
+  assert.ok(shade(half) < shade(clear) && shade(half) > shade(full), 'partial cloud is in between');
 });

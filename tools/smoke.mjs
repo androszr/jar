@@ -777,6 +777,16 @@ try {
   const sunFace = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
   const shadeFace = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
   check(sunFace - shadeFace >= 20, `the Palace's sun side is brighter than its shade side in the morning (${sunFace} vs ${shadeFace})`);
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(3, 100));
+  await twoFrames(noct);
+  const sunGrey = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
+  const shadeGrey = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
+  check(Math.abs(sunGrey - shadeGrey) <= 8, `under full cloud the Palace's two faces are flat (${sunGrey} vs ${shadeGrey})`);
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5));
+  await twoFrames(noct);
+  const sunBack = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
+  const shadeBack = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
+  check(sunBack - shadeBack >= 20, `the sun side comes back on a clear morning (${sunBack} vs ${shadeBack})`);
   check(all(await patch(noct, 'warsaw', 0.2, 0.668, 2), (r, g, b) => b >= r + 20), 'river shows blue left of the bridge, above the label, by day');
   // bare water is about -62 in red minus blue; a faint sandstone sliver lifts it well past -45
   check(some(await patch(noct, 'warsaw', 0.4, 0.662, 2), (r, g, b) => r - b >= -45), 'the Palace leaves a warm reflection on the river by day');

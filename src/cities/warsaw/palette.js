@@ -113,6 +113,7 @@ export const WARSAW = {
   // weather
   snowCap: [236, 242, 250],
   dull: [120, 130, 138],
+  overcast: [150, 154, 160], // the flat grey everything leans toward under full cloud by day
   iceFloe: [233, 239, 244],
   iceShadow: [120, 140, 160],
   iceWater: [96, 112, 128],

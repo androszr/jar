@@ -14,7 +14,8 @@ import { hash2 } from '../../skyweather.js';
 import { localDate, dayFraction } from '../../placeclock.js';
 import { moonPhase, moonGlow } from '../../moon.js';
 import { WARSAW } from './palette.js';
-import { isUsable, gloom, cloudAmount } from '../../weather.js';
+import { isUsable, gloom } from '../../weather.js';
+import { cloudAmount } from '../../weather.js';
 
 // The bands, top to bottom, as shares of the body height.
 export const FAR_BANK = 0.575; // the towers stand here
@@ -95,6 +96,8 @@ export const MAST_GLOWS = 4;
 export const STREAK_CLEAR = [[0.02, 0.065], [0.945, 0.975]];
 
 export const nightAmount = (light) => clamp((LAMP_THRESHOLD + 0.1 - light) / 0.3);
+// 0 up to 70% cloud, 1 at full cover; EMPTY (no reading, 'cloud') is 0.6 and so 0.
+export const overcastAmount = (weather) => clamp((cloudAmount(weather ? weather.cloudCover : null, weather ? weather.kind : 'cloud') - 0.7) / 0.3);
 export const sunSide = (phase) => (wrap(phase) < 0.4 ? -1 : 1);
 
 // How warm the light is for a sun at altitude `alt`: nothing above 0.6 (the sky
@@ -506,9 +509,10 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   const side = sun.side;
   const golden = sun.golden * (1 - night);
   const out = windowsOut(nowMs);
-  const bodyC = tone(WARSAW.silhouetteDay, WARSAW.silhouetteDusk, WARSAW.silhouetteNight, night);
+  const flat = overcastAmount(weather) * (1 - night); // full cloud by day flattens the sun's effects
+  const bodyC = mix(tone(WARSAW.silhouetteDay, WARSAW.silhouetteDusk, WARSAW.silhouetteNight, night), WARSAW.overcast, 0.35 * flat);
   const rimC = tone(mix(WARSAW.rimDay, tint.skyLow, 0.25), WARSAW.rimDusk, WARSAW.rimNight, night);
-  const rimAlpha = 0.6 * (1 - night) + 0.35 * night;
+  const rimAlpha = (0.6 * (1 - night) + 0.35 * night) * (1 - 0.75 * flat);
   const glass = {
     side, bodyC, rimC, rimAlpha, golden,
     day: 1 - night,
@@ -615,13 +619,13 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   const day = 1 - night;
   tracePalace(ctx, L);
   // at golden hour the sandstone warms, its shade side going dusky
-  ctx.fillStyle = css(tone(mix(WARSAW.stoneDay, WARSAW.stoneGolden, 0.85 * sun.golden), WARSAW.stoneDusk, WARSAW.silhouetteNight, night));
+  ctx.fillStyle = css(mix(tone(mix(WARSAW.stoneDay, WARSAW.stoneGolden, 0.85 * sun.golden), WARSAW.stoneDusk, WARSAW.silhouetteNight, night), WARSAW.overcast, 0.3 * flat));
   ctx.fill();
   ctx.save();
   tracePalace(ctx, L);
   ctx.clip();
   if (day > 0) {
-    ctx.fillStyle = css(mix(WARSAW.stoneShade, WARSAW.stoneGoldenShade, sun.golden), (0.6 + 0.15 * sun.golden) * day);
+    ctx.fillStyle = css(mix(WARSAW.stoneShade, WARSAW.stoneGoldenShade, sun.golden), (0.6 + 0.15 * sun.golden) * day * (1 - 0.85 * flat));
     if (side < 0) ctx.fillRect(px + 2 * L.sx, L.oy, L.w, L.h);
     else ctx.fillRect(L.ox, L.oy, px - 2 * L.sx - L.ox, L.h);
   }
@@ -660,8 +664,8 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   traceNeedle(ctx, L);
   ctx.fillStyle = css(tone(WARSAW.needleDay, WARSAW.needleDay, WARSAW.needleNight, night));
   ctx.fill();
-  if (day > 0) {
-    ctx.fillStyle = css(WARSAW.needleGlint, 0.9 * day);
+  if (day > 0 && flat < 1) {
+    ctx.fillStyle = css(WARSAW.needleGlint, 0.9 * day * (1 - flat));
     ctx.beginPath();
     ctx.arc(px + side * 0.8 * L.sx, L.Y(PALACE.needle) + 14 * L.sy, 1.1 * L.sx, 0, Math.PI * 2);
     ctx.fill();
