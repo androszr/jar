@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WeatherFeed, REFRESH_MS, RETRY_MS, STALE_MS } from '../src/weatherfeed.js';
+import { WeatherFeed, REFRESH_MS, RETRY_MS, STALE_MS, freshnessText } from '../src/weatherfeed.js';
 import { EMPTY, NO_ANCHOR, cloudTravel } from '../src/weather.js';
 
 const body = (temp, code = 61) => ({ v: 1, cities: { warsaw: { temperature: temp, code, cloudCover: 50, isDay: 1 } } });
@@ -382,4 +382,87 @@ test('retry: a good answer ends the quick tries and a thrown fetch counts as a f
   assert.equal(f.get('warsaw').temperature, 7);
   assert.equal(f.dueAt(), clock + REFRESH_MS);
   assert.equal(f.tick(clock + 60000), null);
+});
+
+test('freshness: no answer while asking reads updating…', () => {
+  assert.equal(freshnessText(null, { busy: true }), 'updating…');
+});
+
+test('freshness: no answer and not asking reads no weather yet', () => {
+  assert.equal(freshnessText(null), 'no weather yet');
+});
+
+test('freshness: under a minute is just now', () => {
+  for (const age of [0, 59_999]) assert.equal(freshnessText(age), 'updated just now');
+});
+
+test('freshness: a rewound clock is just now', () => {
+  assert.equal(freshnessText(-5_000), 'updated just now');
+});
+
+test('freshness: a minute reads 1 min ago', () => {
+  assert.equal(freshnessText(60_000), 'updated 1 min ago');
+});
+
+test('freshness: minutes round down', () => {
+  assert.equal(freshnessText(12 * 60_000), 'updated 12 min ago');
+  assert.equal(freshnessText(12 * 60_000 + 30_000), 'updated 12 min ago');
+});
+
+test('freshness: the number goes up one a minute', () => {
+  assert.equal(freshnessText(13 * 60_000), 'updated 13 min ago');
+});
+
+test('freshness: exactly STALE_MS is still updated', () => {
+  assert.equal(freshnessText(STALE_MS), 'updated 45 min ago');
+});
+
+test('freshness: one ms past STALE_MS the weather is old', () => {
+  assert.equal(freshnessText(STALE_MS + 1), 'weather is 45 min old');
+});
+
+test('freshness: fifty minutes reads weather is 50 min old', () => {
+  assert.equal(freshnessText(50 * 60_000), 'weather is 50 min old');
+});
+
+test('freshness: an hour reads 1 h old', () => {
+  assert.equal(freshnessText(3_600_000), 'weather is 1 h old');
+});
+
+test('freshness: hours round down', () => {
+  assert.equal(freshnessText(2 * 3_600_000 + 59 * 60_000), 'weather is 2 h old');
+});
+
+test('freshness: busy is ignored when an answer is held', () => {
+  assert.equal(freshnessText(12 * 60_000, { busy: true }), 'updated 12 min ago');
+});
+
+test('freshness: ageMs is null before an answer, counts from acceptance, ignores failed attempts', async () => {
+  let clock = 1000;
+  let ok = true;
+  const f = new WeatherFeed({ fetchImpl: async () => (ok ? { ok: true, json: async () => body(1) } : { ok: false, json: async () => ({}) }), now: () => clock });
+  assert.equal(f.ageMs(clock), null);
+  await f.start();
+  assert.equal(f.ageMs(clock), 0);
+  clock += 5 * 60_000;
+  assert.equal(f.ageMs(clock), 5 * 60_000);
+  ok = false;
+  clock += REFRESH_MS;
+  f.tick(clock);
+  await settle();
+  assert.equal(f.lastMs, clock);
+  assert.equal(f.ageMs(clock), 5 * 60_000 + REFRESH_MS);
+  ok = true;
+  clock += RETRY_MS[0];
+  f.tick(clock);
+  await settle();
+  assert.equal(f.ageMs(clock), 0);
+});
+
+test('freshness: the line turns old at the tick the feed turns stale', async () => {
+  const f = new WeatherFeed({ fetchImpl: okFetch(body(1)), now: () => 0 });
+  await f.start();
+  for (const age of [STALE_MS - 1, STALE_MS, STALE_MS + 1]) {
+    assert.equal(freshnessText(age).startsWith('weather is'), f.isStale(f.goodAt + age), `age ${age}`);
+  }
 });

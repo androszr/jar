@@ -9,6 +9,7 @@ export const CARD = {
   tide: { column: 60, row: 44 },
   curve: { column: 36, row: 0 },
   arc: { column: 14, row: 12 },
+  note: { column: 22, row: 20 }, // the freshness line at the card's foot
   gap: 14,
   drop: 36,
   scrubBand: 72, // scene units left free under the lifted extent for the slider row

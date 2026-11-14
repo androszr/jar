@@ -13,6 +13,18 @@ export const REFRESH_MS = 15 * 60 * 1000;
 export const RETRY_MS = [5000, 15000, 30000, 60000];
 export const STALE_MS = 3 * REFRESH_MS; // 45 minutes: three missed refreshes and the held answer is no longer shown
 
+// The card's foot line: how fresh the page's weather is. Pure, no clock read.
+// `ageMs` is WeatherFeed.ageMs (null before any accepted answer, negative for a
+// rewound clock, which reads as fresh). Exactly STALE_MS is still "updated",
+// matching isStale's strict >, so the line and the dash turn together.
+export function freshnessText(ageMs, { busy = false } = {}) {
+  if (ageMs === null || ageMs === undefined) return busy ? 'updating…' : 'no weather yet';
+  if (ageMs < 60_000) return 'updated just now';
+  if (ageMs <= STALE_MS) return `updated ${Math.floor(ageMs / 60_000)} min ago`;
+  if (ageMs < 3_600_000) return `weather is ${Math.floor(ageMs / 60_000)} min old`;
+  return `weather is ${Math.floor(ageMs / 3_600_000)} h old`;
+}
+
 export class WeatherFeed {
   constructor({ fetchImpl = globalThis.fetch?.bind(globalThis), now = () => Date.now(), visible = () => true } = {}) {
     this.fetchImpl = fetchImpl;
@@ -47,6 +59,12 @@ export class WeatherFeed {
   // rewound clock) is fresh too.
   isStale(nowMs = this.now()) {
     return this.goodAt !== null && nowMs - this.goodAt > STALE_MS;
+  }
+
+  // Ms since the last accepted answer, null before any. Not clamped: it is the
+  // same number isStale compares.
+  ageMs(nowMs = this.now()) {
+    return this.goodAt === null ? null : nowMs - this.goodAt;
   }
 
   get(id) {

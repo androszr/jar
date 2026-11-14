@@ -90,18 +90,20 @@ export function weatherIcon(ctx, kind, x, y, size) {
 // under that name; `sun` ({ sunrise, sunset } or null) adds one strip along the
 // bottom edge and `tides` (today's { time, kind } entries, [] for none) a
 // second strip under it. A missing rain or wind figure leaves its line empty.
+// `note` (a string, or null) is the freshness line: a last band under the arc.
 // Text never drops under FLOOR px (12.5 in the row, 12 in the column).
 // Where each day's cell sits on the card `rect` ({ x, y, w, h } per cell, in
 // the card's own units): the same split forecastCard draws, so a press can be
 // matched to a day. `n` cells; `sun` and `tides` as forecastCard takes them.
-export function forecastCells(rect, n, layout, sun = null, tides = []) {
+export function forecastCells(rect, n, layout, sun = null, tides = [], note = null) {
   const key = layout === 'row' ? 'row' : 'column';
+  const noteH = typeof note === 'string' ? CARD.note[key] : 0;
   const strip = sun ? CARD.strip[key] : 0;
   const arcH = sun ? CARD.arc[key] : 0;
   const strips = formatTideStrip(tides);
   const tideH = strips ? CARD.tide[key] : 0;
   const curveH = strips ? CARD.curve[key] : 0;
-  const h = rect.h - strip - arcH - tideH - curveH;
+  const h = rect.h - strip - arcH - tideH - curveH - noteH;
   const count = Math.max(1, n);
   const out = [];
   for (let i = 0; i < count; i++) {
@@ -113,7 +115,7 @@ export function forecastCells(rect, n, layout, sun = null, tides = []) {
 }
 
 // `selected` (an index, or -1) rings the day the jar is being previewed on.
-export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null, selected = -1) {
+export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, tides = [], dayT = null, selected = -1, note = null) {
   const { x, y, w } = rect;
   const key = layout === 'row' ? 'row' : 'column';
   const floor = layout === 'row' ? 12.5 : 12;
@@ -122,7 +124,8 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
   const strips = formatTideStrip(tides);
   const tideH = strips ? CARD.tide[key] : 0;
   const curveH = strips ? CARD.curve[key] : 0;
-  const h = rect.h - strip - arcH - tideH - curveH;
+  const noteH = typeof note === 'string' ? CARD.note[key] : 0;
+  const h = rect.h - strip - arcH - tideH - curveH - noteH;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
   ctx.beginPath();
@@ -210,7 +213,7 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
     });
   }
   if (selected >= 0 && selected < n) {
-    const cell = forecastCells(rect, n, layout, sun, tides)[selected];
+    const cell = forecastCells(rect, n, layout, sun, tides, note)[selected];
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = css(PALETTE.brass, 0.95);
     ctx.beginPath();
@@ -292,6 +295,10 @@ export function forecastCard(ctx, rect, cells, layout, sun = null, sunT = null, 
       ctx.arc(cx + rx * Math.cos(a), baseY + ry * Math.sin(a), Math.max(1.5, arcH * 0.14), 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+  if (typeof note === 'string') {
+    // The freshness line: the last band, one dim centred line at the foot.
+    text(ctx, note, x + w / 2, y + rect.h - noteH * 0.5, Math.max(floor, noteH * 0.5), PALETTE.labelDim);
   }
   ctx.restore();
 }
