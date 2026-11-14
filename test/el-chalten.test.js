@@ -1,14 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import elChalten from '../src/cities/el-chalten/index.js';
-import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS } from '../src/cities/el-chalten/massif.js';
+import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS, snowAmount } from '../src/cities/el-chalten/massif.js';
 import { DECK_SOFT, lensSpot, sunSpot } from '../src/cities/el-chalten/air.js';
 import { condorAt, lapAt, CONDOR_LOOP_MS } from '../src/cities/el-chalten/shore.js';
-import { buildPlates, facetColour, emberTone, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
+import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
+import { visibleSnow, polyArea, bbox, chainY, occlusion, boxHitsPoly } from '../src/cities/el-chalten/snow.js';
 import { MIRROR_SQUASH } from '../src/cities/el-chalten/water.js';
 import { EL_CHALTEN as EC } from '../src/cities/el-chalten/palette.js';
 import { EMPTY } from '../src/weather.js';
-import { css, tint, STREAKS } from '../src/look/index.js';
+import { css, tint, STREAKS, mix } from '../src/look/index.js';
 import { sample } from '../src/clock.js';
 import { LABEL } from '../src/jar-geometry.js';
 import { bodyRect } from '../src/jar.js';
@@ -93,17 +94,18 @@ test('the geometry: Fitz Roy above Poincenot, both high, the far shore at half, 
 test('every polygon point sits inside the glass frame; the plates are deterministic', () => {
   const pts = [];
   for (const b of [plates.far, plates.poincenot, plates.fitzroy, ...plates.needles, ...plates.south]) {
-    pts.push(...b.outline, ...b.facets.flatMap((f) => f.poly), ...b.ridges.flat(), ...b.couloirs.flat(), ...b.streaks.flat(), ...b.grain.flat());
+    pts.push(...b.outline, ...b.facets.flatMap((f) => f.poly), ...b.ridges.flat(), ...b.couloirs.flat(), ...b.snow.flatMap((sn) => sn.poly), ...b.grain.flat());
   }
-  pts.push(...plates.glacier.outline, ...plates.glacier.crevasses.flat(), ...plates.glacier.melt, ...plates.glacier.cliff, ...plates.glacier.bench, ...plates.glacier.shades.flat(), ...plates.caps.flat(), ...plates.moraine.outline, ...plates.moraine.slope, ...plates.moraine.patches.flat(),
-    ...plates.moraine.planes.flatMap((p) => p.poly), ...plates.snowfields.flat());
+  pts.push(...plates.glacier.outline, ...plates.glacier.crevasses.flat(), ...plates.glacier.melt, ...plates.glacier.cliff, ...plates.glacier.bench, ...plates.glacier.shades.flat(), ...plates.glacier.fingers.flatMap((f) => f.poly), ...plates.caps.flat(), ...plates.moraine.outline, ...plates.moraine.slope, ...plates.moraine.patches.flat(),
+    ...plates.moraine.planes.flatMap((p) => p.poly));
   for (const [x, y] of pts) assert.ok(x >= -0.1 && x <= 1.1 && y >= -0.1 && y <= 0.8, `${x},${y}`);
   assert.deepEqual(buildPlates(340, 396), buildPlates(340, 396));
 });
 
-test('the rock is built from many facets, ridges, gullies, snow streaks and grain', () => {
+test('the rock is built from many facets, ridges, gullies, snow and grain', () => {
   const f = plates.fitzroy;
-  assert.ok(f.facets.length >= 12 && f.ridges.length >= 3 && f.couloirs.length >= 2 && f.streaks.length >= 4 && f.grain.length >= 30);
+  assert.ok(f.facets.length >= 12 && f.ridges.length >= 3 && f.couloirs.length >= 2 && f.grain.length >= 30);
+  assert.ok(f.snow.filter((s) => s.kind === 'gully').length >= 3 && f.snow.filter((s) => s.kind === 'ledge').length >= 6);
   assert.ok(plates.poincenot.facets.length >= 6 && plates.poincenot.grain.length >= 30);
   assert.equal(plates.needles.length, 3);
   for (const n of plates.needles) assert.ok(n.facets.length >= 2);
@@ -113,13 +115,14 @@ test('the rock is built from many facets, ridges, gullies, snow streaks and grai
   for (const fc of f.facets) assert.ok(fc.facing >= -1 && fc.facing <= 1);
 });
 
-test('snow lies on the wall and the moraine has planes of its own', () => {
-  // every snowfield point is on the rock, below the skyline
-  const wall = [plates.poincenot, plates.fitzroy, ...plates.needles];
-  assert.equal(plates.snowfields.length, 3);
-  for (const [x, y] of plates.snowfields.flat()) assert.ok(wall.some((b) => inPoly(b.outline, x, y + 1e-6)), `${x},${y}`);
-  // ledge snow sits on its rib, part-way down, never above the crest
-  for (const s of plates.fitzroy.streaks) for (const [x, y] of s) assert.ok(inPoly(plates.fitzroy.outline, x, y), `${x},${y}`);
+test('snow lies on the wall in gullies, on ledges and in the saddle, and the moraine has planes of its own', () => {
+  // every shape of every wall body is on its own rock, below the skyline
+  const wall = [plates.poincenot, plates.fitzroy, ...plates.needles, ...plates.south];
+  for (const b of wall) for (const sn of b.snow) for (const [x, y] of sn.poly) assert.ok(inPoly(b.outline, x, y), `${sn.kind} ${x},${y}`);
+  const saddles = (b) => b.snow.filter((sn) => sn.kind === 'saddle').length;
+  assert.ok(saddles(plates.poincenot) >= 1 && saddles(plates.fitzroy) >= 1);
+  for (const b of [...plates.needles, ...plates.south, plates.far]) assert.equal(saddles(b), 0);
+  assert.equal(plates.far.snow.length, 0, 'the far ridge carries no snow');
   const kinds = plates.moraine.planes.map((p) => p.kind);
   for (const k of ['lit', 'dark', 'rock', 'apron']) assert.ok(kinds.includes(k), k);
   // by day the planes are different colours; a frozen hill still shows its dark rock
@@ -127,6 +130,149 @@ test('snow lies on the wall and the moraine has planes of its own', () => {
   for (const f of [css(EC.moraineLit, 0.75), css(EC.moraineShade, 0.7), css(EC.moraineRock, 0.85)]) assert.ok(noon.fills.has(f), f);
   const winter = paint(PHASE.noon, reading({ windSpeed: 5 }), Date.UTC(2026, 6, 15, 16, 0));
   assert.ok(winter.out.frozen && winter.fills.has(css(EC.moraineRock, 0.85 * 0.95)), 'dark rock is painted again over the snow');
+});
+
+const allShapes = () => [plates.poincenot, plates.fitzroy, ...plates.needles, ...plates.south].flatMap((b) => b.snow);
+const margin = plates.glacier.outline.slice(0, 19);
+const occl = (x) => occlusion(margin, x);
+const above = (sn) => sn.poly.filter(([x, y]) => y <= occl(x));
+const spread = (pts) => (pts.length ? Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0])) : 0);
+
+test('no four-point diamond: every snow shape has at least five corners, ledges are wider than tall, gullies widen downward', () => {
+  const shapes = allShapes();
+  assert.ok(shapes.length >= 30);
+  for (const sn of shapes) assert.ok(sn.poly.length >= 5, `${sn.kind} has ${sn.poly.length} corners`);
+  for (const c of plates.caps) assert.ok(c.length >= 5, 'a cap is no diamond either');
+  for (const sn of shapes.filter((x) => x.kind === 'ledge')) {
+    const b = bbox(sn.poly);
+    assert.ok(b.x1 - b.x0 >= 2.5 * (b.y1 - b.y0), 'a ledge is wider than tall');
+  }
+  // widening is measured on what shows above whatever stands in front of the wall
+  const ribbons = shapes.filter((x) => x.kind === 'gully' || x.kind === 'skirt');
+  assert.ok(ribbons.length >= 10);
+  for (const sn of ribbons) {
+    const seen = above(sn);
+    assert.equal(seen.length, sn.poly.length, `${sn.kind} ends above the glacier or the moraine`);
+    const b = bbox(seen);
+    const span = b.y1 - b.y0;
+    const topW = spread(seen.filter((p) => p[1] <= b.y0 + 0.4 * span));
+    const lowW = spread(seen.filter((p) => p[1] >= b.y1 - 0.4 * span));
+    assert.ok(lowW >= 3 * topW, `${sn.kind} widens downward (${lowW.toFixed(3)} vs ${topW.toFixed(3)})`);
+  }
+});
+
+test('no ledge sliver crosses a gully, an apron or a finger of its own body, and ledges lean', () => {
+  let ledges = 0;
+  for (const b of [plates.poincenot, plates.fitzroy, ...plates.needles, ...plates.south]) {
+    const ribbons = b.snow.filter((x) => x.kind === 'gully' || x.kind === 'skirt' || x.kind === 'finger');
+    for (const l of b.snow.filter((x) => x.kind === 'ledge')) {
+      ledges++;
+      for (const r of ribbons) assert.ok(!boxHitsPoly(bbox(l.poly), r.poly), `a ledge at ${l.probe} crosses a ${r.kind}`);
+      assert.ok(Math.abs(l.poly[1][1] - l.poly[0][1]) > 0.0008, 'slanted');
+    }
+  }
+  assert.ok(ledges >= 10);
+});
+
+test('snow keeps the smoke check\'s bare granite bare and never hides the wall', () => {
+  for (const sn of allShapes()) for (const [x, y] of BARE) assert.ok(!inPoly(sn.poly, x, y), `${sn.kind} covers ${x},${y}`);
+  for (const b of [plates.poincenot, plates.fitzroy]) {
+    const area = b.snow.reduce((sum, sn) => sum + polyArea(sn.poly), 0);
+    assert.ok(area <= 0.3 * polyArea(b.outline), `snow covers ${(area / polyArea(b.outline)).toFixed(2)} of the body`);
+  }
+});
+
+const moodAt = (phase, weather = EMPTY, nowMs = T_NOON) => mood(tint(sample(phase)), weather, nowMs, elChalten.location, phase);
+
+test('snow is white on the lit face and blue-grey in the shade by day, one tone at night and at sunset', () => {
+  const noon = moodAt(PHASE.noon);
+  const tn = tint(sample(PHASE.noon));
+  const lit = wallSnow(PHASE.noon, tn, noon, 1);
+  const shaded = wallSnow(PHASE.noon, tn, noon, -1);
+  assert.notDeepEqual(lit, shaded);
+  assert.ok(lit[0] > shaded[0] + 20 && shaded[2] > shaded[0] + 8, 'white in the sun, blue-grey in the shade');
+  for (const phase of [PHASE.night, 0.76]) {
+    const m = moodAt(phase);
+    const t = tint(sample(phase));
+    const a = wallSnow(phase, t, m, 1);
+    const b = wallSnow(phase, t, m, -1);
+    for (let i = 0; i < 3; i++) assert.ok(Math.abs(a[i] - b[i]) <= 1, `phase ${phase} channel ${i}`);
+  }
+  // the noon paint draws a lit and a shaded gully in their own two colours
+  const gullies = plates.fitzroy.snow.filter((sn) => sn.kind === 'gully' && sn.hold === 0);
+  const sunny = gullies.reduce((a, b) => (b.facing > a.facing ? b : a));
+  const dim = gullies.reduce((a, b) => (b.facing < a.facing ? b : a));
+  const painted = paint(PHASE.noon, EMPTY, T_NOON);
+  const topY = (sn) => Math.min(...sn.poly.map((p) => p[1]));
+  for (const sn of [sunny, dim]) assert.ok(painted.fills.has(css(wallSnow(PHASE.noon, tn, noon, sn.facing, topY(sn)), 0.96)), `facing ${sn.facing}`);
+});
+
+// What HEAD's wallSnow returned (it took no facing and no haze)
+const oldWallSnow = (tn, m, y) => {
+  let c = mix(snowTone(m), EC.graniteNight, m.n * 0.3 * (1 - m.moon.k));
+  c = mix(c, EC.graniteDusk, m.sil * 0.62);
+  c = mix(c, EC.emberSnow, 0.85 * glowShare(m, y));
+  return mix(c, tn.skyLow, 0.1);
+};
+
+test('where the wall shows no lit or shaded side the snow is exactly what it was: night, sunset, first light, caps too', () => {
+  for (const phase of [PHASE.night, 0.76]) {
+    const m = moodAt(phase);
+    const t = tint(sample(phase));
+    for (const y of [SUMMIT.y, 0.2]) {
+      const old = oldWallSnow(t, m, y);
+      for (const facing of [1, -1, 0.6]) {
+        const now = wallSnow(phase, t, m, facing, y);
+        for (let i = 0; i < 3; i++) assert.ok(Math.abs(now[i] - old[i]) < 1e-9, `phase ${phase} facing ${facing} channel ${i}`);
+      }
+    }
+  }
+});
+
+test('snow on the far peaks is hazed with them, the front wall\'s snow is not changed', () => {
+  const m = moodAt(PHASE.noon);
+  const t = tint(sample(PHASE.noon));
+  const dist = (c) => Math.hypot(c[0] - t.skyLow[0], c[1] - t.skyLow[1], c[2] - t.skyLow[2]);
+  for (const facing of [1, -1]) {
+    assert.ok(dist(wallSnow(PHASE.noon, t, m, facing, 0.3, HAZE.south)) < dist(wallSnow(PHASE.noon, t, m, facing, 0.3, HAZE.wall)));
+    assert.deepEqual(wallSnow(PHASE.noon, t, m, facing, 0.3), wallSnow(PHASE.noon, t, m, facing, 0.3, HAZE.wall));
+  }
+  const o = oldWallSnow(t, m, 0.3);
+  const f = wallSnow(PHASE.noon, t, m, 0, 0.3);
+  assert.ok(f.every((v, i) => Math.abs(v - o[i]) < 60), 'a flat face is still snow-coloured');
+});
+
+test('winter and fresh snow show more shapes than late summer; February the fewest', () => {
+  const f = plates.fitzroy.snow;
+  // what counts is what shows: shapes whose every point lies above what stands in front of the wall
+  const seen = (shapes, amount) => visibleSnow(shapes, amount).filter((sn) => above(sn).length === sn.poly.length);
+  const wall = [plates.poincenot, plates.fitzroy].flatMap((b) => b.snow);
+  assert.ok(seen(wall, snowAmount('winter', 7, 0)).length >= seen(wall, snowAmount('summer', 1, 0)).length + 6);
+  // every season is its own step: February < summer < autumn < spring < winter, over every wall body
+  const every = [plates.poincenot, plates.fitzroy, ...plates.needles].flatMap((b) => b.snow);
+  const counts = [snowAmount('summer', 2, 0), snowAmount('summer', 1, 0), snowAmount('autumn', 4, 0), snowAmount('spring', 10, 0), snowAmount('winter', 7, 0)].map((a) => seen(every, a).length);
+  for (let i = 1; i < counts.length; i++) assert.ok(counts[i] > counts[i - 1], `season step ${i}: ${counts.join(' < ')}`);
+  assert.ok(visibleSnow(f, snowAmount('winter', 7, 0)).length > visibleSnow(f, snowAmount('summer', 1, 0)).length);
+  assert.ok(snowAmount('summer', 1, 1) > snowAmount('summer', 1, 0));
+  assert.ok(snowAmount('summer', 2, 0) < snowAmount('summer', 1, 0));
+  assert.ok(visibleSnow(f, snowAmount('summer', 1, 0)).length >= 1 && visibleSnow(f, 1).length < f.length + 1);
+});
+
+test('the glacier fingers up into the needles\' gullies', () => {
+  const top = plates.glacier.outline.slice(0, 19);
+  const fingers = plates.glacier.fingers;
+  assert.ok(fingers.length >= 2);
+  for (const fg of fingers) {
+    const ys = fg.poly.map((p) => p[1]);
+    const gy = chainY(top, fg.probe[0]);
+    assert.ok(Math.max(...ys) >= gy, 'reaches the glacier');
+    assert.ok(Math.min(...ys) <= gy - 0.03, 'climbs into the gully');
+    assert.ok(plates.needles.some((n) => inPoly(n.outline, fg.probe[0], fg.probe[1])), 'inside a needle');
+    assert.ok(fg.poly.length >= 7);
+  }
+  // a gully the glacier does not reach keeps its ribbon on the needle
+  const kept = plates.south.flatMap((b) => b.snow).filter((sn) => sn.kind === 'gully');
+  assert.ok(kept.length >= 1);
 });
 
 test('the sun mock\'s patches: a left-facing and a right-facing facet of the fin, the bivouac on the wall', () => {
