@@ -5,7 +5,7 @@ import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
-  overcastAmount, CLOCK_R, HANDS, clockHands, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, ceilingTop, fogDepth,
+  overcastAmount, CLOCK_R, HANDS, clockHands, FLASH_W, flashAmount, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, ceilingTop, fogDepth,
 } from '../src/cities/warsaw/scene.js';
 import { reflectionScale, REFLECT_FOG_DIM } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
@@ -31,8 +31,8 @@ function recordingCtx() {
   const strokes = new Set();
   const calls = [];
   const target = {
-    createLinearGradient: () => ({ addColorStop(o, c) { fills.add(c); } }),
-    createRadialGradient: () => ({ addColorStop(o, c) { fills.add(c); } }),
+    createLinearGradient: () => { const stops = []; return { stops, addColorStop(o, c) { stops.push(c); fills.add(c); } }; },
+    createRadialGradient: () => { const stops = []; return { stops, addColorStop(o, c) { stops.push(c); fills.add(c); } }; },
   };
   return new Proxy(target, {
     get(t, k) {
@@ -1389,4 +1389,155 @@ test('full cloud by day flattens the rims, the Palace shade and the glint; night
   }
   const shade = (ctx) => top(ctx, WARSAW.stoneShade);
   assert.ok(shade(half) < shade(clear) && shade(half) > shade(full), 'partial cloud is in between');
+});
+
+// ---- golden hour: the existing altitude measure, the stone blend and the low sun's flash (plan warsaw-golden-hour) ----
+
+const FLASH = rgbaOf(WARSAW.sunFlash);
+// The flash strips a recording drew: a fillRect whose fill is the flash gradient (its stops carry sunFlash).
+// Each is returned as { args, clipped }, clipped when a clip() was set since the last save() with no restore() between.
+function flashStrips(ctx) {
+  const out = [];
+  ctx.calls.forEach(([m, a, st], i) => {
+    if (m !== 'fillRect' || !st || !Array.isArray(st.stops) || !st.stops.some((c) => c.startsWith(FLASH))) return;
+    let clipped = false;
+    for (let j = i - 1; j >= 0; j--) {
+      const name = ctx.calls[j][0];
+      if (name === 'restore') break;
+      if (name === 'clip') clipped = true;
+      if (name === 'save') { out.push({ args: a, clipped }); return; }
+    }
+    out.push({ args: a, clipped: false });
+  });
+  return out;
+}
+
+test('goldenAmount: nothing high in the sky, full on the horizon, gone below it, smooth between', () => {
+  assert.equal(goldenAmount(1), 0);
+  assert.equal(goldenAmount(GOLDEN_FROM), 0);
+  assert.equal(goldenAmount(0), 1);
+  assert.equal(goldenAmount(-0.12), 0);
+  let last = 0;
+  for (let a = GOLDEN_FROM; a >= 0; a -= 0.02) {
+    const v = goldenAmount(a);
+    assert.ok(v >= last - 1e-12, `rising as the sun sinks (${a})`);
+    last = v;
+  }
+  assert.ok(goldenAmount(0.3) > 0 && goldenAmount(0.3) < 1);
+  assert.ok(goldenAmount(-0.06) > 0 && goldenAmount(-0.06) < 1);
+});
+
+test('the flash: a strip on the sun side of Varso and of the Spire, inside the tower, within its extent', () => {
+  const g = fullScene(GOLDEN_PHASE, CLEAR);
+  assert.ok(g.scene.golden > 0.4);
+  assert.ok(startsWith(g.ctx.fills, FLASH).length > 0, 'the flash gradient is there');
+  assert.ok(startsWith(g.ctx.fills, rgbaOf(WARSAW.sunFlashGlow)).length > 0, 'with its soft glow');
+  assert.equal(sunLight(GOLDEN_PHASE, CLEAR).side, 1, 'the sun is on the right in the evening');
+  const strips = flashStrips(g.ctx);
+  assert.equal(strips.length, 2, 'one strip per tower');
+  assert.ok(strips.every((x) => x.clipped), 'each strip is drawn under a clip to its tower');
+  for (const [id, y0, y1] of [['varso', 0.15, 0.5], ['spire', 0.2, 0.52]]) {
+    const t = SKYLINE.find((s) => s.id === id);
+    const right = L0.X(t.x + t.hw);
+    const hit = strips.filter(({ args: a }) => Math.abs(a[0] + a[2] - right) < 0.5).map(({ args }) => [0, args]);
+    assert.equal(hit.length, 1, `one strip on the right edge of ${id}`);
+    const [, a] = hit[0];
+    assert.ok(a[1] >= y0 * rect.h - 0.5 && a[1] + a[3] <= y1 * rect.h + 0.5, `${id} strip within its extent`);
+    assert.ok(a[0] >= L0.X(t.x - t.hw), `${id} strip starts inside the tower`);
+  }
+  const morning = fullScene(0.32, CLEAR);
+  assert.equal(morning.scene.golden, 0);
+  assert.ok(startsWith(morning.ctx.fills, FLASH).length === 0, 'no flash in the morning');
+});
+
+test('there is no morning flash: a golden morning with the sun on the left draws none', () => {
+  const low = 0.1; // a low sun in the morning, in the left half
+  const s = sunLight(low, CLEAR);
+  assert.equal(s.side, -1, 'the sun is on the left');
+  assert.ok(s.golden > 0.5, 'and low and warm');
+  assert.ok(s.strength > 0.3, 'and showing');
+  assert.equal(nightAmount(sample(low).light), 0, 'and it is still day');
+  const g = fullScene(low, CLEAR);
+  assert.equal(startsWith(g.ctx.fills, FLASH).length, 0);
+  assert.equal(startsWith(g.ctx.fills, rgbaOf(WARSAW.sunFlashGlow)).length, 0);
+  assert.equal(flashStrips(g.ctx).length, 0, 'no strip on either face of either tower');
+});
+
+test('no flash at noon, at night, or with no sun showing (no reading, fog, rain) even at golden hour; a full overcast only dims it', () => {
+  const FOG = { ...CLEAR, kind: 'fog', code: 45, cloudCover: 100 };
+  const OVERCAST = { ...CLEAR, kind: 'cloud', code: 3, cloudCover: 100 };
+  for (const [name, ctx] of [['noon', paint(PHASE.noon, CLEAR)], ['night', paint(PHASE.night, CLEAR)], ['no reading', paint(PHASE.noon)],
+    ['no reading at golden hour', paint(GOLDEN_PHASE)], ['fog', paint(GOLDEN_PHASE, FOG)], ['rain', paint(GOLDEN_PHASE, RAIN)]]) {
+    assert.equal(startsWith(ctx.fills, FLASH).length, 0, name);
+    assert.equal(startsWith(ctx.fills, rgbaOf(WARSAW.sunFlashGlow)).length, 0, name);
+  }
+  assert.ok(startsWith(paint(GOLDEN_PHASE, CLEAR).fills, FLASH).length > 0, 'the clear evening still flashes');
+  // a full overcast leaves the sun almost hidden: the flash fades with it, far fainter than on a clear evening
+  const peak = (ctx) => Math.max(0, ...startsWith(ctx.fills, FLASH).map(alphaOf));
+  assert.ok(peak(paint(GOLDEN_PHASE, OVERCAST)) < 0.25 * peak(paint(GOLDEN_PHASE, CLEAR)));
+});
+
+test('the stone blend: noon sandstone turns apricot at golden hour, and the rim and façades warm too', () => {
+  assert.ok(paint(PHASE.noon, CLEAR).fills.has(css(WARSAW.stoneDay)));
+  const g = paint(GOLDEN_PHASE, CLEAR);
+  assert.ok(!g.fills.has(css(WARSAW.stoneDay)));
+  const k = sunLight(GOLDEN_PHASE, CLEAR).golden;
+  assert.ok(g.fills.has(css(tone(mix(WARSAW.stoneDay, WARSAW.stoneGolden, 0.85 * k), WARSAW.stoneDusk, WARSAW.silhouetteNight, nightAmount(sample(GOLDEN_PHASE).light)))));
+  const [r, , b] = mix(WARSAW.stoneDay, WARSAW.stoneGolden, 0.85 * k);
+  assert.ok(r - b > WARSAW.stoneDay[0] - WARSAW.stoneDay[2], 'warmer than the noon stone');
+  // the rim and the front-row façades are the colours blended toward rimGolden and facadeGolden
+  const rimOf = (phase, k) => {
+    const night = nightAmount(sample(phase).light);
+    const c = tone(mix(mix(WARSAW.rimDay, tint(sample(phase)).skyLow, 0.25), WARSAW.rimGolden, 0.8 * k), WARSAW.rimDusk, WARSAW.rimNight, night);
+    return css(c, 0.6 * (1 - night) + 0.35 * night);
+  };
+  const facadesOf = (phase, k) => {
+    const t = tint(sample(phase));
+    const night = nightAmount(sample(phase).light);
+    return FRONT_ROW.map((b, i) => {
+      const day = mix(WARSAW.facades[Math.floor(hash2(i, 64) * WARSAW.facades.length)], WARSAW.facadeGolden, 0.45 * k);
+      const shade = mix(day, WARSAW.carpetDay, 0.35 * hash2(i, 65));
+      return css(mix(tone(shade, WARSAW.carpetDusk, WARSAW.carpetNight, night), t.skyLow, 0.1));
+    });
+  };
+  assert.ok(k > 0.5);
+  assert.ok(g.fills.has(rimOf(GOLDEN_PHASE, k)), 'the rim is blended toward rimGolden');
+  for (const f of facadesOf(GOLDEN_PHASE, k)) assert.ok(g.fills.has(f), 'a façade is blended toward facadeGolden');
+  const noon = paint(PHASE.noon, CLEAR);
+  assert.ok(noon.fills.has(rimOf(PHASE.noon, 0)), 'noon keeps the plain rim');
+  assert.ok(!noon.fills.has(rimOf(PHASE.noon, k)), 'and not the golden one');
+  for (const f of facadesOf(PHASE.noon, 0)) assert.ok(noon.fills.has(f), 'noon keeps the plain façades');
+  assert.ok(facadesOf(PHASE.noon, k).some((f) => !noon.fills.has(f)), 'and not the golden ones');
+});
+
+test('golden hour paints the same picture twice and never touches Math.random', () => {
+  const a = paint(GOLDEN_PHASE, CLEAR, 123456);
+  const b = paint(GOLDEN_PHASE, CLEAR, 123456);
+  assert.deepEqual([...a.fills], [...b.fills]);
+  const shape = (c) => JSON.stringify(c.calls.map(([m, args]) => [m, args.map((v) => (typeof v === 'number' ? v : typeof v))]));
+  assert.equal(shape(a), shape(b));
+});
+
+test("the smoke's pinned evening is a golden-hour moment", async () => {
+  const { therePhase } = await import('../src/placeclock.js');
+  const p = therePhase(Date.UTC(2026, 5, 15, 18, 15), warsaw.location);
+  assert.ok(sunLight(p, CLEAR).golden > 0.3, `golden ${sunLight(p, CLEAR).golden} at phase ${p}`);
+  assert.equal(nightAmount(sample(p).light), 0, 'and still day');
+  const morning = therePhase(Date.UTC(2026, 5, 15, 8, 30), warsaw.location);
+  assert.equal(sunLight(morning, CLEAR).golden, 0);
+});
+
+test('the flash amount is continuous across the evening, zero before the sun is up on the right and by the time it has set', () => {
+  let prev = 0;
+  let worst = 0;
+  for (let p = 0; p <= 1.0001; p += 0.002) {
+    const f = flashAmount(sunLight(p, CLEAR), nightAmount(sample(p).light));
+    worst = Math.max(worst, Math.abs(f - prev));
+    prev = f;
+  }
+  assert.ok(worst <= 0.1, `largest step between neighbours ${worst}`);
+  assert.equal(flashAmount(sunLight(0.5, CLEAR), 0), 0, 'nothing as the sun crosses to the right');
+  assert.equal(flashAmount(sunLight(0.82, CLEAR), nightAmount(sample(0.82).light)), 0, 'gone when the sun has set');
+  assert.equal(flashAmount(sunLight(0.1, CLEAR), 0), 0, 'no morning flash');
+  assert.ok(flashAmount(sunLight(0.729, CLEAR), 0) > 0.5, 'strong at the smoke moment');
 });

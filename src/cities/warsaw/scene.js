@@ -114,7 +114,9 @@ export const sunSide = (phase) => (wrap(phase) < 0.4 ? -1 : 1);
 // How warm the light is for a sun at altitude `alt`: nothing above 0.6 (the sky
 // is still blue), rising as it sinks, full on the horizon, gone a little below it.
 export const GOLDEN_FROM = 0.6;
-export const goldenAmount = (alt) => (alt >= 0 ? smoothstep(1 - alt / GOLDEN_FROM) : clamp(1 + alt / 0.12));
+export function goldenAmount(alt) {
+  return alt >= 0 ? smoothstep(1 - alt / GOLDEN_FROM) : clamp(1 + alt / 0.12);
+}
 
 // The hour's light on the scene, read the way the shared sky draws its sun:
 //   x        where the sun stands, a share of the width (left in the morning, right in the evening)
@@ -470,6 +472,36 @@ function glassTower(ctx, trace, L, t, g) {
   ctx.restore();
 }
 
+// The low sun's flash: a narrow bright vertical strip down the sun-side face of a
+// tower, clipped to the tower's own trace, brightest about a third of the way down
+// and fading toward the foot, with a soft glow round its brightest point. `g` is
+// the golden amount (0 draws nothing); `side` is the face the sun is on.
+export const FLASH_W = 7; // px at the reference scale
+const FLASH_SUN = 0.35; // the sun's strength at which the flash is full; weaker, it fades with it
+// How much the flash shows, 0..1, for the light `sunLight` returned and the night amount: the evening's only
+// (the sun on the right), the warm light's golden times how much of the sun the sky shows, and a fade over the
+// last stretch of the sun's altitude (from 0.2 down to the point where the shared sun is dropped), so it never ends in a step.
+export function flashAmount(sun, night) {
+  if (sun.side <= 0) return 0;
+  return sun.golden * (1 - night) * clamp(sun.strength / FLASH_SUN) * smoothstep(clamp((sun.alt + 0.05) / 0.25));
+}
+function sunFlash(ctx, trace, L, t, side, g, y0, y1) {
+  if (!(g > 0)) return;
+  const w = FLASH_W * L.sx;
+  const x = side > 0 ? L.X(t.x + t.hw) - w : L.X(t.x - t.hw);
+  ctx.save();
+  trace(ctx, L);
+  ctx.clip();
+  const grad = ctx.createLinearGradient(0, y0, 0, y1);
+  grad.addColorStop(0, css(WARSAW.sunFlash, 0));
+  grad.addColorStop(0.35, css(WARSAW.sunFlash, 0.95 * g));
+  grad.addColorStop(1, css(WARSAW.sunFlashFoot, 0));
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y0, w, y1 - y0);
+  ctx.restore();
+  glow(ctx, x + w / 2, y0 + 0.35 * (y1 - y0), 40 * L.sx, WARSAW.sunFlashGlow, 0.6 * g);
+}
+
 // Lit floor bands across a tower, seeded so the same tower always shows the same.
 function floorBands(ctx, trace, L, t, seed, night, out = 0) {
   const x0 = L.X(t.x - t.hw);
@@ -602,7 +634,7 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   const out = windowsOut(nowMs);
   const flat = overcastAmount(weather) * (1 - night); // full cloud by day flattens the sun's effects
   const bodyC = mix(tone(WARSAW.silhouetteDay, WARSAW.silhouetteDusk, WARSAW.silhouetteNight, night), WARSAW.overcast, 0.35 * flat);
-  const rimC = tone(mix(WARSAW.rimDay, tint.skyLow, 0.25), WARSAW.rimDusk, WARSAW.rimNight, night);
+  const rimC = tone(mix(mix(WARSAW.rimDay, tint.skyLow, 0.25), WARSAW.rimGolden, 0.8 * golden), WARSAW.rimDusk, WARSAW.rimNight, night);
   const rimAlpha = (0.6 * (1 - night) + 0.35 * night) * (1 - 0.75 * flat);
   const glass = {
     side, bodyC, rimC, rimAlpha, golden,
@@ -648,6 +680,12 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   ctx.moveTo(cx('spire') - 8 * L.sx, L.gy - 153 * L.sy);
   ctx.lineTo(cx('spire') - 8 * L.sx, L.Y(sp.mast));
   ctx.stroke();
+
+  // golden hour: one face of Varso and of the Spire flashes the low sun
+  // (a mirror of the sun itself: it needs the sun to be showing, and it is the evening's, on the right)
+  const flash = flashAmount(sun, night);
+  sunFlash(ctx, traceVarso, L, TOWER.varso, side, flash, L.oy + 0.15 * L.h, L.oy + 0.5 * L.h);
+  sunFlash(ctx, traceSpire, L, TOWER.spire, side, flash, L.oy + 0.2 * L.h, L.oy + 0.52 * L.h);
 
   if (night > 0) {
     // Varso's crown, blue, and the red aviation light at the tip of its needle
@@ -805,7 +843,7 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
     const x0 = L.X(b.x - b.hw);
     const x1 = L.X(b.x + b.hw);
     const top = L.oy + b.top * L.h;
-    const day = WARSAW.facades[Math.floor(hash2(i, 64) * WARSAW.facades.length)];
+    const day = mix(WARSAW.facades[Math.floor(hash2(i, 64) * WARSAW.facades.length)], WARSAW.facadeGolden, 0.45 * golden);
     const shade = mix(day, WARSAW.carpetDay, 0.35 * hash2(i, 65)); // some stand in shade
     ctx.fillStyle = css(mix(tone(shade, WARSAW.carpetDusk, WARSAW.carpetNight, night), tint.skyLow, 0.1));
     ctx.fillRect(x0, top, x1 - x0, L.river.top - top);
