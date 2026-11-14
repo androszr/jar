@@ -56,6 +56,18 @@ asks for reduced motion, the page calms down: the jar does not shake, the
 time-lapse steps an hour at a time, the clouds barely drift and a storm draws
 no bolt.
 
+### Put it on a shelf
+
+An old phone or tablet makes a good lantern. Add the page to the home screen
+(it brings its own jar icon) and launch it from there: it opens without the
+browser's bars and keeps the screen awake for as long as it is showing. In an
+ordinary tab, the small *lantern* button under the credit in the top-right
+corner does the same on demand: it fills the screen and keeps the display
+awake, and pressing it again (or leaving full screen) puts things back. Where
+the browser can do neither, the button is not there. Nothing is stored on the
+device: the mode is on because you launched it that way or pressed the button
+this time.
+
 ## The three jars
 
 ### Warsaw

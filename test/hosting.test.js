@@ -206,6 +206,7 @@ test('the headers never deny fullscreen or the screen wake lock', () => {
     assert.doesNotMatch(pp, /screen-wake-lock=\(\)/);
   }
   assert.deepEqual(csp()['connect-src'], ["'self'"]);
+  assert.deepEqual(csp()['manifest-src'], ["'self'"], 'the install manifest is read from the page\'s own address');
   assert.ok(header('Content-Security-Policy').startsWith("default-src 'self'"));
 });
 

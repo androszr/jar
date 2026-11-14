@@ -40,6 +40,7 @@ html, body {
 }
 
 #back,
+#lantern,
 #now,
 #play,
 #shelfnav button {
@@ -57,6 +58,14 @@ html, body {
 #back {
   top: calc(12px + env(safe-area-inset-top, 0px));
   left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+/* Top-right, just under the credit link (which owns the corner), so it never covers a jar or the forecast card:
+   main.js sets its top from the credit's measured bottom (the credit wraps to two lines on a narrow phone) and hands the pair's lower edge to liftCamera. The width fits "leave lantern" so the box does not move. */
+#lantern {
+  top: calc(34px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  min-width: 10.5em;
 }
 
 #credit {
@@ -135,9 +144,14 @@ html, body {
 
 @media (pointer: coarse) {
   #back,
+  #lantern,
   #shelfnav button {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  #lantern {
+    min-width: max(44px, 10.5em);
   }
 
   #scrub,

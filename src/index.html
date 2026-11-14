@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#050909">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jars">
   <title>Jars</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/jar-180.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -17,6 +24,7 @@
     <button id="next" type="button" aria-label="next jar">&rsaquo;</button>
   </nav>
   <button id="back" type="button" hidden>back to the table</button>
+  <button id="lantern" type="button" aria-pressed="false" hidden>lantern</button>
   <div id="scrubrow" hidden><label for="scrub" id="scrublabel">next 24 hours</label><input id="scrub" type="range" min="0" max="1440" step="30" value="0"><button id="now" type="button">now</button><button id="play" type="button" aria-pressed="false" aria-label="play the next 24 hours">play</button></div>
   <a id="credit" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather data by Open-Meteo</a>
   <p class="visually-hidden" id="announce" aria-live="polite" aria-atomic="true"></p>

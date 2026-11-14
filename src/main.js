@@ -23,10 +23,16 @@ import { shakeAt, SHAKE_MS } from './shake.js';
 import { introLevels } from './intro.js';
 import { FADE_MS, skyChanged, fadeAmount } from './fade.js';
 import { JAR } from './jar-geometry.js';
+import { Lantern } from './lantern.js';
 
 const opts = readOptions(location.search);
 const canvas = document.getElementById('view');
 const backBtn = document.getElementById('back');
+// Lantern mode: fill the screen and keep the display awake (src/lantern.js). Memory only, nothing stored.
+const lanternBtn = document.getElementById('lantern');
+const lantern = new Lantern({ document, navigator, matchMedia: (q) => matchMedia(q) });
+const lanternShown = !lantern.standalone && (lantern.supports.fullscreen || lantern.supports.wakeLock);
+lanternBtn.hidden = !lanternShown; // shown before the first fit(), which measures its box
 const liveEl = document.getElementById('announce');
 const navEl = document.getElementById('shelfnav');
 const scrubEl = document.getElementById('scrub');
@@ -133,11 +139,33 @@ function measureScrub() {
   if (next !== scrubReserve) { scrubReserve = next; lastKey = ''; }
 }
 
+// The lantern button hangs under the credit link (below its real bottom: on a narrow phone the credit wraps
+// to two lines) and, while a jar is lifted and #back shows, below #back too when the two would meet. The
+// lifted picture keeps clear of the whole stack through creditBox.
+let backWasShown = false;
+function placeLantern() {
+  const cr = document.getElementById('credit')?.getBoundingClientRect();
+  creditBox = cr && cr.width > 0 ? { left: cr.left, bottom: cr.bottom } : null;
+  backWasShown = !backBtn.hidden;
+  if (lanternBtn.hidden) return;
+  let top = cr && cr.width > 0 ? Math.ceil(cr.bottom) + 4 : null;
+  if (top !== null) lanternBtn.style.top = `${top}px`;
+  const lr = lanternBtn.getBoundingClientRect();
+  if (backWasShown && lr.width > 0) {
+    const br = backBtn.getBoundingClientRect();
+    if (lr.left < br.right + 4 && top !== null && lr.top < br.bottom + 4) {
+      top = Math.max(top, Math.ceil(br.bottom) + 4);
+      lanternBtn.style.top = `${top}px`;
+    }
+  }
+  const box = lanternBtn.getBoundingClientRect();
+  if (creditBox && box.width > 0) creditBox = { left: Math.min(creditBox.left, box.left), bottom: Math.max(creditBox.bottom, box.bottom) };
+}
+
 function fit() {
   W = Math.max(1, window.innerWidth);
   H = Math.max(1, window.innerHeight);
-  const cr = document.getElementById('credit')?.getBoundingClientRect();
-  creditBox = cr && cr.width > 0 ? { left: cr.left, bottom: cr.bottom } : null;
+  placeLantern();
   measureScrub();
   dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(W * dpr);
@@ -484,6 +512,12 @@ function frame() {
 function syncChrome() {
   const lifted = view === 'jar';
   if (backBtn.hidden === lifted) backBtn.hidden = !lifted;
+  if (backWasShown === backBtn.hidden) { placeLantern(); lastKey = ''; } // #back came or went: the lantern button moves with it
+  if (lanternBtn.hidden === lanternShown) lanternBtn.hidden = !lanternShown;
+  if ((lanternBtn.getAttribute('aria-pressed') === 'true') !== lantern.on) {
+    lanternBtn.setAttribute('aria-pressed', String(lantern.on));
+    lanternBtn.textContent = lantern.on ? 'leave lantern' : 'lantern';
+  }
   const showNav = !lifted && CITIES.length > 1;
   if (navEl.hidden === showNav) navEl.hidden = !showNav;
   if (scrubRow.hidden === lifted) scrub.show(lifted);
@@ -673,6 +707,8 @@ canvas.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowLeft' && view === 'table') shelf.prev();
 });
 backBtn.addEventListener('click', lowerFromUser);
+lanternBtn.addEventListener('click', () => { lantern.toggle(); syncChrome(); });
+lantern.attach();
 const scrub = new ScrubBar(scrubEl, document.getElementById('now'), { onChange: (min) => { play = null; setScrub(min); } });
 const playBtn = document.getElementById('play');
 // the button says what it does now at once, not on the next frame
@@ -916,6 +952,8 @@ window.__jar = {
     return { text: hintText, state: hint, alpha: hintAlpha(hint, p), rect: { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y } };
   },
   get dpr() { return dpr; },
+  // Lantern mode: { on, lock, standalone, supports }.
+  get lantern() { return { on: lantern.on, lock: lantern.lock, standalone: lantern.standalone, supports: lantern.supports }; },
   get ambient() { return lastShedAmbient; },
   get framing() { return fitScreen(W, H, shelf.centreX); },
 };

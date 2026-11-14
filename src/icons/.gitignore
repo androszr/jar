@@ -1,0 +1,2 @@
+# the root .gitignore drops *.png; these icons are published (the manifest and apple-touch-icon name them)
+!*.png
