@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_WIND, HIDDEN_COVER, CAPPED_COVER, SMOKING_WIND, BANDS, coverOf, windOf, visibilityBand, plumeLength, plumeSide, glowLine, glowStrength,
-  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf,
+  silhouetteAmount, mirrorAmount, glowAt, eveningSun, moonLight, ghostWindow, spindriftAmount, lensAmount, whitecapCount, GHOST_EVERY_MS, GHOST_MS, GLOW_TOP, GLOW_FOOT, deckHeight, seasonOf, monthAt, shrubTone, freshSnow, minutesToSunrise, headlampCount, facetShade, cadenceOf, snowAmount,
 } from '../src/cities/el-chalten/massif.js';
 import { EMPTY, KINDS } from '../src/weather.js';
 
@@ -215,4 +215,16 @@ test('wind\'s marks: spindrift in a strong wind, a lens on a windy clear day, wh
   assert.ok(whitecapCount(40, false) > whitecapCount(28, false));
   assert.equal(whitecapCount(60, true), 0, 'none on ice');
   assert.ok(whitecapCount(1e9, false) <= 26);
+});
+
+test('snowAmount: winter 1, February least, frost adds a quarter, never above 1', () => {
+  assert.equal(snowAmount('winter', 7, 0), 1);
+  assert.equal(snowAmount('winter', 7, 1), 1);
+  assert.equal(snowAmount('spring', 10, 0), 0.75);
+  assert.equal(snowAmount('autumn', 4, 0), 0.55);
+  assert.equal(snowAmount('summer', 1, 0), 0.4);
+  assert.equal(snowAmount('summer', 2, 0), 0.3);
+  assert.equal(snowAmount('summer', null, 0), 0.4, 'no month reads as an ordinary summer day');
+  assert.equal(snowAmount('summer', 1, 1), 0.65);
+  assert.ok(snowAmount('summer', 2, 1) > snowAmount('summer', 2, 0));
 });

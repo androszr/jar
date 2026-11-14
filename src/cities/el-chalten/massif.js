@@ -166,6 +166,12 @@ export function shrubTone(month) {
   if (month === 4) return 1;
   return month === 3 || month === 5 ? 0.6 : 0;
 }
+// How much snow the wall carries, 0..1: most in winter, least at the end of summer
+// (February), a quarter more after a freezing reading. No month reads as summer.
+export function snowAmount(season, month, fresh) {
+  const base = season === 'winter' ? 1 : season === 'spring' ? 0.75 : season === 'autumn' ? 0.55 : month === 2 ? 0.3 : 0.4;
+  return clamp(base + (fresh ? 0.25 : 0));
+}
 export const freshSnow = (temperature) => (typeof temperature === 'number' && Number.isFinite(temperature) && temperature < 0 ? 1 : 0);
 
 // Minutes until the city's next sunrise, from the jar's own sunrise maths; null

@@ -13,8 +13,9 @@ import { hash2 } from '../../skyweather.js';
 import { EL_CHALTEN as EC } from './palette.js';
 import {
   GLOW_TOP, GLOW_FOOT, visibilityBand, windOf, coverOf, plumeSide, mirrorAmount, glowLine, glowStrength, glowAt,
-  silhouetteAmount, monthAt, seasonOf, freshSnow, facetShade, moonLight,
+  silhouetteAmount, monthAt, seasonOf, freshSnow, facetShade, moonLight, snowAmount,
 } from './massif.js';
+import { inside, chainY, occlusion, buildSnow, buildSaddle, glacierFingers, visibleSnow } from './snow.js';
 
 export const SEED = 0xf172;
 // the lake's far shore, and the gravel shore below it
@@ -44,26 +45,6 @@ export function layout(w, h, ox = 0, oy = 0) {
 // Fitz Roy's tip, the highest point of the skyline below
 export const SUMMIT = { x: 0.566, y: 0.085 };
 const hh = (i, k) => hash2(i, SEED + k);
-const chainY = (chain, x) => {
-  if (x <= chain[0][0]) return chain[0][1];
-  for (let i = 1; i < chain.length; i++) {
-    if (x <= chain[i][0]) {
-      const [x0, y0] = chain[i - 1];
-      const [x1, y1] = chain[i];
-      return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0 || 1);
-    }
-  }
-  return chain[chain.length - 1][1];
-};
-const inside = (poly, x, y) => {
-  let c = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i];
-    const [xj, yj] = poly[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
-  }
-  return c;
-};
 
 // The skylines, left to right. Fitz Roy is the dominant tower: a steep clean south
 // edge, the summit, and a north shoulder stepping down; Poincenot is the blade
@@ -89,7 +70,7 @@ const FAR_RIDGE = [[-0.04, 0.4], [0, 0.368], [0.035, 0.352], [0.07, 0.328], [0.0
 // A plane faces a little left (-1, the south, in shade) or right (1, the north, in
 // the sun): the flanks follow the side of the summit they stand on, and the pillars
 // near the summit alternate, which is what makes the tower read as fluted granite.
-// Ridges, cracks with a snow sliver lodged on a ledge, and a vertical grain sit on top.
+// Ridges, cracks and a vertical grain sit on top; the snow is laid on the ribs by buildSnow.
 function rockBody(ridge, slabs, k, grain, base = SHORE) {
   const n = ridge.length - 1;
   const idx = Array.from({ length: slabs + 1 }, (_, j) => Math.round((j * n) / slabs));
@@ -106,7 +87,7 @@ function rockBody(ridge, slabs, k, grain, base = SHORE) {
   const facets = [];
   const ridges = [];
   const couloirs = [];
-  const streaks = [];
+  const couloirRibs = [];
   for (let j = 0; j < slabs; j++) {
     const run = ridge.slice(idx[j], idx[j + 1] + 1);
     const cx = run.reduce((s, p) => s + p[0], 0) / run.length;
@@ -118,12 +99,11 @@ function rockBody(ridge, slabs, k, grain, base = SHORE) {
   for (let j = 1; j < slabs; j++) {
     const t = ridge[idx[j]];
     ridges.push([t, mid[j], bot[j]]);
-    // snow lodged on a ledge part-way down the rib, not hanging from the crest
-    const s = 0.3 + 0.35 * hh(j, k + 11);
-    const q = [t[0] + (mid[j][0] - t[0]) * s, t[1] + (mid[j][1] - t[1]) * s];
-    streaks.push([[q[0] - 0.008, q[1] + 0.001], [q[0] - 0.001, q[1] - 0.002], [q[0] + 0.008, q[1]], [q[0] + 0.003, q[1] + 0.0028], [q[0] - 0.004, q[1] + 0.003]]);
-    // a crack: a thin dark wedge from the notch down the pillar's edge
-    if (j % 2 === 1) couloirs.push([[t[0], t[1] + 0.008], [mid[j][0] + 0.0045, mid[j][1]], [mid[j][0] - 0.0045, mid[j][1]]]);
+    // a crack: a thin dark wedge from the notch down the pillar's edge (and the gully its snow runs in)
+    if (j % 2 === 1) {
+      couloirRibs.push(j);
+      couloirs.push([[t[0], t[1] + 0.008], [mid[j][0] + 0.0045, mid[j][1]], [mid[j][0] - 0.0045, mid[j][1]]]);
+    }
   }
   const g = [];
   for (let i = 0; i < grain; i++) {
@@ -133,7 +113,7 @@ function rockBody(ridge, slabs, k, grain, base = SHORE) {
     const y0 = y + Math.max(0, base - y - len - 0.01) * hh(i, k + 40) * 0.6;
     g.push([[x, y0], [x + (hh(i, k + 50) - 0.5) * 0.006, y0 + len]]);
   }
-  return { outline: [...ridge, [xmax, base], [xmin, base]], facets, ridges, couloirs, streaks, grain: g, ledge: mid };
+  return { outline: [...ridge, [xmax, base], [xmin, base]], facets, ridges, couloirs, couloirRibs, snow: [], k, grain: g, ledge: mid };
 }
 
 // The night sky's own things: a band of the Milky Way (soft cloud and star dust
@@ -154,6 +134,11 @@ function buildSky() {
   };
 }
 
+// Sample points the smoke check reads on bare granite (the left and right faces of
+// Fitz Roy's fin, the alpenglow spot, the bivouac light and the wall beside it);
+// buildSnow keeps them clear.
+export const BARE = [[0.465, 0.33], [0.61, 0.2], [0.56, 0.16], [0.57, 0.25], [0.525, 0.25]];
+
 export function buildPlates(w, h) {
   // Poincenot (the blade), Fitz Roy (the tower), the needles stepping down to the
   // north, and the three to the south, a little further off
@@ -164,17 +149,11 @@ export function buildPlates(w, h) {
     south: SOUTH.map((r, i) => rockBody(r, 2, 500 + i * 10, 6)),
   };
   const far = rockBody(FAR_RIDGE, 3, 400, 0);
-  // the snow that lies on the wall: the apron at Poincenot's foot, the shelf under
-  // Fitz Roy's north shoulder, and one hanging patch on the face; then the caps
-  const snowfields = [
-    [[0.355, 0.376], [0.37, 0.36], [0.384, 0.342], [0.394, 0.336], [0.404, 0.346], [0.416, 0.36], [0.43, 0.374]],
-    [[0.6, 0.366], [0.62, 0.348], [0.64, 0.33], [0.654, 0.318], [0.664, 0.312], [0.672, 0.326], [0.678, 0.345], [0.682, 0.358], [0.65, 0.364]],
-    [[0.528, 0.222], [0.545, 0.212], [0.562, 0.214], [0.553, 0.226], [0.538, 0.23]],
-  ];
+  // the snow that lies on the wall is laid on the ribs below; these are the three caps on the crests
   const caps = [
     [[0.553, 0.093], [SUMMIT.x, SUMMIT.y], [0.576, 0.0925], [0.57, 0.099], [0.558, 0.1]],
-    [[0.62, 0.167], [0.632, 0.17], [0.643, 0.183], [0.632, 0.178]],
-    [[0.776, 0.2175], [0.782, 0.214], [0.797, 0.2185], [0.788, 0.225]],
+    [[0.62, 0.167], [0.632, 0.17], [0.643, 0.183], [0.639, 0.1835], [0.632, 0.178]],
+    [[0.776, 0.2175], [0.782, 0.214], [0.797, 0.2185], [0.7945, 0.2235], [0.788, 0.225]],
   ];
   // the hanging glacier at the foot of the wall: its upper margin runs up into the
   // gullies, its front is an ice cliff standing over a bench of dark slabs
@@ -197,6 +176,13 @@ export function buildPlates(w, h) {
     const lean = (hh(i, 63) - 0.7) * 0.02;
     return [[x - lean, yt + (yb - yt) * (0.2 + 0.3 * hh(i, 64))], [x - lean * 0.4, yt + (yb - yt) * 0.7], [x, yb]];
   });
+  for (const b of [bodies.poincenot, bodies.fitzroy, ...bodies.needles, ...bodies.south]) b.snow = buildSnow(b, hh, b.k, BARE, (x) => occlusion(margin, x));
+  // the saddle between Poincenot and Fitz Roy, on the skyline the two share, split at the col
+  const skyline = (x) => Math.min(x <= POINCENOT[POINCENOT.length - 1][0] ? chainY(POINCENOT, x) : 1, x >= FITZ[0][0] ? chainY(FITZ, x) : 1);
+  const colX = 0.459;
+  const saddle = buildSaddle(skyline, [colX, skyline(colX)], [0.428, 0.436, 0.444, 0.452, colX, 0.466, 0.473], [bodies.poincenot, bodies.fitzroy], (i) => hh(i, 500 + i), BARE);
+  if (saddle[0]) bodies.poincenot.snow.push(saddle[0]);
+  if (saddle[1]) bodies.fitzroy.snow.push(saddle[1]);
   const glacier = {
     outline: [...margin, ...front.slice().reverse()],
     front, brow,
@@ -218,7 +204,10 @@ export function buildPlates(w, h) {
       [[0.86, 0.402], [0.93, 0.394], [1.0, 0.398], [0.97, 0.416], [0.89, 0.42]],
     ],
     melt: [[0.6, 0.45], [0.6, 0.466], [0.594, 0.482], [0.59, 0.5]],
+    fingers: [],
   };
+  // the glacier's upper margin climbs into the gullies of the needles above it
+  glacier.fingers = glacierFingers(bodies.needles, margin, BARE);
   // the moraine: a low brown hill on the left and the slope under the bench on the
   // right, both well below the wall; scree on it, and the snow patches of the season
   const moraine = [[-0.04, 0.5], [-0.04, 0.452], [0, 0.44], [0.05, 0.422], [0.1, 0.408], [0.15, 0.4], [0.19, 0.398], [0.23, 0.405], [0.27, 0.418], [0.31, 0.412], [0.345, 0.405], [0.38, 0.412],
@@ -231,7 +220,7 @@ export function buildPlates(w, h) {
     if (inside(moraine, x, y) || inside(slope, x, y)) scree.push({ x, y, r: 0.0025 + 0.004 * hh(i, 72), shade: hh(i, 73) });
   }
   return {
-    w, h, ...bodies, far, snowfields, caps, glacier,
+    w, h, ...bodies, far, caps, glacier,
     moraine: {
       outline: moraine,
       shade: [[-0.04, 0.5], [-0.04, 0.452], [0, 0.44], [0.05, 0.422], [0.08, 0.448], [0.05, 0.475], [0.02, 0.5]],
@@ -343,7 +332,7 @@ export function mood(tint, weather, nowMs, location, phase = null, reduced = fal
   const moon = hasPhase ? moonLight(phase, nowMs) : { up: false, x: 0.5, y: 0.4, k: 0 };
   return {
     n, band, wind, side: plumeSide(weather && weather.windDir), cover,
-    month, season, frozen, fresh: freshSnow(weather && weather.temperature), mirror: mirrorAmount(wind, band, frozen),
+    month, season, frozen, fresh: freshSnow(weather && weather.temperature), snow: snowAmount(season, month, freshSnow(weather && weather.temperature)), mirror: mirrorAmount(wind, band, frozen),
     kind: weather && weather.known ? weather.kind : null,
     glowK: hasPhase && band !== 'hidden' ? glowStrength(phase) : 0,
     line: hasPhase ? glowLine(phase) : 0,
@@ -414,13 +403,20 @@ export function snowTone(m, shade = 0) {
   return mix(day, night, m.n);
 }
 
-// Snow lying on the wall at height `y`: it dims with the rock at dusk and at
-// night, takes the moon, and turns pink in the first light.
-export function wallSnow(phase, tint, m, y = SUMMIT.y) {
-  let c = mix(snowTone(m), EC.graniteNight, m.n * 0.3 * (1 - m.moon.k));
+// Snow lying on the wall at height `y`, on rock turned `facing`: by day white where
+// the rock is lit and blue-grey where it is in shade (the granite's own hour-and-facing
+// rule); where that rule gives no difference (night, the evening silhouette) the facing
+// does nothing and the snow is what it always was. It dims with the rock at dusk and
+// at night, takes the moon, turns pink in the first light, and is hazed with its body
+// (`haze`, the rock's own; the front wall's share is the fixed tenth it always had).
+export function wallSnow(phase, tint, m, facing = 0, y = SUMMIT.y, haze = HAZE.wall) {
+  const lit = facetShade(facing, phase, tint.light);
+  const spread = facetShade(1, phase, tint.light) - facetShade(-1, phase, tint.light);
+  const shade = clamp(1 - lit - 0.5 * (1 - spread));
+  let c = mix(snowTone(m, shade), EC.graniteNight, m.n * 0.3 * (1 - m.moon.k));
   c = mix(c, EC.graniteDusk, m.sil * 0.62);
   c = mix(c, EC.emberSnow, 0.85 * glowShare(m, y));
-  return mix(c, tint.skyLow, 0.1);
+  return mix(c, tint.skyLow, (0.1 * haze) / HAZE.wall);
 }
 
 function drawRock(ctx, L, body, phase, tint, m, haze) {
@@ -451,18 +447,13 @@ function drawRock(ctx, L, body, phase, tint, m, haze) {
   for (const r of body.ridges) line(ctx, L, r);
   ctx.fillStyle = css(crack, 0.5 + 0.2 * m.n);
   for (const c of body.couloirs) { poly(ctx, L, c); ctx.fill(); }
-  for (const s of body.streaks) {
-    ctx.fillStyle = css(wallSnow(phase, tint, m, s[0][1]), 0.95);
-    poly(ctx, L, s);
+  // the snow: ribbons, aprons, ledge slivers and the saddle, more of it in the cold;
+  // a glacier finger is the glacier's, drawn with it
+  for (const sn of visibleSnow(body.snow, m.snow)) {
+    if (sn.kind === 'finger') continue;
+    ctx.fillStyle = css(wallSnow(phase, tint, m, sn.facing, Math.min(...sn.poly.map((p) => p[1])), haze), 0.96);
+    poly(ctx, L, sn.poly);
     ctx.fill();
-  }
-  // in the cold every ledge carries a second, wider sliver under the first
-  if (m.frozen || m.fresh) {
-    for (const s of body.streaks) {
-      ctx.fillStyle = css(wallSnow(phase, tint, m, s[0][1]), m.frozen ? 0.9 : 0.6);
-      poly(ctx, L, s.map(([x, y]) => [s[1][0] + (x - s[1][0]) * 1.5 + 0.004, y + 0.012]));
-      ctx.fill();
-    }
   }
   // by night a thin moonlit rim keeps the skyline
   if (m.n > 0.3) {
@@ -477,6 +468,7 @@ function drawRock(ctx, L, body, phase, tint, m, haze) {
   body.grain.forEach((g, i) => { if (i % 2 === 1) line(ctx, L, g); });
 }
 
+const CAP_FACING = 0.6;
 // The evening sun goes down behind the col between Poincenot and Fitz Roy.
 export const SUN_X = 0.452;
 // Air between the layers: each one further off is paler, and a thin haze lies
@@ -489,16 +481,10 @@ export function drawWall(ctx, L, phase, tint, plates, m) {
   drawRock(ctx, L, plates.poincenot, phase, tint, m, HAZE.wall);
   drawRock(ctx, L, plates.fitzroy, phase, tint, m, HAZE.wall);
   for (const b of plates.needles) drawRock(ctx, L, b, phase, tint, m, HAZE.wall);
-  for (const s of [...plates.snowfields, ...plates.caps]) {
-    ctx.fillStyle = css(wallSnow(phase, tint, m, s[0][1]), 0.96);
+  // the caps on the crests take the sun
+  for (const s of plates.caps) {
+    ctx.fillStyle = css(wallSnow(phase, tint, m, CAP_FACING, s[0][1]), 0.96);
     poly(ctx, L, s);
-    ctx.fill();
-  }
-  // the gullies' own shadow side: the south half of each snow cone is blue
-  ctx.fillStyle = css(mix(snowTone(m, 1), EC.graniteDusk, m.sil * 0.5), 0.35);
-  for (const s of plates.snowfields.slice(0, 2)) {
-    const tip = s.reduce((a, p) => (p[1] < a[1] ? p : a));
-    poly(ctx, L, [s[0], ...s.slice(1, s.indexOf(tip) + 1), [(s[0][0] + s[s.length - 1][0]) / 2, s[0][1]]]);
     ctx.fill();
   }
   // the haze at the foot of the wall
@@ -531,6 +517,13 @@ export function drawGlacier(ctx, L, phase, tint, plates, m) {
   poly(ctx, L, g.outline);
   ctx.fillStyle = css(ice(EC.glacier, 0.37));
   ctx.fill();
+  // its fingers up the needles' gullies: glacier, lit or shaded by the rock they lie in
+  for (const f of g.fingers) {
+    const top = Math.min(...f.poly.map((p) => p[1]));
+    ctx.fillStyle = css(mix(ice(EC.glacier, top), wallSnow(phase, tint, m, f.facing, top), 0.25));
+    poly(ctx, L, f.poly);
+    ctx.fill();
+  }
   ctx.fillStyle = css(ice(EC.glacierShade, 0.39), 0.8);
   for (const s of g.shades) { poly(ctx, L, s); ctx.fill(); }
   poly(ctx, L, g.cliff);

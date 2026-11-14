@@ -27,6 +27,8 @@ import { localTimeText, localDate, sunFraction, dayFraction, wallToMs } from '..
 import { normalise } from '../api/weather.js';
 import { dayName, nextFlashPeak, cloudDrift, cloudTravel } from '../src/weather.js';
 import { PLACES } from '../src/cities/places.js';
+import { buildPlates as chaltenPlates, BARE } from '../src/cities/el-chalten/scene.js';
+import { inside as chaltenInside } from '../src/cities/el-chalten/snow.js';
 
 const OUT = 'test-output';
 const failures = [];
@@ -220,6 +222,11 @@ const patch = (page, id, bx, by, r) => page.evaluate(([jar, x, y, rad]) => {
   for (let i = 0; i < d.length; i += 4) rows.push([d[i], d[i + 1], d[i + 2]]);
   return rows;
 }, [id, bx, by, r]);
+// One pixel at each of a list of scene shares, [r, g, b] each
+const rgbAtShares = (page, id, pts) => page.evaluate(([jar, ps]) => {
+  const ctx = document.getElementById('view').getContext('2d');
+  return ps.map(([x, y]) => { const p = window.__jar.bodyPx(jar, x, y); const d = ctx.getImageData(Math.round(p.x), Math.round(p.y), 1, 1).data; return [d[0], d[1], d[2]]; });
+}, [id, pts]);
 const some = (rows, f) => rows.some(([r, g, b]) => f(r, g, b));
 const all = (rows, f) => rows.every(([r, g, b]) => f(r, g, b));
 const luma = (rows) => rows.reduce((s, [r, g, b]) => s + 0.2126 * r + 0.7152 * g + 0.0722 * b, 0) / rows.length;
@@ -597,7 +604,7 @@ try {
   await deepC.close();
 
   // the bands, the clock, the seasons and the rock, with pixels sampled
-  // Share pairs read from buildPlates: Fitz Roy's fin has a left-facing face at (0.465, 0.33) and a right-facing one at (0.61, 0.2), both clear of snow, gullies, ridges and facet edges;
+  // Share pairs read from buildPlates: Fitz Roy's fin has a left-facing face at (0.465, 0.33) and a right-facing one at (0.61, 0.2), both clear of snow, gullies, ridges and facet edges (buildSnow keeps every point of BARE clear: those two, the alpenglow spot (0.56, 0.16), the bivouac light (0.57, 0.25) and the wall beside it (0.525, 0.25));
   // the summit tip is (0.566, 0.111); the bivouac light (0.57, 0.25); the first headlamp (0.16, 0.69); open lake at (0.2, 0.62).
   // Moments are in January (summer) and July, in the past: a pin ahead of the real clock would age the stub answer to stale.
   const T_NOON_C = Date.UTC(2026, 0, 21, 16, 0); // 13:00 in El Chaltén, midsummer
@@ -638,10 +645,27 @@ try {
   // the rock is lit by the hour, not painted on
   const left = luma(await patch(cp, 'el-chalten', 0.465, 0.33, 1));
   const right = luma(await patch(cp, 'el-chalten', 0.61, 0.2, 1));
+  // snow in a gully: white where the rock is lit, blue-grey where it is in shade (read from the same plates the page builds)
+  const chaltenWall = chaltenPlates(340, 396);
+  const gullyPool = [chaltenWall.fitzroy, chaltenWall.poincenot].flatMap((b) => b.snow.filter((s) => s.kind === 'gully' && s.hold === 0 && s.probe[1] < 0.34 && BARE.every(([bx, by]) => Math.hypot(bx - s.probe[0], by - s.probe[1]) > 0.02)));
+  const litGully = gullyPool.filter((s) => s.facing > 0.5).sort((a, b) => b.facing - a.facing)[0];
+  const shadedGully = gullyPool.filter((s) => s.facing < -0.5).sort((a, b) => a.facing - b.facing)[0];
+  // the open wall above the glacier: every point of it on the rock of Fitz Roy, Poincenot or a needle
+  const openWall = [];
+  for (let x = 0.34; x < 0.95; x += 0.006) for (let y = 0.1; y < 0.325; y += 0.006) if ([chaltenWall.fitzroy, chaltenWall.poincenot, ...chaltenWall.needles].some((b) => chaltenInside(b.outline, x, y))) openWall.push([x, y]);
+  const wallSummer = await rgbAtShares(cp, 'el-chalten', openWall);
+  const snowLit = litGully ? await patch(cp, 'el-chalten', litGully.probe[0], litGully.probe[1], 1) : [];
+  const snowShaded = shadedGully ? await patch(cp, 'el-chalten', shadedGully.probe[0], shadedGully.probe[1], 1) : [];
   await at(T_NIGHT_C);
+  const snowLitNight = litGully ? await patch(cp, 'el-chalten', litGully.probe[0], litGully.probe[1], 1) : [];
+  const snowShadedNight = shadedGully ? await patch(cp, 'el-chalten', shadedGully.probe[0], shadedGully.probe[1], 1) : [];
   const nLeft = luma(await patch(cp, 'el-chalten', 0.465, 0.33, 1));
   const nRight = luma(await patch(cp, 'el-chalten', 0.61, 0.2, 1));
   check(Math.abs(right - left) >= 12 && Math.abs(nRight - nLeft) <= 6, `El Chaltén facets differ by the hour (noon ${Math.abs(right - left).toFixed(0)}, night ${Math.abs(nRight - nLeft).toFixed(0)})`);
+  check(snowLit.length > 0 && snowShaded.length > 0
+    && all(snowLit, (r, g, b) => r > 190 && g > 190 && b > 190) && luma(snowLit) - luma(snowShaded) >= 12 && some(snowShaded, (r, g, b) => b > r + 8)
+    && Math.abs(luma(snowLitNight) - luma(snowShadedNight)) <= 6,
+  `El Chaltén snow is white in the sun and blue-grey in the shade (noon ${luma(snowLit).toFixed(0)} against ${luma(snowShaded).toFixed(0)}, night ${Math.abs(luma(snowLitNight) - luma(snowShadedNight)).toFixed(0)} apart)`);
   const smoking = await at(T_NOON_C, chaltenBody({ cloud: 20, wind: 60, dir: 225 }));
   check(smoking.band === 'smoking' && smoking.plume > 0.2 && (await lineOf()) === 'FITZ ROY · SMOKING', 'a strong south-westerly smokes the summit');
   // 250 for the plume, or the quicker tick of somebody walking along the shore
@@ -683,6 +707,11 @@ try {
   check(winter.season === 'winter' && winter.frozen === true && winter.mirror === 0, 'in July the lake is frozen and mirrors nothing');
   check(luma(await patch(cp, 'el-chalten', 0.2, 0.62, 2)) > 150, 'the frozen lake is pale ice');
   await cp.screenshot({ path: join(OUT, 'el-chalten-winter.png') });
+  // the winter wall carries snow where the summer noon wall showed granite, on the open wall above the glacier
+  const wallWinter = await rgbAtShares(cp, 'el-chalten', openWall);
+  const lumaOf1 = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const newSnow = wallWinter.filter((w, i) => { const s = wallSummer[i]; return s[0] >= s[2] - 12 && lumaOf1(s) < 200 && lumaOf1(w) > lumaOf1(s) + 30 && w[2] >= w[0] - 12; }).length;
+  check(newSnow >= 25, `the winter wall has snow where the summer wall showed granite (${newSnow} of ${openWall.length} points on the open wall)`);
   check(cpSeen.errors.length === 0 && cpSeen.off.length === 0, `no console errors or off-origin requests in the el-chalten run${cpSeen.errors.length ? `: ${cpSeen.errors.join(' | ')}` : ''}`);
   await cp.close();
 
