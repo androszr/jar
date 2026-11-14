@@ -781,6 +781,27 @@ try {
   // bare water is about -62 in red minus blue; a faint sandstone sliver lifts it well past -45
   check(some(await patch(noct, 'warsaw', 0.4, 0.662, 2), (r, g, b) => r - b >= -45), 'the Palace leaves a warm reflection on the river by day');
   await noct.screenshot({ path: join(OUT, 'warsaw-morning.png') });
+  // ---- golden hour: 20:15 in Warsaw, about 45 minutes before sunset (clear route) ----
+  const palaceDay = await patch(noct, 'warsaw', 0.4, 0.4, 2);
+  const varsoDayFlash = luma(await patch(noct, 'warsaw', 0.261, 0.3, 1)) - luma(await patch(noct, 'warsaw', 0.215, 0.3, 1));
+  const spireDayFlash = luma(await patch(noct, 'warsaw', 0.752, 0.33, 1)) - luma(await patch(noct, 'warsaw', 0.69, 0.33, 1));
+  const T_GOLDEN = Date.UTC(2026, 5, 15, 18, 15); // 20:15 in Warsaw, about 45 minutes before sunset
+  await noct.evaluate((t) => window.__jar.pin(t), T_GOLDEN);
+  await twoFrames(noct);
+  const palaceGold = await patch(noct, 'warsaw', 0.4, 0.4, 2);
+  const warmth = (rows) => rows.reduce((m, [r, , b]) => m + (r - b), 0) / rows.length;
+  const varsoFlash = luma(await patch(noct, 'warsaw', 0.261, 0.3, 1)) - luma(await patch(noct, 'warsaw', 0.215, 0.3, 1));
+  const spireFlash = luma(await patch(noct, 'warsaw', 0.752, 0.33, 1)) - luma(await patch(noct, 'warsaw', 0.69, 0.33, 1));
+  check(all(palaceGold, (r, g, b) => r - b >= 60) && warmth(palaceGold) - warmth(palaceDay) >= 20, `Palace is apricot at golden hour (${warmth(palaceGold).toFixed(0)} vs ${warmth(palaceDay).toFixed(0)} in the morning)`);
+  check(varsoFlash >= 40, `Varso flashes the low sun on its right face (${varsoFlash.toFixed(0)} brighter than its body)`);
+  check(spireFlash >= 40, `the Spire flashes the low sun on its right face (${spireFlash.toFixed(0)} brighter than its body)`);
+  check(varsoDayFlash < 25 && spireDayFlash < 25, `no flash in the morning (${varsoDayFlash.toFixed(0)}, ${spireDayFlash.toFixed(0)})`);
+  const hashG1 = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_GOLDEN);
+  const hashG2 = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_GOLDEN);
+  check(hashG1 === hashG2, 'golden hour draws the same pixels at the same moment');
+  await noct.screenshot({ path: join(OUT, 'warsaw-golden.png') });
+  await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
+  await twoFrames(noct);
   // the near-bank forest follows Warsaw's seasons (clear midday pins; summer is the deep green of T_DAY)
   const T_SPRING = Date.UTC(2026, 3, 20, 10);
   const T_AUTUMN = Date.UTC(2026, 9, 20, 10);

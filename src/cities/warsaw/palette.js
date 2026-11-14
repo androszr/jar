@@ -127,6 +127,12 @@ export const WARSAW = {
   stoneGoldenShade: [150, 104, 100],
   glassGolden: [255, 168, 96],
   cityGolden: [255, 176, 120],
+  // the rim of the glass towers and the low town's façades at golden hour, and the low sun's flash on one face of Varso and of the Spire
+  rimGolden: [255, 184, 120],
+  facadeGolden: [224, 170, 120],
+  sunFlash: [255, 236, 190],
+  sunFlashFoot: [255, 200, 140],
+  sunFlashGlow: [255, 220, 160],
   // the Palace's one clock: a small warm face, never white
   clockDay: [226, 206, 168],
   clockNight: [214, 160, 92],
