@@ -854,6 +854,8 @@ try {
   const clockP = await noct.evaluate(() => window.__jar.scene('warsaw').clock);
   check(dayOk === true && !!clockP && Math.abs(clockP.hour - Math.PI / 6) < 0.01 && Math.abs(clockP.minute) < 0.01, 'the Palace clock follows the day preview to 13:00');
   await noct.evaluate(() => window.__jar.previewDay(1)); // the same day again returns to now
+  const scrubBack = await noct.evaluate(() => window.__jar.scrubMin);
+  check(scrubBack === 0, `pressing the previewed day again returns the preview to now (${scrubBack} min)`);
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   check(!some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'no aviation light by day');
   const dayDeck = await deckScan(noct);
@@ -892,7 +894,10 @@ try {
   const sunGrey = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
   const shadeGrey = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
   check(Math.abs(sunGrey - shadeGrey) <= 8, `under full cloud the Palace's two faces are flat (${sunGrey} vs ${shadeGrey})`);
-  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5));
+  // the clear reading is accepted at the real now, not at the pinned morning: the feed ages its answer on the
+  // pinned clock, so one accepted at 10:30 on 15 June would be stale (EMPTY) at golden hour and at the full moon
+  await noct.evaluate((b) => { window.__jar.pin(Math.floor(Date.now() / 60000) * 60000); window.__jar.applyWeather(b); }, tidy(0, 5));
+  await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   await twoFrames(noct);
   const sunBack = luma(await patch(noct, 'warsaw', 0.4 - 0.035, 0.4, 2));
   const shadeBack = luma(await patch(noct, 'warsaw', 0.4 + 0.035, 0.4, 2));
@@ -944,6 +949,10 @@ try {
   await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   await twoFrames(noct);
   const T_CARD_FULL = Date.UTC(2026, 5, 29, 23, 30); // 01:30 in Warsaw, a full moon
+  // the overcast checks above left a tidy() body, which has no daily rows (no sunrise strip, so no moon line):
+  // fetch the route's clear answer again, accepted at the real now so the pinned clock never ages it
+  await noct.evaluate(() => window.__jar.pin(Math.floor(Date.now() / 60000) * 60000));
+  await noct.evaluate(() => window.__jar.refresh());
   await noct.evaluate((t) => window.__jar.pin(t), T_CARD_FULL);
   await twoFrames(noct);
   const ff = await noct.evaluate(() => window.__jar.forecast);
@@ -971,14 +980,15 @@ try {
   const clearNeedle = await patch(noct, 'warsaw', 0.235, 0.045, 2);
   const clearPalaceTop = await patch(noct, 'warsaw', 0.4, 0.1, 2);
   const clearShaft = await patch(noct, 'warsaw', 0.4, 0.4, 2);
-  // measured at T_DAY over the 5x5 patch at Varso's needle: overcast luma 130..181 and channel range <= 35, clear range up to 85 (saturated blue sky)
-  const greyPale = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b >= 125 && Math.max(r, g, b) - Math.min(r, g, b) <= 36;
+  // measured at T_DAY over the 5x5 patch at Varso's needle: overcast luma 130..181 and channel range <= 38 (with the overcast look pass), clear range up to 85 (saturated blue sky)
+  const greyPale = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b >= 125 && Math.max(r, g, b) - Math.min(r, g, b) <= 42;
   await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(3, 100));
   await settled(noct);
   await twoFrames(noct);
   check(all(await patch(noct, 'warsaw', 0.235, 0.045, 2), greyPale) && !all(clearNeedle, greyPale), "the cloud base swallows Varso's needle");
   check(all(await patch(noct, 'warsaw', 0.4, 0.1, 2), greyPale) && !all(clearPalaceTop, greyPale), 'the cloud base swallows the Palace needle');
-  check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 30), 'the Palace shaft stands under the cloud base');
+  // the overcast look pass greys the sandstone under full cloud (measured red over blue 21..23), still warm where the cloud is blue-grey
+  check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 12), 'the Palace shaft stands under the cloud base');
   const overA = await noct.evaluate(() => window.__jar.hash());
   const overB = await noct.evaluate(() => window.__jar.hash());
   check(overA === overB, 'the overcast draws the same pixels at the same moment');
