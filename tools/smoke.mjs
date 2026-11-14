@@ -837,7 +837,8 @@ try {
   await bp.goto(`${origin}/`);
   await ready(bp);
   await bp.waitForTimeout(600);
-  check(await labelIs(bp, 1, '—°', 'warsaw', 2000), 'label degrades to a dash');
+  check(await labelIs(bp, 1, 'no weather', 'warsaw', 2000), 'label degrades to "no weather"');
+  check(await bp.evaluate(() => document.getElementById('view').getAttribute('aria-label').includes('no weather')), 'and the spoken description says "no weather"');
   const hashes = await bp.evaluate(() => [window.__jar.hash(), window.__jar.blankHash()]);
   check(hashes[0] !== hashes[1], 'jar still draws');
   await bp.screenshot({ path: join(OUT, 'warsaw-no-weather.png') });
@@ -847,6 +848,37 @@ try {
   await viewIs(bp, 'jar');
   check(await bp.evaluate((d) => { const f = window.__jar.forecast; return !!f && f.cells.length === 5 && f.cells.every((c) => c.day === d[0] && c.high === d[1]); }, ['—', '—°']), 'degraded page lifts with a card of dashes');
   await bad.close();
+
+  // ---- a held reading: the service fails after a good answer ----------------
+  {
+    const hcx = await browser.newContext({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 });
+    const pg = await hcx.newPage();
+    const hSeen = watch(pg, origin);
+    await routeWeather(pg, 'fixture');
+    await pg.goto(`${origin}/`);
+    await ready(pg);
+    await labelIs(pg, 1, '12°');
+    const before = await pg.evaluate(() => window.__jar.labels.warsaw[1]);
+    const t0 = await pg.evaluate(() => Date.now());
+    await pinAt(pg, t0 + 20 * 60_000);
+    await pg.unroute('**/api/weather');
+    await routeWeather(pg, 'fail');
+    await pg.evaluate(() => window.__jar.refresh());
+    await twoFrames(pg);
+    const held = await labelIs(pg, 1, `${before} · 20 min old`);
+    check(held, `a failed refresh puts the age on the label (${before} then ${await pg.evaluate(() => window.__jar.labels.warsaw[1])})`);
+    check(await pg.evaluate(() => Object.values(window.__jar.labels).every((l) => l[1].endsWith(' min old'))), 'min old on every jar that holds a reading');
+    await pg.evaluate(() => window.__jar.lift('warsaw'));
+    await viewIs(pg, 'jar');
+    await twoFrames(pg);
+    check(await pg.evaluate(() => document.getElementById('view').getAttribute('aria-label').includes('from a reading 20 minutes old')), 'and the lifted description says "from a reading 20 minutes old"');
+    await pg.unroute('**/api/weather');
+    await routeWeather(pg, 'fixture');
+    await pg.evaluate(() => window.__jar.refresh());
+    check(await labelIs(pg, 1, before), 'the next good answer clears the age');
+    check(hSeen.off.length === 0, 'the held-reading page stays on its own origin');
+    await hcx.close();
+  }
 
   // ---- no daily block: the card is dashes, nothing errors ---------------------
   const nod = await browser.newContext({ viewport: { width: 1280, height: 960 }, deviceScaleFactor: 1 });
@@ -1477,6 +1509,19 @@ try {
   check(fadingNow.length === 3 && (await fp.evaluate(() => window.__jar.fading.length)) === 0, `a changed sky fades in and settles (${fadingNow.join(', ')})`);
   await fp.evaluate((b) => window.__jar.applyWeather(b), rainBody);
   check((await fp.evaluate(() => window.__jar.fading.length)) === 0, 'the same sky again fades nothing');
+  // a reading that changes only the temperature fades all three jars
+  const colder = { ...rainBody, current: { ...rainBody.current, temperature_2m: 7 } };
+  await fp.evaluate((b) => window.__jar.applyWeather(b, { fade: true }), colder);
+  const tempFading = await fp.evaluate(() => window.__jar.fading);
+  await fp.waitForFunction(() => window.__jar.fading.length === 0, null, { timeout: 6000 }).catch(() => {});
+  check(tempFading.length === 3 && (await fp.evaluate(() => window.__jar.fading.length)) === 0, `a new temperature alone fades all three jars and settles (${tempFading.join(', ')})`);
+  // one that changes only Nazare's wave period fades Nazare alone
+  await fp.evaluate((b) => window.__jar.applyWeather(b), seaBody(2.4));
+  const slower = tidy(0, 5, 9, { nazare: { ...seaBody(2.4).cities.nazare, sea: { waveHeight: 2.4, wavePeriod: 13, waveDir: 300 } } });
+  await fp.evaluate((b) => window.__jar.applyWeather(b, { fade: true }), slower);
+  const periodFading = await fp.evaluate(() => window.__jar.fading);
+  check(periodFading.length === 1 && periodFading[0] === 'nazare', `a new wave period alone fades Nazare alone (${periodFading.join(', ')})`);
+  await fp.waitForFunction(() => window.__jar.fading.length === 0, null, { timeout: 6000 }).catch(() => {});
   await fp.screenshot({ path: join(OUT, 'table-rain.png') });
   await fp.evaluate((b) => window.__jar.applyWeather(b), JSON.parse(bodyOf(dated)));
 

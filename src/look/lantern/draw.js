@@ -299,16 +299,16 @@ export function chalkWidth(ctx, str, size) {
   return ctx.measureText(str).width;
 }
 
-// The size at which str fits in maxW, never below 0.7 of size.
-export function fitSize(ctx, str, size, maxW) {
+// The size at which str fits in maxW, never below `min` (0.7) of size.
+export function fitSize(ctx, str, size, maxW, min = 0.7) {
   ctx.font = `500 ${size}px ${MONO}`;
   const width = ctx.measureText(str).width;
-  return width <= maxW ? size : Math.max(size * maxW / width, size * 0.7);
+  return width <= maxW ? size : Math.max(size * maxW / width, size * min);
 }
 
 // A small dark plate with a brass edge and three monospace lines
 // ([title, temperature, time]), or four when a swell line follows.
-export function label(ctx, rect, lines) {
+export function label(ctx, rect, lines, { dim = false } = {}) {
   const { x, y, w, h } = rect;
   ctx.save();
   ctx.fillStyle = css(PALETTE.plate, 0.88);
@@ -322,12 +322,12 @@ export function label(ctx, rect, lines) {
   if (lines.length >= 4) {
     // Four lines sit a little tighter than three; the temperature stays the largest.
     text(ctx, lines[0] ?? '', cx, y + h * 0.16, fitSize(ctx, lines[0] ?? '', h * 0.15, w - 16), PALETTE.labelDim);
-    text(ctx, lines[1] ?? '', cx, y + h * 0.44, h * 0.27, PALETTE.labelInk);
+    text(ctx, lines[1] ?? '', cx, y + h * 0.44, fitSize(ctx, lines[1] ?? '', h * 0.27, w - 16, 0.55), dim ? PALETTE.labelDim : PALETTE.labelInk);
     text(ctx, lines[2] ?? '', cx, y + h * 0.68, h * 0.15, PALETTE.labelDim);
     text(ctx, lines[3] ?? '', cx, y + h * 0.87, h * 0.15, PALETTE.labelDim);
   } else {
     text(ctx, lines[0] ?? '', cx, y + h * 0.22, fitSize(ctx, lines[0] ?? '', h * 0.17, w - 16), PALETTE.labelDim);
-    text(ctx, lines[1] ?? '', cx, y + h * 0.52, h * 0.3, PALETTE.labelInk);
+    text(ctx, lines[1] ?? '', cx, y + h * 0.52, fitSize(ctx, lines[1] ?? '', h * 0.3, w - 16, 0.55), dim ? PALETTE.labelDim : PALETTE.labelInk);
     text(ctx, lines[2] ?? '', cx, y + h * 0.82, h * 0.17, PALETTE.labelDim);
   }
   ctx.restore();

@@ -18,9 +18,13 @@ test('labelLines with weather: [TITLE, temperature, HH:MM in the city zone]', ()
   assert.deepEqual(lines, ['WARSAW, POLAND', '12°', '14:05']);
 });
 
-test('labelLines without weather reads a dash for the temperature', () => {
-  assert.deepEqual(labelLines(warsaw, EMPTY, NOW), ['WARSAW, POLAND', '—°', '14:05']);
-  assert.deepEqual(labelLines(warsaw, undefined, NOW)[1], '—°');
+test('labelLines without weather reads "no weather" for the temperature', () => {
+  assert.deepEqual(labelLines(warsaw, EMPTY, NOW), ['WARSAW, POLAND', 'no weather', '14:05']);
+  assert.deepEqual(labelLines(warsaw, undefined, NOW)[1], 'no weather');
+});
+
+test('labelLines with a held reading adds how old it is', () => {
+  assert.equal(labelLines(warsaw, { temperature: 12.3, known: true }, NOW, null, 32 * 60000)[1], '12° · 32 min old');
 });
 
 test('the jar fits above the table line and inside the scene', () => {

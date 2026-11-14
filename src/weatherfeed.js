@@ -43,6 +43,12 @@ export class WeatherFeed {
     this.stopped = true;
   }
 
+  // Milliseconds since the shown answer arrived, while the last attempt to renew
+  // it failed; null when nothing is held, the last attempt was good, or it is stale.
+  heldFor(nowMs = this.now()) {
+    return this.fails > 0 && this.goodAt !== null && !this.isStale(nowMs) ? nowMs - this.goodAt : null;
+  }
+
   // Strict >, so exactly STALE_MS is fresh and a negative age (a pinned or
   // rewound clock) is fresh too.
   isStale(nowMs = this.now()) {
