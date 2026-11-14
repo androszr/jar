@@ -8,8 +8,7 @@ import { css, mix, glow, lightPatch } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
 import { EL_CHALTEN as EC } from './palette.js';
 import { HIDDEN_EDGE, plumeLength, deckHeight, eveningSun, ghostWindow, spindriftAmount, lensAmount } from './massif.js';
-import { visibleSnow } from './snow.js';
-import { SEED, SHORE, GRAVEL, SUMMIT, SUN_X, puff, poly, glowShare } from './scene.js';
+import { SEED, SHORE, GRAVEL, SUMMIT, SUN_X, puff, poly, glowShare, shownSnow } from './scene.js';
 
 const hh = (i, k) => hash2(i, SEED + k);
 const TURN = Math.PI * 2;
@@ -199,7 +198,7 @@ export function drawDeck(ctx, L, phase, tint, plates, nowMs, m, mirrored = false
     ctx.fillStyle = css(night(EC.ghost), 0.42 * ghost);
     for (const b of [...plates.south, plates.poincenot, plates.fitzroy, ...plates.needles]) { poly(ctx, L, b.outline); ctx.fill(); }
     ctx.fillStyle = css(night(EC.deck), 0.5 * ghost);
-    for (const b of [plates.poincenot, plates.fitzroy, ...plates.needles]) for (const s of visibleSnow(b.snow, m.snow)) { poly(ctx, L, s.poly); ctx.fill(); }
+    for (const b of [plates.poincenot, plates.fitzroy, ...plates.needles]) for (const s of shownSnow(b.snow, m)) { poly(ctx, L, s.poly); ctx.fill(); }
     for (const s of plates.caps) { poly(ctx, L, s); ctx.fill(); }
     ctx.restore();
     // ... and its foot is still in the cloud
