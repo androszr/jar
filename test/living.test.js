@@ -279,3 +279,10 @@ test('nextFades: the stale drop fades from the held reading, and so does the rec
   const back = nextFades({}, { warsaw: EMPTY }, { warsaw: held }, 9, true);
   assert.equal(back.fades.warsaw.from, EMPTY);
 });
+
+test('a change in the low layer alone is a new sky and fades; no split on both sides is not', () => {
+  const a = { known: true, kind: 'cloud', cloudCover: 100, cloudLow: 100 };
+  assert.equal(pictureChanged(a, { ...a, cloudLow: 0 }), true);
+  assert.equal(pictureChanged(a, { ...a, cloudLow: null }), true);
+  assert.equal(pictureChanged({ ...a, cloudLow: null }, { ...a, cloudLow: null }), false);
+});

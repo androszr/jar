@@ -5,7 +5,7 @@
 import { PLACES } from '../src/cities/places.js';
 
 const ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
-const FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m';
+const FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high';
 // The sea: the wave height, period and direction off each city that has an
 // offshore point (`sea` in places.js), from Open-Meteo's marine service.
 const MARINE_ENDPOINT = 'https://marine-api.open-meteo.com/v1/marine';
@@ -17,8 +17,8 @@ const MARINE_DAILY = 'wave_height_max,wave_period_max';
 const MARINE_HOURLY = 'wave_height,sea_level_height_msl';
 const FORECAST_DAYS = 5;
 // Five days hour by hour (the lifted jar's scrub, and a day pressed on its
-// forecast card): the same six fields as `current`, 120 rows.
-const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m';
+// forecast card): the same nine fields as `current`, 120 rows.
+const HOURLY_FIELDS = 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high';
 const FORECAST_HOURS = 120;
 const CACHE = 'public, max-age=0, s-maxage=900';
 
@@ -158,7 +158,7 @@ function dailyRows(d) {
 }
 
 // The vendor's hourly block (parallel arrays) -> at most 120
-// { time, temperature, code, cloudCover, isDay, windSpeed, windDir }. `time` is
+// { time, temperature, code, cloudCover, cloudLow, cloudMid, cloudHigh, isDay, windSpeed, windDir }. `time` is
 // the vendor's local ISO "YYYY-MM-DDTHH:MM", kept as a string; bad rows dropped.
 export function hourlyRows(h) {
   if (!h || typeof h !== 'object' || !Array.isArray(h.time)) return [];
@@ -172,6 +172,9 @@ export function hourlyRows(h) {
       temperature: at(h.temperature_2m, i),
       code: at(h.weather_code, i),
       cloudCover: at(h.cloud_cover, i),
+      cloudLow: at(h.cloud_cover_low, i),
+      cloudMid: at(h.cloud_cover_mid, i),
+      cloudHigh: at(h.cloud_cover_high, i),
       isDay: at(h.is_day, i),
       windSpeed: at(h.wind_speed_10m, i),
       windDir: at(h.wind_direction_10m, i),
@@ -182,7 +185,7 @@ export function hourlyRows(h) {
 
 // The vendor body (an object for one place, an array for several) ->
 // { v, fetchedAt, ok, cities }. Six numeric fields (wind in km/h and degrees
-// the wind comes from) and the daily rows are kept, plus `sea` (the wave
+// the wind comes from), the low/mid/high cloud split (null when the vendor omits it) and the daily rows are kept, plus `sea` (the wave
 // reading, or null) from the optional marine body, and `hourly` (the next 120
 // hours, [] when the vendor leaves it out).
 export function normalise(payload, places, nowMs = Date.now(), marinePayload = null) {
@@ -196,6 +199,9 @@ export function normalise(payload, places, nowMs = Date.now(), marinePayload = n
       temperature: num(cur.temperature_2m),
       code: num(cur.weather_code),
       cloudCover: num(cur.cloud_cover),
+      cloudLow: num(cur.cloud_cover_low),
+      cloudMid: num(cur.cloud_cover_mid),
+      cloudHigh: num(cur.cloud_cover_high),
       isDay: num(cur.is_day),
       windSpeed: num(cur.wind_speed_10m),
       windDir: num(cur.wind_direction_10m),

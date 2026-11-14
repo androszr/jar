@@ -17,7 +17,7 @@ test('openMeteoUrl builds one request for one place', () => {
   assert.equal(u.pathname, '/v1/forecast');
   assert.equal(u.searchParams.get('latitude'), '52.23');
   assert.equal(u.searchParams.get('longitude'), '21.01');
-  assert.equal(u.searchParams.get('current'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m');
+  assert.equal(u.searchParams.get('current'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high');
   assert.equal(u.searchParams.get('timezone'), 'Europe/Warsaw');
   assert.equal(u.searchParams.get('daily'), 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant');
   assert.equal(u.searchParams.get('forecast_days'), '5');
@@ -36,7 +36,7 @@ test('normalise: the one-city object body', () => {
   assert.equal(r.v, 1);
   assert.equal(r.ok, true);
   assert.equal(r.fetchedAt, new Date(NOW).toISOString());
-  assert.deepEqual({ ...r.cities.warsaw, daily: undefined, hourly: undefined }, { temperature: 12.3, code: 61, cloudCover: 80, isDay: 1, windSpeed: 18.4, windDir: 250, daily: undefined, hourly: undefined, sea: null });
+  assert.deepEqual({ ...r.cities.warsaw, daily: undefined, hourly: undefined }, { temperature: 12.3, code: 61, cloudCover: 80, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: 1, windSpeed: 18.4, windDir: 250, daily: undefined, hourly: undefined, sea: null });
   assert.equal(r.cities.warsaw.daily.length, 5);
 });
 
@@ -57,12 +57,12 @@ test('normalise: a body without current gives no city and ok false', () => {
 
 test('normalise: missing fields are null, non-numeric fields are null', () => {
   const r = normalise({ current: { temperature_2m: '12', weather_code: 3, cloud_cover: NaN } }, [warsaw], NOW);
-  assert.deepEqual(r.cities.warsaw, { temperature: null, code: 3, cloudCover: null, isDay: null, windSpeed: null, windDir: null, daily: [], hourly: [], sea: null });
+  assert.deepEqual(r.cities.warsaw, { temperature: null, code: 3, cloudCover: null, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null, daily: [], hourly: [], sea: null });
 });
 
 test('normalise: extra keys are ignored', () => {
   const r = normalise({ current: { temperature_2m: 1, weather_code: 0, cloud_cover: 0, is_day: 0, wind: 9 }, hourly: {} }, [warsaw], NOW);
-  assert.deepEqual(Object.keys(r.cities.warsaw).sort(), ['cloudCover', 'code', 'daily', 'hourly', 'isDay', 'sea', 'temperature', 'windDir', 'windSpeed']);
+  assert.deepEqual(Object.keys(r.cities.warsaw).sort(), ['cloudCover', 'cloudHigh', 'cloudLow', 'cloudMid', 'code', 'daily', 'hourly', 'isDay', 'sea', 'temperature', 'windDir', 'windSpeed']);
 });
 
 test('a partly short array still answers the cities it has', () => {
@@ -384,7 +384,7 @@ test('a marine call that waits out its timeout never fails the weather body', as
 test('openMeteoUrl asks for the hourly list once and 120 forecast hours (five days)', () => {
   const u = new URL(openMeteoUrl([warsaw]));
   assert.equal(u.searchParams.getAll('hourly').length, 1);
-  assert.equal(u.searchParams.get('hourly'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m');
+  assert.equal(u.searchParams.get('hourly'), 'temperature_2m,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m,cloud_cover_low,cloud_cover_mid,cloud_cover_high');
   assert.equal(u.searchParams.get('forecast_hours'), '120');
   assert.equal(openMeteoUrl([warsaw]).split('hourly=').length - 1, 1);
 });
@@ -420,8 +420,8 @@ test('hourlyRows: a missing or junk block gives []', () => {
 test('hourlyRows: unequal arrays give nulls, a bad time drops the row, 120 at most', () => {
   const rows = hourlyRows({ time: ['2026-10-18T00:00', 'later', '2026-10-18T02:00'], temperature_2m: [5, 6], weather_code: null, cloud_cover: ['9', 1, 2] });
   assert.deepEqual(rows, [
-    { time: '2026-10-18T00:00', temperature: 5, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null },
-    { time: '2026-10-18T02:00', temperature: null, code: null, cloudCover: 2, isDay: null, windSpeed: null, windDir: null },
+    { time: '2026-10-18T00:00', temperature: 5, code: null, cloudCover: null, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null },
+    { time: '2026-10-18T02:00', temperature: null, code: null, cloudCover: 2, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: null, windSpeed: null, windDir: null },
   ]);
   const long = Array.from({ length: 200 }, (_, i) => `2026-10-${String(1 + Math.floor(i / 24)).padStart(2, '0')}T${String(i % 24).padStart(2, '0')}:00`);
   assert.equal(hourlyRows({ time: long }).length, 120);
@@ -558,4 +558,21 @@ test('a failed marine call is logged and asked only once', async () => {
   assert.equal(r.ok, true);
   assert.equal(sea, 1);
   assert.deepEqual(lines, ['weather: the marine call failed (sea down)']);
+});
+
+test('the cloud split: absent from the vendor is null, present is kept, junk is null', () => {
+  const cur = { temperature_2m: 5, weather_code: 3, cloud_cover: 100 };
+  const one = (extra) => normalise({ current: { ...cur, ...extra } }, [warsaw]).cities.warsaw;
+  const none = one({});
+  assert.deepEqual([none.cloudLow, none.cloudMid, none.cloudHigh], [null, null, null]);
+  const split = one({ cloud_cover_low: 100, cloud_cover_mid: 0, cloud_cover_high: 20 });
+  assert.deepEqual([split.cloudLow, split.cloudMid, split.cloudHigh], [100, 0, 20]);
+  assert.equal(one({ cloud_cover_low: 'x' }).cloudLow, null);
+});
+
+test('hourlyRows carries the cloudLow, cloudMid and cloudHigh of each hour, null where missing', () => {
+  const rows = hourlyRows({ time: ['2026-10-18T00:00', '2026-10-18T01:00'], cloud_cover_low: [30], cloud_cover_high: [5, 6] });
+  assert.deepEqual([rows[0].cloudLow, rows[1].cloudLow], [30, null]);
+  assert.deepEqual([rows[0].cloudMid, rows[1].cloudMid], [null, null]);
+  assert.deepEqual([rows[0].cloudHigh, rows[1].cloudHigh], [5, 6]);
 });

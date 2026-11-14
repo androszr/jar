@@ -120,7 +120,7 @@ const routeFile = async (page, name) => {
     route.fulfill({ status: 200, contentType: 'application/json', body: bodyOf(payload) }));
 };
 // A tidy body for one Warsaw answer (and optionally Nazare's), as __jar.applyWeather takes it.
-const tidy = (code, cover, temperature = 9, more = {}) => ({ v: 1, cities: { warsaw: { temperature, code, cloudCover: cover, isDay: 1, windSpeed: 3, windDir: 180 }, ...more } });
+const tidy = (code, cover, temperature = 9, more = {}, warsawMore = {}) => ({ v: 1, cities: { warsaw: { temperature, code, cloudCover: cover, isDay: 1, windSpeed: 3, windDir: 180, ...warsawMore }, ...more } });
 // Nazare, clear and light of wind, with a wave `h` metres high off the coast.
 const seaBody = (h) => tidy(0, 5, 9, { nazare: { temperature: 18, code: 0, cloudCover: 5, isDay: 1, windSpeed: 5, windDir: 300, sea: { waveHeight: h, wavePeriod: 12, waveDir: 300 } } });
 // El Chalten, as __jar.applyWeather takes it: cloud %, wind km/h from `dir` degrees, a vendor code, a temperature.
@@ -905,6 +905,41 @@ try {
   const fogB = await noct.evaluate(() => window.__jar.hash());
   check(fogA === fogB, 'the fog draws the same pixels at the same moment');
   await noct.screenshot({ path: join(OUT, 'warsaw-fog.png') });
+  // the cloud base follows the low layer: low overcast = the total-cover picture, high-only overcast = tops in view
+  const layer = async (warsawMore) => {
+    await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(3, 100, 9, {}, warsawMore));
+    await settled(noct);
+    await twoFrames(noct);
+  };
+  await layer({});
+  const hLayerless = await jarHash(noct);
+  await layer({ cloudLow: 100, cloudMid: 0, cloudHigh: 0 });
+  check((await jarHash(noct)) === hLayerless, 'a low overcast draws the base the total cover drew');
+  await layer({ cloudLow: 0, cloudMid: 0, cloudHigh: 100 });
+  const hHigh = await jarHash(noct);
+  check(hHigh !== hLayerless, 'a high overcast draws a different jar');
+  const nHigh = await patch(noct, 'warsaw', 0.235, 0.045, 2);
+  check(!all(nHigh, greyPale), "a high overcast leaves Varso's needle out of the cloud");
+  check(hHigh === (await jarHash(noct)), 'the high overcast draws the same pixels at the same moment');
+  await noct.screenshot({ path: join(OUT, 'warsaw-overcast-high.png') });
+  // the other two jars, on the table where they are painted: the same overcast reading, with and without the split
+  const tbl = await desk.newPage();
+  await routeWeather(tbl, 'clear');
+  await tbl.goto(`${origin}/`);
+  await ready(tbl);
+  await settled(tbl);
+  await tbl.evaluate((t) => window.__jar.pin(t), T_DAY);
+  const otherJars = async (split) => {
+    const reading = (o) => ({ temperature: 9, code: 3, cloudCover: 100, isDay: 1, windSpeed: 3, windDir: 180, ...o });
+    await tbl.evaluate((b) => window.__jar.applyWeather(b), tidy(3, 100, 9, { nazare: reading(split), 'el-chalten': reading(split) }, split));
+    await settled(tbl);
+    await twoFrames(tbl);
+    return JSON.stringify([await patch(tbl, 'nazare', 0.5, 0.5, 6), await patch(tbl, 'el-chalten', 0.5, 0.5, 6)]);
+  };
+  const othersPlain = await otherJars({});
+  const othersSplit = await otherJars({ cloudLow: 0, cloudMid: 0, cloudHigh: 100 });
+  check(othersPlain === othersSplit && /[1-9]/.test(othersPlain), 'the other jars ignore the split');
+  await tbl.close();
   await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5, 21.4));
   await settled(noct);
   await twoFrames(noct);

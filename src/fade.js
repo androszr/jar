@@ -13,6 +13,7 @@ export function pictureKey(w) {
     code: w.code ?? null,
     temperature: w.temperature ?? null,
     cloudCover: w.cloudCover ?? null,
+    cloudLow: w.cloudLow ?? null, // Warsaw's cloud base; mid and high are not drawn
     isDay: w.isDay ?? null,
     windSpeed: w.windSpeed ?? null,
     windDir: w.windDir ?? null,

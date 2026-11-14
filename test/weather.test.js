@@ -232,7 +232,7 @@ test('fromEntry reads hourly rows, folds kind per row, and defaults to []', () =
     { time: '2026-10-18T16:00', temperature: '5', code: 0 },
   ] });
   assert.equal(w.hourly.length, 2);
-  assert.deepEqual(w.hourly[0], { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200, kind: 'rain' });
+  assert.deepEqual(w.hourly[0], { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, cloudLow: null, cloudMid: null, cloudHigh: null, isDay: 1, windSpeed: 12, windDir: 200, kind: 'rain' });
   assert.equal(w.hourly[1].temperature, null);
   assert.equal(w.hourly[1].kind, 'clear');
   assert.deepEqual(fromEntry({ temperature: 1 }).hourly, []);
@@ -394,4 +394,13 @@ test('held-reading wording: heldText, temperatureLine, temperatureSpoken', () =>
   assert.equal(temperatureSpoken({ temperature: 12.3, known: true }, 60_000), '12°, from a reading 1 minute old');
   assert.equal(temperatureSpoken({ temperature: 12.3, known: true }, 20 * 60_000), '12°, from a reading 20 minutes old');
   assert.equal(temperatureSpoken({ temperature: 12.3, known: true }), '12°');
+});
+
+test('the cloud split: EMPTY is unknown, fromEntry tidies it, normaliseHourly keeps it', () => {
+  assert.deepEqual([EMPTY.cloudLow, EMPTY.cloudMid, EMPTY.cloudHigh], [null, null, null]);
+  const old = fromEntry({ code: 3, cloudCover: 100 });
+  assert.deepEqual([old.cloudLow, old.cloudMid, old.cloudHigh], [null, null, null]);
+  const w = fromEntry({ code: 3, cloudLow: 90, cloudMid: '5', cloudHigh: NaN });
+  assert.deepEqual([w.cloudLow, w.cloudMid, w.cloudHigh], [90, null, null]);
+  assert.equal(normaliseHourly([{ time: '2026-10-18T00:00', cloudLow: 40 }])[0].cloudLow, 40);
 });
