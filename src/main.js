@@ -117,7 +117,16 @@ let quality = QUALITY; // the lifted jar's interior pixels per logical px, last 
 let selectedDay = -1; // the forecast cell the preview stands on, or -1
 let grainArt = null;
 
-const make = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+// Every offscreen canvas too, under automation: the interiors are read back into
+// the software-backed view every frame, and Chromium flips a GPU canvas to CPU
+// after enough readbacks, at a moment set by timing, so the same pinned moment
+// could hash a shade apart. The first getContext fixes the backing; later plain
+// getContext('2d') calls return this same context.
+const make = (w, h) => {
+  const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  if (navigator.webdriver === true) c.getContext('2d', { willReadFrequently: true });
+  return c;
+};
 const nowMs = () => (pinned !== null ? pinned : Date.now());
 const previewMs = () => nowMs() + scrubMin * 60000;
 const perf = () => performance.now();
@@ -202,7 +211,7 @@ function ensureArt(tn) {
   const s = artScale(Math.max(0.4, Math.min(1.5, fitScreen(W, H).scale * dpr)));
   const key = `${Math.round(s * 10)}|${tintBucket(tn)}`;
   if (key === artKey && art) return;
-  art = buildShedArt(Math.round(SCENE.w * s), Math.round(SCENE.h * s), tn);
+  art = buildShedArt(Math.round(SCENE.w * s), Math.round(SCENE.h * s), tn, make);
   artKey = key;
   artBuilds += 1;
 }
