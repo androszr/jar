@@ -1064,7 +1064,11 @@ test('W7: the clear-night river is exactly what it was before the rain change', 
     if (c[0] === 'ellipse' && f && f[0] === 'fill' && typeof f[2] === 'string') out.push([c[1].slice(0, 4), f[2]]);
   });
   assert.equal(out.length, 120);
-  assert.equal(createHash('sha256').update(JSON.stringify(out)).digest('hex').slice(0, 16), '1cdc33eb167eeb44');
+  // every number (coordinates and the alphas inside the colours) rounded to 6 decimals: the last bit of
+  // Math.sin/exp differs between machines (arm64 here, x64 in CI), the picture does not. Unrounded, the
+  // same data hashed to 1cdc33eb167eeb44 on the machine that captured it.
+  const digest = JSON.stringify(out).replace(/-?\d+\.\d+(e-?\d+)?/g, (m) => Number(m).toFixed(6));
+  assert.equal(createHash('sha256').update(digest).digest('hex').slice(0, 16), '23cc289955db336e');
 });
 
 test('W7: lightning is aimed at the tip of the Palace needle', () => {
