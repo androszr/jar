@@ -169,11 +169,20 @@ const clockOf = (nowMs) => {
   return typeof d === 'string' && typeof f === 'number' ? { md: d.slice(5), min: Math.round(f * 1440) } : null;
 };
 
-// New Year: from 23:55 on 31 December to 00:20 on 1 January, Warsaw time.
-export function fireworksOn(nowMs) {
+// New Year: from 00:00 to 01:00 on 1 January, Warsaw time, full for the first
+// fullMin minutes and thinning out to nothing at endMin.
+export const NEW_YEAR = { fullMin: 50, endMin: 60 };
+
+export function fireworksAmount(nowMs) {
   const c = clockOf(nowMs);
-  if (!c) return false;
-  return (c.md === '12-31' && c.min >= 23 * 60 + 55) || (c.md === '01-01' && c.min <= 20);
+  if (!c || c.md !== '01-01') return 0;
+  if (c.min < NEW_YEAR.fullMin) return 1;
+  if (c.min < NEW_YEAR.endMin) return 1 - (c.min - NEW_YEAR.fullMin) / (NEW_YEAR.endMin - NEW_YEAR.fullMin);
+  return 0;
+}
+
+export function fireworksOn(nowMs) {
+  return fireworksAmount(nowMs) > 0;
 }
 
 // The Christmas tree stands through December, Warsaw time (1 to 31 December).
@@ -209,8 +218,11 @@ export function fireworkBursts(nowMs) {
 }
 
 // Painted behind the towers. Under reduced motion: a still glow in the sky, no bursts.
-export function drawFireworks(ctx, L, night, nowMs, reduced = false) {
-  if (!fireworksOn(nowMs) || !(night > 0)) return false;
+// Every alpha is scaled by fireworksAmount, so the last ten minutes grow faint.
+export function drawFireworks(ctx, L, night0, nowMs, reduced = false) {
+  const amount = fireworksAmount(nowMs);
+  if (!(amount > 0) || !(night0 > 0)) return false;
+  const night = night0 * amount;
   if (reduced) {
     [[0.3, 0.16, 0], [0.62, 0.2, 2], [0.82, 0.13, 1]].forEach(([x, y, c]) => glow(ctx, L.ox + x * L.w, L.oy + y * L.h, 34 * L.sx, WARSAW.fireworks[c], 0.22 * night));
     return true;

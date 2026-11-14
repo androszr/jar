@@ -12,7 +12,7 @@ import { reflectionScale, REFLECT_FOG_DIM } from '../src/cities/warsaw/scene.js'
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
 import {
-  boatAt, BIRDS, birdSpots, FROST as FROST_AT, STEAM, steaming, steamPuffs, fireworksOn, treeUp, FIREWORKS, fireworkBursts, drawFireworks, drawTree, FIR,
+  boatAt, BIRDS, birdSpots, FROST as FROST_AT, STEAM, steaming, steamPuffs, fireworksOn, fireworksAmount, treeUp, FIREWORKS, fireworkBursts, drawFireworks, drawTree, FIR,
 } from '../src/cities/warsaw/life.js';
 import { WARSAW } from '../src/cities/warsaw/palette.js';
 import { hash2 } from '../src/skyweather.js';
@@ -1162,18 +1162,27 @@ test('W8: steam rises off three roofs in a hard frost and leans with the wind', 
   assert.equal(fullScene(PHASE.noon).scene.steam, 0);
 });
 
-test('W9: New Year fireworks from 23:55 on 31 December to 00:20 on 1 January, Warsaw time', () => {
+test('W9: New Year fireworks from 00:00 to 01:00 on 1 January, Warsaw time, thinning over the last ten minutes', () => {
   const W = (mo, d, h, m) => Date.UTC(2026, mo - 1, d, h - 1, m); // CET
-  assert.equal(fireworksOn(W(12, 31, 23, 54)), false);
-  assert.equal(fireworksOn(W(12, 31, 23, 55)), true);
-  assert.equal(fireworksOn(W(12, 31, 23, 59)), true);
-  assert.equal(fireworksOn(Date.UTC(2026, 11, 31, 23, 0)), true, '00:00 on 1 January in Warsaw');
-  assert.equal(fireworksOn(Date.UTC(2026, 11, 31, 23, 20)), true, '00:20');
-  assert.equal(fireworksOn(Date.UTC(2026, 11, 31, 23, 21)), false, '00:21');
+  const NY = (h, m) => Date.UTC(2025, 11, 31, 23 + h, m); // h:m on 1 January 2026 in Warsaw (CET)
+  assert.equal(fireworksAmount(NY(0, 10)), 1);
+  assert.equal(fireworksAmount(NY(0, 0)), 1);
+  assert.equal(fireworksAmount(NY(0, 49)), 1);
+  assert.ok(Math.abs(fireworksAmount(NY(0, 55)) - 0.5) < 1e-9);
+  assert.equal(fireworksAmount(NY(1, 0)), 0);
+  assert.equal(fireworksAmount(NY(1, 30)), 0);
+  assert.equal(fireworksAmount(Date.UTC(2025, 11, 31, 22, 50)), 0, '23:50 on 31 December');
+  assert.equal(fireworksAmount(Date.UTC(2025, 11, 31, 22, 59)), 0, '23:59 on 31 December');
+  assert.equal(fireworksAmount(Date.UTC(2026, 0, 2, 23, 20)), 0, '00:20 on 2 January');
+  assert.equal(fireworksAmount(NaN), 0);
+  assert.equal(fireworksOn(NY(0, 0)), true);
+  assert.equal(fireworksOn(NY(0, 59)), true);
+  assert.equal(fireworksOn(W(12, 31, 23, 59)), false);
+  assert.equal(fireworksOn(NY(1, 0)), false);
   assert.equal(fireworksOn(W(12, 30, 23, 58)), false);
   assert.equal(fireworksOn(W(6, 15, 0, 5)), false);
   assert.equal(fireworksOn(NaN), false);
-  const t = Date.UTC(2026, 11, 31, 23, 5);
+  const t = NY(0, 20);
   const bursts = noRandom(() => fireworkBursts(t));
   assert.ok(bursts.length >= 3);
   assert.deepEqual(bursts, fireworkBursts(t));
@@ -1187,11 +1196,35 @@ test('W9: New Year fireworks from 23:55 on 31 December to 00:20 on 1 January, Wa
   const on = fullScene(PHASE.night, CLEAR, t);
   assert.equal(on.scene.fireworks, true);
   assert.equal(fullScene(PHASE.night, CLEAR, W(12, 30, 23, 58)).scene.fireworks, false);
+  assert.equal(fullScene(PHASE.night, CLEAR, W(12, 31, 23, 58)).scene.fireworks, false, 'nothing before midnight');
+  const ordinary = fullScene(PHASE.night, CLEAR, Date.UTC(2026, 10, 8, 20));
+  assert.equal(ordinary.scene.fireworks, false);
+  assert.ok(!ordinary.ctx.calls.some(([m, , st]) => m === 'fill' && typeof st === 'string' && WARSAW.fireworks.some((c) => st.startsWith(rgbaOf(c)))), 'an ordinary night has no firework fill');
+  assert.ok(on.ctx.calls.some(([m, , st]) => m === 'fill' && typeof st === 'string' && WARSAW.fireworks.some((c) => st.startsWith(rgbaOf(c)))), 'the New Year night does');
   assert.equal(fullScene(PHASE.night, EMPTY, t).scene.fireworks, true, 'with no reading too');
   // painted behind the towers: before the first tower's clip
   const firstBurst = on.ctx.calls.findIndex(([m, , st]) => m === 'fill' && typeof st === 'string' && WARSAW.fireworks.some((c) => st.startsWith(rgbaOf(c))));
   const firstClip = on.ctx.calls.findIndex(([m]) => m === 'clip');
   assert.ok(firstBurst > 0 && firstBurst < on.ctx.calls.findIndex(([m], i) => m === 'clip' && i > firstClip), 'behind the towers');
+  // drawn twice at one instant: the same calls; thinner at 00:55 than at the same shell phase earlier
+  const rec = (nowMs) => {
+    const ctx = recordingCtx();
+    drawFireworks(ctx, L0, 1, nowMs, false);
+    return ctx;
+  };
+  assert.equal(JSON.stringify(rec(t).calls), JSON.stringify(rec(t).calls));
+  // 35 minutes is exactly 5000 shells, so 00:55 shows the same shells as 00:20
+  assert.equal((NY(0, 55) - NY(0, 20)) % FIREWORKS.every, 0);
+  const peak = (nowMs) => {
+    let top = 0;
+    for (const c of rec(nowMs).fills) {
+      if (!WARSAW.fireworks.some((w) => c.startsWith(rgbaOf(w)))) continue;
+      top = Math.max(top, Number(/,\s*([0-9.]+)\)$/.exec(c)[1]));
+    }
+    return top;
+  };
+  assert.ok(peak(NY(0, 20)) > 0.1);
+  assert.ok(peak(NY(0, 55)) < peak(NY(0, 20)), 'fainter at 00:55 than at 00:20');
   // under reduced motion: a still glow, no bursts
   const still = (nowMs) => {
     const ctx = recordingCtx();
@@ -1205,6 +1238,7 @@ test('W9: New Year fireworks from 23:55 on 31 December to 00:20 on 1 January, Wa
   assert.equal(warsaw.cadenceMs(CLEAR, { nowMs: t }), 100);
   assert.equal(warsaw.cadenceMs(CLEAR, { nowMs: t, reduced: true }), 400);
   assert.equal(warsaw.cadenceMs(CLEAR, { nowMs: W(6, 15, 12, 0) }), 200);
+  assert.equal(warsaw.cadenceMs(CLEAR, { nowMs: NY(1, 30) }), 200);
   assert.equal(warsaw.cadenceMs(CLEAR, {}), 200);
 });
 
