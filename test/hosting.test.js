@@ -1,15 +1,19 @@
 // Adapted from Memory Lane (vir-sunset) test/hosting.test.js, 2026-10-18
 // Hosting: the page is published on Vercel from GitHub. These tests hold the
 // shape of what makes that safe: vercel.json's headers (a self-only CSP, the
-// "do not index" request, a cache split: the front page re-checks every
+// absence of any "do not index" request, a cache split: the front page re-checks every
 // visit, modules and the stylesheet keep for one minute, nothing is pinned), the
-// robots pair, the dev server serving the same headers, the two workflows,
+// robots pair, the link preview and icons, the dev server serving the same headers, the two workflows,
 // the runbook's two copies, and nothing in git that must never be public.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { headersFor } from '../tools/serve.mjs';
+import { PALETTE } from '../src/look/lantern/palette.js';
+
+// The one copy of the live address in tests; the other is the commented block in src/index.html.
+const LIVE = 'https://jar-pearl.vercel.app';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -69,8 +73,8 @@ test('the CSP loads nothing from outside the page', () => {
   assert.deepEqual(d['base-uri'], ["'self'"]);
 });
 
-test('search engines are asked to stay out, and the default is re-check every visit', () => {
-  assert.equal(header('X-Robots-Tag'), 'noindex, nofollow');
+test('nothing asks search engines to stay out; the default is re-check every visit', () => {
+  assert.equal(header('X-Robots-Tag'), undefined);
   assert.equal(header('Cache-Control'), 'public, max-age=0, must-revalidate');
 });
 
@@ -93,10 +97,81 @@ test('modules and the stylesheet get a one-minute window; the front page re-chec
   assert.ok(Number.isInteger(age) && age <= 300, `module max-age ${age} is over 300 s`);
 });
 
-test('robots.txt says stay out, and the page carries the robots meta once', () => {
-  assert.match(read('src/robots.txt'), /^User-agent: \*\nDisallow: \/$/m);
+test('robots.txt lets everyone in, and neither the page nor vercel.json asks to stay out', () => {
+  assert.match(read('src/robots.txt'), /^User-agent: \*\nAllow: \/\n?$/);
   const html = read('src/index.html');
-  assert.equal(html.split('<meta name="robots" content="noindex, nofollow">').length - 1, 1);
+  assert.ok(!html.includes('name="robots"'), 'a robots meta');
+  assert.ok(!/noindex/i.test(html), 'noindex in the page');
+  assert.ok(!/X-Robots-Tag/i.test(read('vercel.json')), 'X-Robots-Tag in vercel.json');
+});
+
+const once = (html, needle) => assert.equal(html.split(needle).length - 1, 1, needle);
+const pngSize = (file) => {
+  const b = readFileSync(join(ROOT, file));
+  assert.deepEqual([...b.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], `${file}: PNG signature`);
+  return [b.readUInt32BE(16), b.readUInt32BE(20)];
+};
+
+test('the page introduces itself for a link preview', () => {
+  const html = read('src/index.html');
+  const description = JSON.parse(read('package.json')).description;
+  once(html, '<meta name="description"');
+  once(html, `<meta name="description" content="${description}">`);
+  once(html, 'rel="canonical"');
+  once(html, `<link rel="canonical" href="${LIVE}/">`);
+  once(html, `<meta property="og:url" content="${LIVE}/">`);
+  once(html, `<meta property="og:image" content="${LIVE}/share.jpg">`);
+  once(html, '<meta property="og:title" content="Jars">');
+  once(html, '<meta property="og:type" content="website">');
+  once(html, `<meta property="og:description" content="${description}">`);
+  once(html, '<meta name="twitter:card" content="summary_large_image">');
+  // The declared size is the picture's own: read it from the JPEG's SOF marker.
+  const jpg = readFileSync(join(ROOT, 'src/share.jpg'));
+  let at = 2;
+  while (at < jpg.length && !(jpg[at + 1] >= 0xc0 && jpg[at + 1] <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(jpg[at + 1]))) at += 2 + jpg.readUInt16BE(at + 2);
+  assert.ok(at < jpg.length, 'no SOF marker in share.jpg');
+  const [jh, jw] = [jpg.readUInt16BE(at + 5), jpg.readUInt16BE(at + 7)];
+  once(html, `<meta property="og:image:width" content="${jw}">`);
+  once(html, `<meta property="og:image:height" content="${jh}">`);
+  once(html, 'content="Three glowing glass jars on a wooden table in a dark shed: Warsaw, Nazaré and El Chaltén."');
+  // Exactly three absolute addresses start with LIVE; the only other one allowed
+  // is the existing Open-Meteo credit link.
+  const urls = html.match(/https?:\/\/[^"' ]+/g) || [];
+  assert.equal(urls.filter((u) => u.startsWith(LIVE)).length, 3, 'three live addresses');
+  const others = urls.filter((u) => !u.startsWith(LIVE));
+  assert.deepEqual(others, ['https://open-meteo.com/'], 'an unexpected absolute address');
+  assert.deepEqual(readFileSync(join(ROOT, 'src/share.jpg')), readFileSync(join(ROOT, 'docs/images/table.jpg')));
+});
+
+test('the icons and the manifest are served from src/', () => {
+  const html = read('src/index.html');
+  once(html, '<link rel="icon" href="icon.svg" type="image/svg+xml">');
+  once(html, '<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">');
+  once(html, '<link rel="apple-touch-icon" href="apple-touch-icon.png">');
+  once(html, '<link rel="manifest" href="manifest.webmanifest">');
+  assert.deepEqual(readFileSync(join(ROOT, 'src/icon.svg')), readFileSync(join(ROOT, 'docs/images/jar-icon.svg')));
+  assert.deepEqual(pngSize('src/apple-touch-icon.png'), [180, 180]);
+  assert.deepEqual(pngSize('src/icon-192.png'), [192, 192]);
+  assert.deepEqual(pngSize('src/icon-512.png'), [512, 512]);
+  const manifest = JSON.parse(read('src/manifest.webmanifest'));
+  const page = '#' + PALETTE.page.map((c) => c.toString(16).padStart(2, '0')).join('');
+  assert.equal(manifest.name, 'Jars');
+  assert.equal(manifest.start_url, '/');
+  assert.equal(manifest.display, 'standalone');
+  assert.equal(manifest.theme_color, page);
+  assert.equal(manifest.background_color, page);
+  assert.equal(manifest.icons.length, 2);
+  for (const icon of manifest.icons) {
+    assert.equal(icon.type, 'image/png');
+    const [w, h] = pngSize(`src/${icon.src}`);
+    assert.equal(icon.sizes, `${w}x${h}`, icon.src);
+  }
+  const lines = read('.gitignore').split('\n');
+  const star = lines.indexOf('*.png');
+  assert.ok(star >= 0 && lines.indexOf('!src/*.png') > star, '.gitignore swallows the icons');
+  const c = headersFor('/manifest.webmanifest')['content-security-policy'];
+  assert.ok(c.startsWith("default-src 'self'"));
+  assert.ok(!c.includes('manifest-src'));
 });
 
 test('the page credits Open-Meteo with one outbound link and the chrome\'s own lettering', () => {
@@ -122,7 +197,7 @@ test('the dev server serves the production headers on every path', () => {
   for (const p of ['/', '/main.js', '/api/weather', '/cities/warsaw/index.js', '/robots.txt']) {
     const h = headersFor(p);
     assert.ok((h['content-security-policy'] || '').startsWith("default-src 'self'"), `${p}: no CSP`);
-    assert.equal(h['x-robots-tag'], 'noindex, nofollow', `${p}: no robots header`);
+    assert.equal(h['x-robots-tag'], undefined, `${p}: robots header`);
   }
 });
 

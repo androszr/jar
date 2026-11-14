@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="jar">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2440"/>
+      <stop offset="1" stop-color="#0b0f1c"/>
+    </linearGradient>
+    <linearGradient id="flood" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffbc60"/>
+      <stop offset="1" stop-color="#f69656"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.9" r="0.6">
+      <stop offset="0" stop-color="#ffaa5a" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffaa5a" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="body">
+      <path d="M44 30 Q44 38 30 46 Q22 51 22 62 L22 104 Q22 116 34 116 L94 116 Q106 116 106 104 L106 62 Q106 51 98 46 Q84 38 84 30 Z"/>
+    </clipPath>
+  </defs>
+  <ellipse cx="64" cy="118" rx="54" ry="10" fill="url(#glow)"/>
+  <g clip-path="url(#body)">
+    <rect x="0" y="20" width="128" height="100" fill="url(#sky)"/>
+    <rect x="36" y="58" width="7" height="34" fill="#0a0d18"/>
+    <path d="M36 58 L39.5 50 L43 58 Z" fill="#6ed2ff"/>
+    <rect x="39" y="42" width="1" height="8" fill="#0a0d18"/>
+    <circle cx="39.5" cy="42" r="1.5" fill="#ff463c"/>
+    <path d="M52 92 L52 74 L56 74 L56 66 L59 66 L59 58 L62 58 L64 40 L66 58 L69 58 L69 66 L72 66 L72 74 L76 74 L76 92 Z" fill="url(#flood)"/>
+    <circle cx="64" cy="61" r="1.6" fill="#fff4d6"/>
+    <path d="M82 92 L82 56 Q90 58 91 92 Z" fill="#0a0d18"/>
+    <path d="M82 56 Q90 58 91 92" fill="none" stroke="#ebf5ff" stroke-width="0.8"/>
+    <rect x="0" y="92" width="128" height="10" fill="#1e1e3c"/>
+    <rect x="60" y="94" width="8" height="1.5" fill="#ffb460" opacity="0.8"/>
+    <rect x="58" y="97" width="11" height="1.5" fill="#ffb460" opacity="0.6"/>
+    <rect x="37" y="95" width="4" height="1.5" fill="#78d6ff" opacity="0.7"/>
+    <rect x="0" y="102" width="128" height="20" fill="#1e1a28"/>
+    <rect x="44" y="104" width="40" height="9" rx="1.5" fill="#0d1014" stroke="#b8975a" stroke-width="0.8"/>
+  </g>
+  <path d="M44 30 Q44 38 30 46 Q22 51 22 62 L22 104 Q22 116 34 116 L94 116 Q106 116 106 104 L106 62 Q106 51 98 46 Q84 38 84 30" fill="none" stroke="#7fa0a8" stroke-width="2"/>
+  <rect x="27" y="58" width="3" height="40" rx="1.5" fill="#ffffff" opacity="0.18"/>
+  <rect x="40" y="16" width="48" height="15" rx="3" fill="#a87a4c"/>
+  <rect x="40" y="27" width="48" height="4" fill="#8a603a"/>
+</svg>

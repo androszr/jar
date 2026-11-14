@@ -3,7 +3,7 @@
 // also routes GET /api/weather to the same handler Vercel runs.
 // `npm run serve` -> http://localhost:5173 (PORT=... to change it).
 // Every response carries the headers vercel.json gives it in production (the
-// CSP, the robots tag and the rest), so a rule that would break the live page
+// CSP and the rest), so a rule that would break the live page
 // breaks it here first; only caching differs: local dev never caches.
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -21,6 +21,9 @@ const TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.webmanifest': 'application/manifest+json',
 };
 
 const HOSTING = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
