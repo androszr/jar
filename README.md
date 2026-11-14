@@ -207,8 +207,8 @@ The forecast card marks today with a band and an underline (and names it
 rain and its strongest wind with an arrow for the way it blows; a strip along
 the bottom gives today's sunrise and sunset, with tonight's moon as a small shape and its name on the line above, over a thin arc whose dot shows how
 far the sun has come across the sky. If the weather cannot be fetched, the jars
-still light for the hour under a neutral sky and the label shows a dash instead
-of a temperature.
+still light for the hour under a neutral sky and the label reads "no weather"
+instead of a temperature.
 
 ## How it's made
 

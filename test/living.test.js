@@ -4,9 +4,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { liftRise, LIFT_RISE } from '../src/lift.js';
+import { EMPTY } from '../src/weather.js';
 import { shakeAt, SHAKE_MS } from '../src/shake.js';
 import { introLevels, introMs, INTRO } from '../src/intro.js';
-import { FADE_MS, skyChanged, fadeAmount } from '../src/fade.js';
+import { FADE_MS, pictureChanged, pictureKey, nextFades, fadeAmount } from '../src/fade.js';
 import { clampPreview, offsetLabel, dayPreviewMin, PREVIEW_MAX_MIN } from '../src/scrub.js';
 import { interiorQuality, interiorShift, lanternFlicker, bodyRect, QUALITY, QUALITY_MAX, PARALLAX } from '../src/jar.js';
 import { shootingStar, SHOOT_EVERY_MS, SHOOT_MS, rainRings, drawSplashes, drawRainOnGlass, drawFlurry, FLURRY } from '../src/skyweather.js';
@@ -63,13 +64,17 @@ test('introLevels: the room comes up first, the jars one after another, then it 
   assert.equal(introMs(1), INTRO.first + INTRO.wake);
 });
 
-test('a reading fades in only when it changes the sky; fadeAmount eases 0..1 over FADE_MS', () => {
-  const a = { known: true, kind: 'clear', cloudCover: 10 };
-  assert.equal(skyChanged(a, { ...a, temperature: 3 }), false, 'a new temperature is not a new sky');
-  assert.equal(skyChanged(a, { ...a, kind: 'rain' }), true);
-  assert.equal(skyChanged(a, { ...a, cloudCover: 60 }), true);
-  assert.equal(skyChanged({ known: false, kind: 'cloud', cloudCover: null }, a), true, 'the first reading');
-  assert.equal(skyChanged(null, a), false);
+test('a reading fades in when it paints a different picture; fadeAmount eases 0..1 over FADE_MS', () => {
+  const a = { known: true, kind: 'clear', cloudCover: 10, temperature: 12, sea: { waveHeight: 2, wavePeriod: 12, waveDir: 300 } };
+  assert.equal(pictureChanged(a, { ...a }), false, 'the same reading');
+  assert.equal(pictureChanged(a, { ...a, temperature: 3 }), true, 'a new temperature is a new picture');
+  assert.equal(pictureChanged(a, { ...a, sea: { ...a.sea, wavePeriod: 12.1 } }), true);
+  assert.equal(pictureChanged(a, { ...a, daily: [{ code: 1 }], hourly: [{ time: 'x' }] }), false, 'the card and the scrub are not the picture');
+  assert.equal(pictureChanged(a, { ...a, kind: 'rain' }), true);
+  assert.equal(pictureChanged(a, { ...a, cloudCover: 60 }), true);
+  assert.equal(pictureChanged(EMPTY, a), true, 'the first reading');
+  assert.equal(pictureChanged(null, a), false);
+  assert.equal(pictureKey(null), null);
   assert.equal(fadeAmount(0), 0);
   assert.equal(fadeAmount(FADE_MS), 1);
   assert.equal(fadeAmount(NaN), 1);
@@ -239,4 +244,38 @@ test('every city with water hands back a band inside the jar; a frozen lake hand
     assert.ok(w.w > 0 && w.h > 0 && w.x >= rect.x && w.y >= rect.y && w.x + w.w <= rect.w + 1e-9 && w.y + w.h <= rect.h + 1e-9, id);
   }
   assert.equal(findCity('el-chalten').water(rect, { frozen: true }), null);
+});
+
+test('nextFades: a changed reading fades, the same object, fade=false and the first frame do not', () => {
+  const a = { known: true, kind: 'clear', temperature: 12 };
+  const b = { ...a, temperature: 13 };
+  const r = nextFades({}, { warsaw: a }, { warsaw: b }, 100, true);
+  assert.deepEqual(r.fades, { warsaw: { from: a, start: 100 } });
+  assert.equal(r.lastFeed.warsaw, b);
+  assert.deepEqual(nextFades({}, { warsaw: a }, { warsaw: a }, 100, true).fades, {}, 'identity');
+  const off = nextFades({}, { warsaw: a }, { warsaw: b }, 100, false);
+  assert.deepEqual(off.fades, {});
+  assert.equal(off.lastFeed.warsaw, b, 'still advances');
+  assert.deepEqual(nextFades({}, {}, { warsaw: b }, 100, true).fades, {}, 'first frame');
+  assert.deepEqual(nextFades({}, { warsaw: EMPTY }, { warsaw: EMPTY }, 100, true).fades, {});
+});
+
+test('nextFades: a change on a young fade keeps the older picture; past halfway it does not', () => {
+  const held = { known: true, kind: 'rain', temperature: 9 };
+  const fresh = { known: true, kind: 'clear', temperature: 15 };
+  const first = nextFades({}, { warsaw: held }, { warsaw: EMPTY }, 0, true);
+  const young = nextFades(first.fades, first.lastFeed, { warsaw: fresh }, 300, true);
+  assert.deepEqual(young.fades.warsaw, { from: held, start: 300 });
+  const late = nextFades(first.fades, first.lastFeed, { warsaw: fresh }, 2000, true);
+  assert.deepEqual(late.fades.warsaw, { from: EMPTY, start: 2000 });
+  const same = nextFades(first.fades, first.lastFeed, { warsaw: { ...held } }, 300, true);
+  assert.deepEqual(same.fades, {}, 'back to the picture it started from: nothing to fade');
+});
+
+test('nextFades: the stale drop fades from the held reading, and so does the recovery', () => {
+  const held = { known: true, kind: 'rain', temperature: 9, cloudCover: 80 };
+  const drop = nextFades({}, { warsaw: held }, { warsaw: EMPTY }, 5, true);
+  assert.equal(drop.fades.warsaw.from, held);
+  const back = nextFades({}, { warsaw: EMPTY }, { warsaw: held }, 9, true);
+  assert.equal(back.fades.warsaw.from, EMPTY);
 });

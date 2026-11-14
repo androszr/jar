@@ -13,7 +13,7 @@ import { Lift, liftCamera, liftRise, LIFT_RISE, pressLowers, CREDIT_MARGIN } fro
 import { forecastPose, forecastExtent, liftExtent } from './forecast.js';
 import { offsetLabel, previewWeather, clampScrub, clampPreview, dayPreviewMin, SCRUB_MAX_MIN } from './scrub.js';
 import { ScrubBar } from './scrubbar.js';
-import { formatTemp, forecastCells, upcomingRows, forecastSentence, sunTimesFor, tidesFor, tideSentence, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
+import { formatTemp, NO_WEATHER, temperatureLine, temperatureSpoken, forecastCells, upcomingRows, forecastSentence, sunTimesFor, tidesFor, tideSentence, flashIntensity, dewAmount, cloudAmount, cloudDrift } from './weather.js';
 import { entryFor, jarSearch, tableSearch, leaveAction } from './address.js';
 import { WeatherFeed, freshnessText } from './weatherfeed.js';
 import { forecastAnnouncement } from './announce.js';
@@ -21,7 +21,7 @@ import { buildShedArt, drawShed, tintBucket, artScale, WINDOW, TABLE_Y, BLEED } 
 import { paintInterior, placeJar, measure, labelLines, bodyRect, interiorQuality, QUALITY } from './jar.js';
 import { shakeAt, SHAKE_MS } from './shake.js';
 import { introLevels } from './intro.js';
-import { FADE_MS, skyChanged, fadeAmount } from './fade.js';
+import { FADE_MS, nextFades, fadeAmount } from './fade.js';
 import { JAR } from './jar-geometry.js';
 import { Lantern } from './lantern.js';
 
@@ -111,7 +111,6 @@ let intro = null; // the frame-clock moment the opening began, or null
 let play = null; // { start } while the time-lapse runs
 let fades = {}; // city id -> { from, start }: the reading being faded out
 let lastFeed = {}; // city id -> the reading the last frame saw
-let seenRevision = 0;
 let roomCadence = 0;
 let lights = {}; // city id -> { lum } measured from the last frame (test surface)
 let quality = QUALITY; // the lifted jar's interior pixels per logical px, last frame
@@ -286,8 +285,10 @@ function render(force = false) {
     if (e >= 1) delete fades[c.id];
     return e;
   });
+  const held = feed.heldFor(ms);
+  const heldKey = held === null ? -1 : Math.round(held / 60000);
   const key = [view, lift.state, Math.round(liftP * 1000), Math.round(shelf.pos * 1000), minute,
-    feed.revision, feed.isStale(), note, W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
+    feed.revision, feed.isStale(), note, feed.fails, heldKey, W, H, Math.round(shedPhase * 2000), phases.map((p) => Math.round(p * 2000)).join(','),
     cam.scale.toFixed(3), cadenceMs ? Math.floor(ms / cadenceMs) : 0, scrubbing ? scrubMin : 0,
     flashes.map((f) => Math.round(f * 16)).join(','), dews.map((d) => Math.round(d * 32)).join(','), hint, Math.round(hintA * 64),
     sh ? Math.round(sh.ageMs / 16) : -1, levels ? Math.round((t - intro) / 16) : -1, fadeE.map((e) => Math.round(e * 100)).join(','),
@@ -307,7 +308,7 @@ function render(force = false) {
   const tints = phases.map((p) => lookTint(sample(p)));
   // behind a fully lifted jar the room is soft and dim: it is repainted once a
   // second, or at once when anything in it changes, and reused in between
-  const nextRoomKey = [focus, canvas.width, canvas.height, Math.round(shelf.pos * 1000), minute, feed.revision, feed.isStale(),
+  const nextRoomKey = [focus, canvas.width, canvas.height, Math.round(shelf.pos * 1000), minute, feed.revision, feed.isStale(), feed.fails, heldKey,
     Math.round(shedPhase * 2000), phases.map((p, i) => (i === focus ? 0 : Math.round(p * 2000))).join(','), Math.floor(t / ROOM_BEHIND_MS),
     flashes.map((f) => Math.round(f * 16)).join(','), levels ? 1 : 0, Object.keys(fades).filter((id) => id !== CITIES[focus].id).join(','), hint, Math.round(hintA * 64)].join('|');
   const reuse = !force && liftP === 1 && behind !== null && nextRoomKey === roomKey;
@@ -391,12 +392,13 @@ function render(force = false) {
       // a jar behind the lifted one gives up its bloom as the room softens
       bloomGain: lifted || liftP === 0 ? 1 : 1 - liftP,
       neighbours,
+      status: temperatureLine(weathers[i], held) === NO_WEATHER ? 'none' : held !== null ? 'held' : 'live',
     });
   };
   CITIES.forEach((city, i) => {
     nextScenes[city.id] = painted[i].scene;
     nextDrawn[city.id] = { flash: flashes[i], dew: dews[i], drift: painted[i].drift, moon: painted[i].moon };
-    nextLabels[city.id] = labelLines(city, weathers[i], at[i], i === focus ? preview : null);
+    nextLabels[city.id] = labelLines(city, weathers[i], at[i], i === focus ? preview : null, held);
     nextLights[city.id] = { lum: painted[i].lum };
     bloomStrength = Math.max(bloomStrength, tints[i].bloom);
   });
@@ -455,18 +457,11 @@ function render(force = false) {
   return true;
 }
 
-// A reading that changes a city's sky fades in; `fade` false takes it at once.
+// A reading that paints a different picture fades in, and so does the drop of a
+// held one; `fade` false takes it at once.
 function noteFeed(t, fade) {
-  if (feed.revision !== seenRevision) {
-    seenRevision = feed.revision;
-    if (fade) {
-      for (const c of CITIES) {
-        const was = lastFeed[c.id];
-        if (was && skyChanged(was, feed.get(c.id))) fades[c.id] = { from: was, start: t };
-      }
-    }
-  }
-  lastFeed = Object.fromEntries(CITIES.map((c) => [c.id, feed.get(c.id)]));
+  const current = Object.fromEntries(CITIES.map((c) => [c.id, feed.get(c.id)]));
+  ({ fades, lastFeed } = nextFades(fades, lastFeed, current, t, fade));
 }
 
 function frame() {
@@ -546,13 +541,15 @@ function syncAria() {
   const tideText = view === 'jar' ? tideSentence(tidesFor(here, todayHere)) : '';
   const note = view === 'jar' ? freshnessText(feed.ageMs(nowMs()), { busy: feed.busy }) : '';
   const fresh = note ? ` ${note[0].toUpperCase()}${note.slice(1)}${note.endsWith('…') ? '' : '.'}` : '';
-  const sunText =sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}` : '';
+  const sunText = sun ? ` Sunrise ${sun.sunrise}, sunset ${sun.sunset}` : '';
   const days = (sentence ? ` ${sentence}` : '') + (sun ? `${sunText}, a ${moonName} moon.` : '') + (tideText ? ` ${tideText}` : '');
   // what the "Weather updated" announcement compares: the forecast alone, so a phase name rolling over is not an update
   const forecastText = (sentence ? ` ${sentence}` : '') + (sun ? `${sunText}.` : '') + (tideText ? ` ${tideText}` : '');
   const c = CITIES[focus];
   const l = labels[c.id];
-  const facts = l ? `${placeName(c)}, ${l[1]}, ${l[2]} local time${l.length === 4 ? `, ${c.location.sea ? 'swell ' : ''}${l[3]}` : ''}` : placeName(c);
+  const shown = scrubMin > 0 && view === 'jar' ? previewWeather(feed.get(c.id), previewMs(), c.location.zone) : feed.get(c.id);
+  const spokenTemp = temperatureSpoken(shown, feed.heldFor(nowMs()));
+  const facts = l ? `${placeName(c)}, ${spokenTemp}, ${l[2]} local time${l.length === 4 ? `, ${c.location.sea ? 'swell ' : ''}${l[3]}` : ''}` : placeName(c);
   let moonText = '';
   if (view === 'jar') {
     const at = scrubMin > 0 ? previewMs() : nowMs();
@@ -873,6 +870,7 @@ window.__jar = {
   hash() { return hashCanvas(); },
   // Hand the feed an answer now (the tidy body, or the vendor's { current } for
   // every city); dew is dated by the pinned moment when there is one.
+  refresh: () => feed.refresh(),
   applyWeather(body, how = {}) {
     let b = body;
     if (b && typeof b === 'object' && b.current && typeof b.current === 'object') {

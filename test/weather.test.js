@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, normaliseHourly, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell, normaliseSeaHourly, windCompass, tidesFor, tideSentence, formatTideStrip, formatTideHeight, tideCurve, formatRainChance, formatWindSpeed } from '../src/weather.js';
+import { KINDS, weatherKind, cloudAmount, formatTemp, EMPTY, isUsable, fromEntry, normaliseDaily, normaliseHourly, dayName, forecastCells, forecastSentence, sunTimesFor, formatSwell, normaliseSeaHourly, windCompass, tidesFor, tideSentence, formatTideStrip, formatTideHeight, tideCurve, formatRainChance, formatWindSpeed, heldText, temperatureLine, temperatureSpoken } from '../src/weather.js';
 
 const CLASSES = {
   clear: [0],
@@ -382,4 +382,16 @@ test('normaliseSeaDaily keeps at most six tide entries a day, in time order', ()
   const r = fromEntry({ sea: { daily: [{ date: '2026-10-18', tides }] } }).sea.daily[0].tides;
   assert.equal(r.length, 6);
   assert.deepEqual(r.map((t) => t.time), ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00']);
+});
+
+test('held-reading wording: heldText, temperatureLine, temperatureSpoken', () => {
+  assert.equal(heldText(90_000), '2 min old');
+  assert.equal(heldText(10_000), '1 min old');
+  assert.equal(temperatureLine(EMPTY), 'no weather');
+  assert.equal(temperatureLine({ temperature: 12.3, known: true }, 32 * 60_000), '12° · 32 min old');
+  assert.equal(temperatureLine({ temperature: null, known: true, code: 3 }), '—°');
+  assert.equal(temperatureSpoken(EMPTY), 'no weather');
+  assert.equal(temperatureSpoken({ temperature: 12.3, known: true }, 60_000), '12°, from a reading 1 minute old');
+  assert.equal(temperatureSpoken({ temperature: 12.3, known: true }, 20 * 60_000), '12°, from a reading 20 minutes old');
+  assert.equal(temperatureSpoken({ temperature: 12.3, known: true }), '12°');
 });

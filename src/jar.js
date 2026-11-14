@@ -5,7 +5,7 @@ import { JAR, LABEL } from './jar-geometry.js';
 import { localTimeText } from './placeclock.js';
 import { offsetLabel } from './scrub.js';
 import { placeName } from './cities/places.js';
-import { formatTemp, gloom } from './weather.js';
+import { temperatureLine, gloom } from './weather.js';
 import { drawJarSky, drawFog, drawSplashes, drawPrecipitation, drawRainOnGlass, drawFlurry } from './skyweather.js';
 import { PALETTE, css, skyGradient, overcastSky, gloomWash, glow, spill, sheen, glassBody, glassHighlights, lid, label, mix, contactShadow, reflection, brights } from './look/index.js';
 
@@ -42,10 +42,10 @@ export function lanternFlicker(nowMs, seed = 0, still = false) {
 
 // `preview` ({ offsetMin }, optional): when the moment is a scrubbed one ahead of
 // now, the time line says so: "15:00 (+5 h)". `nowMs` is then the previewed moment.
-export function labelLines(city, weather, nowMs, preview = null) {
+export function labelLines(city, weather, nowMs, preview = null, heldMs = null) {
   const time = localTimeText(nowMs, city.location.zone);
   const ahead = preview && Number.isFinite(preview.offsetMin) && preview.offsetMin > 0;
-  const lines = [placeName(city).toUpperCase(), formatTemp(weather && weather.temperature), ahead ? `${time} (${offsetLabel(preview.offsetMin)})` : time];
+  const lines = [placeName(city).toUpperCase(), temperatureLine(weather, heldMs), ahead ? `${time} (${offsetLabel(preview.offsetMin)})` : time];
   // A fourth line is the city's own (Nazare's swell, El Chalten's view of the peak), or none.
   const extra = typeof city.labelLine === 'function' ? city.labelLine(weather) : null;
   if (typeof extra === 'string' && extra) lines.push(extra);
@@ -181,7 +181,7 @@ export function placeJar(ctx, rect, city, interior, light, tint, lines, scratch,
   glassHighlights(ctx, { x: body.x, y: body.y, w: body.w, h: body.h }, JAR.neck, { shift: opts.shift || 0, glint: opts.glint || 0 });
   const lw = JAR.w * (1 - 2 * JAR.neck) + 12;
   lid(ctx, { x: (JAR.w - lw) / 2, y: 0, w: lw, h: JAR.lid }, city.lid);
-  label(ctx, LABEL, lines);
+  label(ctx, LABEL, lines, { dim: opts.status === 'none' });
   ctx.restore();
 
   // feed the bloom source (the caller has set its transform to match ctx's):

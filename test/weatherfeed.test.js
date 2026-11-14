@@ -72,6 +72,28 @@ test('a failed or malformed answer keeps the last good one and never throws', as
   assert.equal(f.revision, rev);
 });
 
+test('heldFor: the age while a renewal has failed, null otherwise', async () => {
+  let clock = 1000;
+  let fail = false;
+  const f = new WeatherFeed({
+    fetchImpl: async () => { if (fail) throw new Error('offline'); return { ok: true, json: async () => body(7) }; },
+    now: () => clock,
+  });
+  assert.equal(f.heldFor(), null, 'before any answer');
+  await f.refresh();
+  assert.equal(f.heldFor(), null, 'after a good answer');
+  fail = true;
+  clock += 20 * 60000;
+  await f.refresh();
+  assert.equal(f.heldFor(), 20 * 60000);
+  assert.equal(f.heldFor(clock + 60000), 21 * 60000);
+  clock += STALE_MS;
+  assert.equal(f.heldFor(), null, 'stale');
+  fail = false;
+  await f.refresh();
+  assert.equal(f.heldFor(), null, 'after the next good answer');
+});
+
 test('revision bumps only on a changed answer', async () => {
   const f = new WeatherFeed({ fetchImpl: okFetch(body(1)) });
   assert.equal(f.applyResponse(body(1)), true);

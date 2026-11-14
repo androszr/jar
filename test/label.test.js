@@ -22,12 +22,12 @@ function fake() {
   });
 }
 
-function paint(lines) {
+function paint(lines, opts) {
   const real = Math.random;
   Math.random = () => { throw new Error('Math.random in a draw function'); };
   try {
     const ctx = fake();
-    label(ctx, LABEL, lines);
+    label(ctx, LABEL, lines, opts);
     return ctx.texts;
   } finally {
     Math.random = real;
@@ -48,4 +48,13 @@ test('four lines: ascending, inside the plate, the swell last', () => {
     assert.ok(t[i].y > LABEL.y && t[i].y < LABEL.y + LABEL.h, 'inside the plate');
     if (i) assert.ok(t[i].y > t[i - 1].y, 'ascending');
   }
+});
+
+test('a dim or a long second line keeps every line where it was', () => {
+  const plain = paint(['WARSAW', '12°', '14:05']);
+  const dim = paint(['WARSAW', 'no weather', '14:05'], { dim: true });
+  assert.deepEqual(dim.map((x) => x.y), plain.map((x) => x.y));
+  const held = paint(['WARSAW', '12° · 32 min old', '14:05']);
+  assert.equal(held[1].s, '12° · 32 min old');
+  assert.deepEqual(held.map((x) => x.y), plain.map((x) => x.y));
 });

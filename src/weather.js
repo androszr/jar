@@ -59,6 +59,32 @@ export function formatTemp(t) {
   return `${Object.is(r, -0) ? 0 : r}°`;
 }
 
+export const NO_WEATHER = 'no weather';
+
+const heldMinutes = (ms) => Math.max(1, Math.round(ms / 60000));
+
+// "32 min old": how old a held reading is (it is dropped at 45 minutes).
+export function heldText(ms) {
+  return `${heldMinutes(ms)} min old`;
+}
+
+const hasNothing = (w) => !w || (!w.known && !isUsable(w));
+
+// The label's temperature line: "12°", "12° · 32 min old" for a held reading,
+// "no weather" when the jar has no reading at all.
+export function temperatureLine(weather, heldMs = null) {
+  if (hasNothing(weather)) return NO_WEATHER;
+  return heldMs !== null ? `${formatTemp(weather.temperature)} · ${heldText(heldMs)}` : formatTemp(weather.temperature);
+}
+
+// The same line, spoken.
+export function temperatureSpoken(weather, heldMs = null) {
+  if (hasNothing(weather)) return NO_WEATHER;
+  if (heldMs === null) return formatTemp(weather.temperature);
+  const n = heldMinutes(heldMs);
+  return `${formatTemp(weather.temperature)}, from a reading ${n} minute${n === 1 ? '' : 's'} old`;
+}
+
 export function isUsable(w) {
   return !!w && typeof w === 'object' && typeof w.temperature === 'number' && Number.isFinite(w.temperature);
 }
