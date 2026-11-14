@@ -88,6 +88,17 @@ export const RIM_DX = [1.2, -1.2];
 export const DAY_RIM = { dx: 1.8, dy: -0.75 }; // the sunlit edge by day, px, on the sun's side
 
 export const CLOCK_R = 1.9; // the Palace clock's radius, px of the reference box
+export const HANDS = { hour: 0.55, minute: 0.85, width: 0.28 }; // lengths and stroke width as shares of CLOCK_R
+
+// The Palace clock's hands at a moment, as angles clockwise from 12 in radians
+// on a 12-hour face, read on Warsaw's wall clock; null when the moment cannot
+// be read, and then no hands are drawn. A function of nowMs only (convention 4).
+export function clockHands(nowMs) {
+  const f = dayFraction(nowMs, 'Europe/Warsaw');
+  if (f === null) return null;
+  const mins = f * 1440;
+  return { hour: ((mins % 720) / 720) * Math.PI * 2, minute: ((mins % 60) / 60) * Math.PI * 2 };
+}
 
 // Soft points of light along Varso's lit needle at night.
 export const MAST_GLOWS = 4;
@@ -667,13 +678,28 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
     ctx.fill();
   }
   if (night > 0) glow(ctx, px, L.gy - L.h * 0.16, L.w * 0.2, flagDay(nowMs) ? WARSAW.flagWhite : WARSAW.floodGlow, 0.4 * night);
-  // one clock face on the lantern: small, pale stone by day, a dim warm disc at night
+  // one clock face on the lantern: small, pale stone by day, a dim warm disc at night; two hands on Warsaw's time, dark by day and bright at night
   const clockY = L.Y(PALACE.clock);
   ctx.fillStyle = css(mix(WARSAW.clockDay, WARSAW.clockNight, night), 0.9 - 0.15 * night);
   ctx.beginPath();
   ctx.arc(px, clockY, CLOCK_R * L.sx, 0, Math.PI * 2);
   ctx.fill();
   if (night > 0) glow(ctx, px, clockY, 5 * L.sx, WARSAW.clockNight, 0.22 * night);
+  const hands = clockHands(nowMs);
+  if (hands) {
+    ctx.save(); // the hands' stroke state must not leak to what is drawn next (rain leaves lineCap round)
+    ctx.strokeStyle = css(mix(WARSAW.clockHandDay, WARSAW.clockHandNight, night));
+    ctx.lineWidth = HANDS.width * CLOCK_R * L.sx;
+    ctx.lineCap = 'round';
+    for (const [a, len] of [[hands.hour, HANDS.hour], [hands.minute, HANDS.minute]]) {
+      const r = len * CLOCK_R * L.sx;
+      ctx.beginPath();
+      ctx.moveTo(px, clockY);
+      ctx.lineTo(px + Math.sin(a) * r, clockY - Math.cos(a) * r);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (layers.foot) layers.foot(L, night);
 
   // the low city in front: first the unbroken roofs behind, muted toward the
@@ -733,7 +759,7 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
     for (const b of FRONT_ROW) cap(L.X(b.x - b.hw), L.X(b.x + b.hw), L.oy + b.top * L.h);
   }
   if (layers.roofs) layers.roofs(L, night);
-  return { windows: 1 - out };
+  return { windows: 1 - out, clock: hands };
 }
 
 // Ice on the Vistula: below ICE.from degrees blocks drift right; full at ICE.full.

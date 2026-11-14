@@ -130,6 +130,8 @@ export const WARSAW = {
   // the Palace's one clock: a small warm face, never white
   clockDay: [226, 206, 168],
   clockNight: [214, 160, 92],
+  clockHandDay: [64, 46, 30], // the hands: dark on the pale day face
+  clockHandNight: [255, 236, 196], // bright on the dim warm night face
   // the river: the sun's glitter path, its warm twin at golden hour, the moon's track
   sunGlitter: [255, 250, 226],
   sunGolden: [255, 186, 110],

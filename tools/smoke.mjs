@@ -705,6 +705,8 @@ try {
   const bluish = (r, g, b) => b >= r + 30 && b >= 90;
   const rim = (r, g, b) => r >= 200 && g >= 140 && g <= 210 && b <= 130;
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), gold), 'Palace glows gold at night');
+  const clockN = await noct.evaluate(() => window.__jar.scene('warsaw').clock);
+  check(!!clockN && Math.abs(clockN.hour - Math.PI / 4) < 0.01 && Math.abs(clockN.minute - Math.PI) < 0.01, 'the Palace clock reads 01:30 at the pinned Warsaw night');
   check(some(await patch(noct, 'warsaw', 0.235, 0.17, 2), blue), 'Varso crown glows blue');
   check(some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'red aviation light at the needle tip');
   const needle = luma(await patch(noct, 'warsaw', 0.235, 0.085, 1));
@@ -745,6 +747,15 @@ try {
   const fd = await noct.evaluate(() => window.__jar.forecast);
   check(!!fd && !!fd.sun && Math.abs(fd.sunT - 0.327) < 0.01, 'forecast card sun arc puts the dot a third of the way at 10:30 in Warsaw');
   check(all(await patch(noct, 'warsaw', 0.4, 0.4, 2), (r, g, b) => r >= b + 30), 'Palace is warm sandstone by day');
+  const clockD = await noct.evaluate(() => window.__jar.scene('warsaw').clock);
+  check(!!clockD && Math.abs(clockD.hour - 1.75 * Math.PI) < 0.01 && Math.abs(clockD.minute - Math.PI) < 0.01, 'the Palace clock reads 10:30 at the pinned Warsaw morning');
+  // the fixture's forecast starts on the real today, so pin to the real now for the card's rows to line up
+  await noct.evaluate(() => window.__jar.pin(Math.floor(Date.now() / 60000) * 60000));
+  const dayOk = await noct.evaluate(() => window.__jar.previewDay(1));
+  const clockP = await noct.evaluate(() => window.__jar.scene('warsaw').clock);
+  check(dayOk === true && !!clockP && Math.abs(clockP.hour - Math.PI / 6) < 0.01 && Math.abs(clockP.minute) < 0.01, 'the Palace clock follows the day preview to 13:00');
+  await noct.evaluate(() => window.__jar.previewDay(1)); // the same day again returns to now
+  await noct.evaluate((t) => window.__jar.pin(t), T_DAY);
   check(!some(await patch(noct, 'warsaw', 0.235, 0.045, 4), red), 'no aviation light by day');
   const dayDeck = await deckScan(noct);
   check(!some(dayDeck, headlight) && !some(dayDeck, red), 'no traffic lights on the deck by day');
