@@ -80,18 +80,18 @@ function cloudTone(colour, tint, m, y) {
 // The banner cloud streaming off the summit: longer in more wind, carried the
 // way the wind goes, short and fat towards you when it comes from due west.
 export function drawPlume(ctx, L, phase, tint, plates, nowMs, m) {
-  const len = clearish(m) ? plumeLength(m.wind) : 0;
+  const len = clearish(m) ? plumeLength(m.summitWind) : 0;
   if (len <= 0) return;
-  const fat = 1 + (1 - Math.abs(m.side)) * 0.6;
+  const fat = 1 + (1 - Math.abs(m.summitSide)) * 0.6;
   const col = cloudTone(EC.plume, tint, m, SUMMIT.y);
   const N = 9;
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1);
-    const x = L.X(SUMMIT.x + m.side * len * t);
+    const x = L.X(SUMMIT.x + m.summitSide * len * t);
     // with no side to go to (a wind from due west, or none read) it lifts off the tip instead of piling on it
-    const lift = (1 - Math.abs(m.side)) * 0.5 * len * t;
+    const lift = (1 - Math.abs(m.summitSide)) * 0.5 * len * t;
     const y = L.Y(SUMMIT.y + 0.012 + 0.018 * t - lift + 0.004 * Math.sin(nowMs / 1100 + i));
-    puff(ctx, x, y, L.w * (0.012 + 0.12 * len * t) * fat, col, (0.85 - 0.3 * (1 - Math.abs(m.side))) * (1 - t * 0.6));
+    puff(ctx, x, y, L.w * (0.012 + 0.12 * len * t) * fat, col, (0.85 - 0.3 * (1 - Math.abs(m.summitSide))) * (1 - t * 0.6));
   }
 }
 
@@ -102,9 +102,9 @@ export function lensSpot(side) {
   return { x: SUMMIT.x - (side < 0 ? -1 : 1) * 0.2, y: 0.108 };
 }
 export function drawLens(ctx, L, phase, tint, plates, nowMs, m) {
-  const k = lensAmount(m.wind, m.band, m.cover);
+  const k = lensAmount(m.summitWind, m.band, m.cover);
   if (k <= 0.02) return;
-  const s = lensSpot(m.side);
+  const s = lensSpot(m.summitSide);
   const top = cloudTone(EC.lens, tint, m, s.y);
   const under = cloudTone(EC.lensShade, tint, m, s.y);
   const breathe = 1 + 0.03 * Math.sin(nowMs / 5200);
@@ -130,9 +130,9 @@ export function drawLens(ctx, L, phase, tint, plates, nowMs, m) {
 
 // Spindrift: in a strong wind snow streams off the ridges in short torn banners.
 export function drawSpindrift(ctx, L, phase, tint, plates, nowMs, m) {
-  const k = clearish(m) ? spindriftAmount(m.wind) : 0;
+  const k = clearish(m) ? spindriftAmount(m.summitWind) : 0;
   if (k <= 0) return;
-  const side = Math.abs(m.side) < 0.25 ? 0.25 : m.side;
+  const side = Math.abs(m.summitSide) < 0.25 ? 0.25 : m.summitSide;
   const count = 2 + Math.round(k * (plates.spindrift.length - 2));
   for (let j = 0; j < count; j++) {
     const [sx, sy] = plates.spindrift[j];

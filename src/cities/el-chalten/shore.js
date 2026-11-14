@@ -154,7 +154,7 @@ export function drawShore(ctx, L, phase, tint, plates, nowMs, m, minutes, folk =
     ctx.closePath();
     ctx.fill();
   };
-  const snowy = m.frozen ? 0.6 : m.fresh ? 0.3 : 0;
+  const snowy = m.snowLine === null ? (m.frozen ? 0.6 : m.fresh ? 0.3 : 0) : m.snowLine >= 1 ? 0.6 : 0;
   // in the cold the gravel itself is greyed by trodden snow; the white lies in drifts
   const gravel = (c) => night(mix(c, mix(EC.snowShade, EC.gravelDay, 0.35), snowy * 0.75));
   const fall = ctx.createLinearGradient(0, L.Y(GRAVEL.y0), 0, L.Y(1));

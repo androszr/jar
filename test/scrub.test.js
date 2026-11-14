@@ -15,6 +15,9 @@ const hourly = fixture.hourly.time.map((time, i) => ({
   isDay: fixture.hourly.is_day[i],
   windSpeed: fixture.hourly.wind_speed_10m[i],
   windDir: fixture.hourly.wind_direction_10m[i],
+  windSpeed700: 60 + i,
+  windDir700: 250,
+  freezingLevel: 1500 + 10 * i,
 }));
 const weather = fromEntry({ temperature: 12.3, code: 61, cloudCover: 80, isDay: 1, windSpeed: 18, windDir: 250, daily: [{ date: '2026-10-18', code: 61, high: 14, low: 8, sunrise: '07:05', sunset: '17:32' }], sea: null, hourly });
 const at = (hhmm) => wallToMs(`2026-10-18T${hhmm}`, ZONE);
@@ -150,4 +153,14 @@ test('previewWeather with both rows swaps both; with neither it is identical', (
   assert.equal(previewWeather(none, at('15:00'), ZONE), none);
   assert.equal(previewWeather(EMPTY, at('15:00'), ZONE), EMPTY);
   assert.deepEqual(previewWeather(seaWeather, at('14:00'), ZONE), previewWeather(seaWeather, at('14:00'), ZONE));
+});
+
+test('previewWeather carries the summit wind and the freezing level of the row', () => {
+  const p = previewWeather(weather, at('15:00'), ZONE);
+  assert.equal(p.windSpeed700, 75);
+  assert.equal(p.windDir700, 250);
+  assert.equal(p.freezingLevel, 1650);
+  const bare = fromEntry({ ...{ temperature: 12, code: 61 }, hourly: hourly.map(({ windSpeed700, windDir700, freezingLevel, ...r }) => r) });
+  const q = previewWeather(bare, at('15:00'), ZONE);
+  assert.deepEqual([q.windSpeed700, q.windDir700, q.freezingLevel], [null, null, null]);
 });

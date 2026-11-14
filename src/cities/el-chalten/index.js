@@ -96,7 +96,8 @@ export default {
     drawStormFlash(ctx, rect, weather, nowMs, { reduced });
     return {
       band: m.band,
-      plume: m.band === 'clear' || m.band === 'smoking' ? plumeLength(m.wind) : 0,
+      plume: m.band === 'clear' || m.band === 'smoking' ? plumeLength(m.summitWind) : 0,
+      plumeWind: m.plumeWind,
       glow: seen ? glowStrength(phase) : 0,
       mirror: m.mirror,
       frozen: m.frozen,
@@ -105,6 +106,7 @@ export default {
       tourists: shore.tourists,
       condor: shore.condor,
       season: m.season,
+      snowLine: m.snowLine,
     };
   },
 };

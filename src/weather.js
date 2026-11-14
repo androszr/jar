@@ -7,7 +7,7 @@ import { clamp, smoothstep } from './clock.js';
 export const KINDS = ['clear', 'cloud', 'fog', 'drizzle', 'rain', 'snow', 'storm'];
 
 // What a jar draws from before any answer has arrived, or after a bad one.
-export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, kind: 'cloud', known: false, daily: Object.freeze([]), hourly: Object.freeze([]), sea: null });
+export const EMPTY = Object.freeze({ temperature: null, code: null, cloudCover: null, isDay: null, windSpeed: null, windDir: null, windSpeed700: null, windDir700: null, freezingLevel: null, kind: 'cloud', known: false, daily: Object.freeze([]), hourly: Object.freeze([]), sea: null });
 
 // WMO code -> kind. Unknown and null fall back to 'cloud'.
 export function weatherKind(code) {
@@ -91,7 +91,7 @@ export function normaliseHourly(list) {
     if (rows.length >= HOURLY_MAX) break;
     if (!r || typeof r !== 'object' || typeof r.time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(r.time)) continue;
     const code = num(r.code);
-    rows.push({ time: r.time, temperature: num(r.temperature), code, cloudCover: num(r.cloudCover), isDay: num(r.isDay), windSpeed: num(r.windSpeed), windDir: num(r.windDir), kind: weatherKind(code) });
+    rows.push({ time: r.time, temperature: num(r.temperature), code, cloudCover: num(r.cloudCover), isDay: num(r.isDay), windSpeed: num(r.windSpeed), windDir: num(r.windDir), windSpeed700: num(r.windSpeed700), windDir700: num(r.windDir700), freezingLevel: num(r.freezingLevel), kind: weatherKind(code) });
   }
   return rows;
 }
@@ -318,6 +318,9 @@ export function fromEntry(e) {
     isDay: num(e.isDay),
     windSpeed: num(e.windSpeed),
     windDir: num(e.windDir),
+    windSpeed700: num(e.windSpeed700),
+    windDir700: num(e.windDir700),
+    freezingLevel: num(e.freezingLevel),
     kind: weatherKind(code),
     known: code !== null,
     daily: normaliseDaily(e.daily),

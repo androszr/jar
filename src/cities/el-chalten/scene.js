@@ -7,18 +7,20 @@
 // hour. Shapes are shares of the jar body: x of its width, y of its height.
 // Every mover is a function of `nowMs` or `phase`, so the same moment draws the
 // same pixels.
-import { LAMP_THRESHOLD, clamp } from '../../clock.js';
+import { LAMP_THRESHOLD, clamp, lerp } from '../../clock.js';
 import { css, mix } from '../../look/index.js';
 import { hash2 } from '../../skyweather.js';
 import { EL_CHALTEN as EC } from './palette.js';
 import {
   GLOW_TOP, GLOW_FOOT, visibilityBand, windOf, coverOf, plumeSide, mirrorAmount, glowLine, glowStrength, glowAt,
-  silhouetteAmount, monthAt, seasonOf, freshSnow, facetShade, moonLight,
+  silhouetteAmount, monthAt, seasonOf, freshSnow, facetShade, moonLight, summitWindOf, summitSideOf, plumeWindOf, snowLineShare,
 } from './massif.js';
 
 export const SEED = 0xf172;
 // the lake's far shore, and the gravel shore below it
 export const SHORE = 0.5;
+// the moraine hill's highest point (a share of the body height)
+export const MORAINE_CREST = 0.398;
 // (the near ground starts above the label plate, so the hiker is in view; it is a
 // narrow, stony lip of moraine, not a beach: the lake runs almost to the viewer's feet)
 export const GRAVEL = { y0: 0.672, y1: 0.737 };
@@ -340,9 +342,14 @@ export function mood(tint, weather, nowMs, location, phase = null, reduced = fal
   const cover = coverOf(weather);
   const hasPhase = typeof phase === 'number' && Number.isFinite(phase);
   const clearish = band === 'clear' || band === 'smoking';
+  // the freezing level as a share of the way from the summit down to the far shore (a drawn
+  // mapping between the summit's and the lake's heights, not a survey); null without a figure
+  const snowLine = snowLineShare(weather && weather.freezingLevel);
   const moon = hasPhase ? moonLight(phase, nowMs) : { up: false, x: 0.5, y: 0.4, k: 0 };
   return {
     n, band, wind, side: plumeSide(weather && weather.windDir), cover,
+    summitWind: summitWindOf(weather), summitSide: summitSideOf(weather), plumeWind: plumeWindOf(weather),
+    snowLine, snowLineY: snowLine === null ? null : lerp(SUMMIT.y, SHORE, snowLine),
     month, season, frozen, fresh: freshSnow(weather && weather.temperature), mirror: mirrorAmount(wind, band, frozen),
     kind: weather && weather.known ? weather.kind : null,
     glowK: hasPhase && band !== 'hidden' ? glowStrength(phase) : 0,
@@ -352,6 +359,12 @@ export function mood(tint, weather, nowMs, location, phase = null, reduced = fal
     moon: { ...moon, k: moon.k * n * (clearish ? 1 - (cover / 100) * 0.7 : band === 'capped' ? 0.15 : 0) },
     reduced: !!reduced,
   };
+}
+
+// Snow lies at height y (a share of the body): below the freezing level the
+// season-and-frost rule, exactly as before when there is no figure.
+export function snowAt(m, y) {
+  return m.snowLine === null ? (m.frozen || m.fresh ? 1 : 0) : y <= m.snowLineY ? 1 : 0;
 }
 
 // ---- drawing helpers ---------------------------------------------------------
@@ -457,12 +470,12 @@ function drawRock(ctx, L, body, phase, tint, m, haze) {
     ctx.fill();
   }
   // in the cold every ledge carries a second, wider sliver under the first
-  if (m.frozen || m.fresh) {
-    for (const s of body.streaks) {
-      ctx.fillStyle = css(wallSnow(phase, tint, m, s[0][1]), m.frozen ? 0.9 : 0.6);
-      poly(ctx, L, s.map(([x, y]) => [s[1][0] + (x - s[1][0]) * 1.5 + 0.004, y + 0.012]));
-      ctx.fill();
-    }
+  // (or, with a freezing level, above it)
+  for (const s of body.streaks) {
+    if (!snowAt(m, s[0][1])) continue;
+    ctx.fillStyle = css(wallSnow(phase, tint, m, s[0][1]), m.snowLine !== null ? 0.9 : m.frozen ? 0.9 : 0.6);
+    poly(ctx, L, s.map(([x, y]) => [s[1][0] + (x - s[1][0]) * 1.5 + 0.004, y + 0.012]));
+    ctx.fill();
   }
   // by night a thin moonlit rim keeps the skyline
   if (m.n > 0.3) {
@@ -522,8 +535,8 @@ export function drawGlacier(ctx, L, phase, tint, plates, m) {
   ctx.fill();
   ctx.fillStyle = css(rock(EC.benchLit), 0.8);
   for (const b of g.benchLit) { poly(ctx, L, b); ctx.fill(); }
-  if (m.frozen || m.fresh) {
-    ctx.fillStyle = css(snowTone(m, 0.7), m.frozen ? 0.7 : 0.4);
+  if (snowAt(m, 0.44)) {
+    ctx.fillStyle = css(snowTone(m, 0.7), m.snowLine !== null ? 0.7 : m.frozen ? 0.7 : 0.4);
     for (const b of g.benchLit) { poly(ctx, L, b); ctx.fill(); }
   }
   // the ice: in the evening it lies in the wall's shadow, at first light it is pink
@@ -594,7 +607,7 @@ export function drawMoraine(ctx, L, phase, tint, plates, m) {
   }
   // snow on the hill: blue-grey where it lies in its own shade, bright only on the
   // planes turned to the sun, and none on the steep dark faces
-  const cover = m.frozen ? 0.86 : m.fresh ? 0.5 : 0;
+  const cover = m.snowLine === null ? (m.frozen ? 0.86 : m.fresh ? 0.5 : 0) : 0.86 * clamp((m.snowLineY - MORAINE_CREST) / (SHORE - MORAINE_CREST));
   if (cover > 0) {
     ctx.fillStyle = css(snowTone(m, 0.85), cover);
     poly(ctx, L, mo.outline);

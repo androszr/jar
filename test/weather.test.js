@@ -227,12 +227,12 @@ test('forecastSentence says the swell after a day that has one', () => {
 
 test('fromEntry reads hourly rows, folds kind per row, and defaults to []', () => {
   const w = fromEntry({ temperature: 1, hourly: [
-    { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200 },
+    { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200, windSpeed700: 55, windDir700: 250, freezingLevel: 1900 },
     { time: 'junk', temperature: 3 },
     { time: '2026-10-18T16:00', temperature: '5', code: 0 },
   ] });
   assert.equal(w.hourly.length, 2);
-  assert.deepEqual(w.hourly[0], { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200, kind: 'rain' });
+  assert.deepEqual(w.hourly[0], { time: '2026-10-18T15:00', temperature: 16.2, code: 61, cloudCover: 90, isDay: 1, windSpeed: 12, windDir: 200, windSpeed700: 55, windDir700: 250, freezingLevel: 1900, kind: 'rain' });
   assert.equal(w.hourly[1].temperature, null);
   assert.equal(w.hourly[1].kind, 'clear');
   assert.deepEqual(fromEntry({ temperature: 1 }).hourly, []);
@@ -382,4 +382,15 @@ test('normaliseSeaDaily keeps at most six tide entries a day, in time order', ()
   const r = fromEntry({ sea: { daily: [{ date: '2026-10-18', tides }] } }).sea.daily[0].tides;
   assert.equal(r.length, 6);
   assert.deepEqual(r.map((t) => t.time), ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00']);
+});
+
+test('EMPTY, fromEntry and normaliseHourly carry the summit wind and the freezing level, null by default', () => {
+  assert.deepEqual([EMPTY.windSpeed700, EMPTY.windDir700, EMPTY.freezingLevel], [null, null, null]);
+  const w = fromEntry({ temperature: 1, windSpeed700: 70, windDir700: 240, freezingLevel: 2100 });
+  assert.deepEqual([w.windSpeed700, w.windDir700, w.freezingLevel], [70, 240, 2100]);
+  const s = fromEntry({ temperature: 1, windSpeed700: '70', freezingLevel: '2100' });
+  assert.deepEqual([s.windSpeed700, s.windDir700, s.freezingLevel], [null, null, null]);
+  const rows = normaliseHourly([{ time: '2026-10-18T00:00', windSpeed700: 50, freezingLevel: 1800 }, { time: '2026-10-18T01:00' }]);
+  assert.deepEqual([rows[0].windSpeed700, rows[0].windDir700, rows[0].freezingLevel], [50, null, 1800]);
+  assert.deepEqual([rows[1].windSpeed700, rows[1].windDir700, rows[1].freezingLevel], [null, null, null]);
 });
