@@ -975,6 +975,47 @@ try {
   await settled(noct);
   await twoFrames(noct);
   check(!all(await patch(noct, 'warsaw', 0.235, 0.045, 2), greyPale), 'the cloud base lifts with the clear reading');
+  // a rainy night: the walkway shines wet and the lamps streak down the river; a dry one has neither
+  // the sheen is one thin line (rows 0.632-0.633) 1.6 units under the walk's top (0.628); it is read against the paving just above it,
+  // at four columns between the lamp posts (a post every 18 units from unit 9; the halo column is 3.9 wide) and clear of the bridge and the Mermaid;
+  // the least lift of the four, so one busy column cannot fake it
+  const sheenLift = async () => {
+    let least = Infinity;
+    for (const unit of [54, 90, 198, 234]) {
+      const x = unit / 340;
+      const line = luma(await patch(noct, 'warsaw', x, 0.6325, 0));
+      const bare = luma(await patch(noct, 'warsaw', x, 0.630, 0));
+      least = Math.min(least, line - bare);
+    }
+    return least;
+  };
+  // the rain streak is a gold column hung under each lamp (a post every 18 units from unit 9), reaching down the river;
+  // its lift is how much brighter the water is under a lamp than half-way to the next one, averaged over three depths and every lamp
+  const streakLift = async () => {
+    let sum = 0;
+    for (const y of [0.66, 0.67, 0.675]) {
+      let on = 0, off = 0, n = 0;
+      for (let unit = 9; unit < 340; unit += 18, n++) {
+        on += luma(await patch(noct, 'warsaw', unit / 340, y, 0));
+        off += luma(await patch(noct, 'warsaw', (unit + 9) / 340, y, 0));
+      }
+      sum += (on - off) / n;
+    }
+    return sum / 3;
+  };
+  await noct.evaluate((t) => window.__jar.pin(t), T_NIGHT);
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(61, 90));
+  await twoFrames(noct);
+  const wetLift = await sheenLift();
+  check(wetLift >= 15, `the walkway shines wet on a rainy night (${wetLift.toFixed(1)})`);
+  const wetStreak = await streakLift();
+  check(wetStreak >= 12, `a far-bank lamp streaks down the wet river (lift ${wetStreak.toFixed(1)})`);
+  await noct.evaluate((b) => window.__jar.applyWeather(b), tidy(0, 5, 21.4));
+  await twoFrames(noct);
+  const dryLift = await sheenLift();
+  check(dryLift < 5, `the dry walkway shows no wet sheen (${dryLift.toFixed(1)})`);
+  const dryStreak = await streakLift();
+  check(dryStreak < 6, `the dry river shows no lamp streak (lift ${dryStreak.toFixed(1)})`);
   const T_FLAG = Date.UTC(2026, 10, 11, 20, 0); // 21:00 in Warsaw on 11 November
   await noct.evaluate((t) => window.__jar.pin(t), T_FLAG);
   const white = (r, g, b) => r >= 200 && g >= 190 && b >= 180;

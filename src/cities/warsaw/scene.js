@@ -980,6 +980,19 @@ function column(ctx, L, x, wid, c, a, reach = 1) {
   sheen(ctx, x, L.river.top, Math.max(1.2 * L.sx, wid * 0.62), (L.river.bottom - L.river.top) * 1.25 * reach, c, clamp(a));
 }
 
+// Where the far bank's boulevard lamps stand: one every 18 units from unit 9.
+// The posts, their reflections and the rain streaks all read it, so they cannot disagree.
+export function lampXs(L) {
+  const xs = [];
+  for (let x = L.ox + 9 * L.sx; x < L.ox + L.w; x += 18 * L.sx) xs.push(x);
+  return xs;
+}
+
+// A wet night: each lamp lays a long gold streak down the river.
+export function drawLampStreaks(ctx, L, night) {
+  for (const x of lampXs(L)) column(ctx, L, x, 5 * L.sx, WARSAW.quayLamp, 0.3 * night, 0.9);
+}
+
 // Plain water crossing a reflection: `n` thin gaps that drift slowly down it.
 export const GAP_MS = 9000;
 function gaps(ctx, L, nowMs, reduced, x, wid, water, seed, n = 3) {
@@ -999,7 +1012,7 @@ function gaps(ctx, L, nowMs, reduced, x, wid, water, seed, n = 3) {
 }
 
 // Rain, drizzle or a storm: the ground is wet, so lights run longer and stronger on it.
-export const rainy = (weather) => !!weather && (weather.kind === 'rain' || weather.kind === 'drizzle' || weather.kind === 'storm');
+export const isRainy = (weather) => !!weather && (weather.kind === 'rain' || weather.kind === 'drizzle' || weather.kind === 'storm');
 
 // Returns { glitter, moonTrack, wet }: how strongly the sun's path and the
 // moon's track lie on the water (0 for none), and whether the ground is wet.
@@ -1009,7 +1022,7 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
   const top = L.river.top;
   const bottom = L.river.bottom;
   const wet = weather && (weather.kind === 'rain' || weather.kind === 'drizzle' || weather.kind === 'storm' || weather.kind === 'fog');
-  const rain = rainy(weather);
+  const rain = isRainy(weather);
   let colour = tone(WARSAW.riverDay, WARSAW.riverNight, WARSAW.riverDeep, night);
   if (wet) colour = mix(colour, WARSAW.dull, 0.35 * clamp(tint.light + 0.2));
   const ice = iceAmount(weather);
@@ -1072,14 +1085,15 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
       [L.X(TOWER.zlota.x), 10, WARSAW.reflectZlota, 0.45, 50, s.all],
     ];
     for (const [x, wid, c, a, , dim] of lit) if (dim > 0) column(ctx, L, x, wid * L.sx * (rain ? 1.25 : 1), c, 0.9 * a * night * k * dim);
-    for (const [x, wid, c, a, seed, dim] of lit) if (dim > 0) ripple(ctx, L, nowMs, reduced, x, wid * L.sx, c, a * night * k * 0.8 * dim, seed);
+    // a wet night: the dashes spread wider and scatter further sideways, so the reflection goes long and soft (the alpha is divided by the width factor: spread, not added)
+    for (const [x, wid, c, a, seed, dim] of lit) if (dim > 0) ripple(ctx, L, nowMs, reduced, x, wid * L.sx * (rain ? 1.3 : 1), c, a * night * k * 0.8 * dim / (rain ? 1.3 : 1), seed, rain ? 1.3 : 0.6);
     // Varso's red aviation light, a short thin red thread beside its blue crown
     if (s.hidden > 0) ripple(ctx, L, nowMs, reduced, L.X(TOWER.varso.x), 3 * L.sx, WARSAW.aviation, 0.6 * night * k * s.hidden, 35, 0.3, short(4));
     // the boulevard lamps, each a short gold shiver; long wet streaks in the rain
-    for (let x = L.ox + 9 * L.sx, i = 0; x < L.ox + L.w; x += 18 * L.sx, i++) {
-      if (rain) column(ctx, L, x, 5 * L.sx, WARSAW.quayLamp, 0.3 * night, 0.9);
+    if (rain) drawLampStreaks(ctx, L, night);
+    lampXs(L).forEach((x, i) => {
       ripple(ctx, L, nowMs, reduced, x, 3.2 * L.sx, WARSAW.quayLamp, 0.5 * night * k, 100 + i, 0.4, short(3));
-    }
+    });
     // the moon's track, when it is up
     if (track > 0) {
       const mx = L.X(moon.x);
@@ -1100,15 +1114,20 @@ export function drawRiver(ctx, rect, phase, tint, weather, nowMs, reduced = fals
 // wet: it darkens, each lamp wears a soft halo and lays a streak on the paving.
 function drawBoulevard(ctx, L, tint, night, weather) {
   const snow = weather && weather.kind === 'snow';
-  const rain = rainy(weather);
+  const rain = isRainy(weather);
   const top = L.river.top;
   const walk = L.boulevard;
   const paved = mix(tone(WARSAW.boulevardDay, WARSAW.boulevardNight, WARSAW.boulevardNight, night), tint.skyLow, 0.1);
   ctx.fillStyle = css(snow ? mix(WARSAW.snowCap, WARSAW.boulevardNight, 0.6 * night + 0.05) : rain ? mix(paved, WARSAW.quayNight, 0.3) : paved);
   ctx.fillRect(L.ox, walk, L.w, top - walk);
+  if (rain && night > 0) {
+    // the wet sheen: one thin pale line on the paving, under the lamp posts' feet
+    ctx.fillStyle = css(WARSAW.wetSheen, 0.22 * night);
+    ctx.fillRect(L.ox, walk + 1.6 * L.sy, L.w, 0.8 * L.sy);
+  }
   ctx.fillStyle = css(mix(tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night), tint.skyLow, 0.6));
   ctx.fillRect(L.ox, top - 1.2 * L.sy, L.w, 1.2 * L.sy);
-  for (let x = L.ox + 9 * L.sx; x < L.ox + L.w; x += 18 * L.sx) {
+  for (const x of lampXs(L)) {
     ctx.fillStyle = css(tone(WARSAW.quayDay, WARSAW.quayNight, WARSAW.quayDeep, night));
     ctx.fillRect(x, walk - 4.5 * L.sy, 0.7 * L.sx, 4.5 * L.sy + 1);
     if (night > 0) {

@@ -1,11 +1,12 @@
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import warsaw from '../src/cities/warsaw/index.js';
 import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
-  overcastAmount, CLOCK_R, HANDS, clockHands, FLASH_W, flashAmount, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, ceilingTop, fogDepth,
+  overcastAmount, CLOCK_R, HANDS, clockHands, FLASH_W, flashAmount, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, isRainy, lampXs, drawLampStreaks, drawRiver, CEILING, ceilingAmount, ceilingTop, fogDepth,
 } from '../src/cities/warsaw/scene.js';
 import { reflectionScale, REFLECT_FOG_DIM } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
@@ -973,9 +974,9 @@ test('W6: daytime vehicles are the night lights by day: pure, on the deck, one b
 });
 
 test('W7: rain, drizzle and storm wet the ground: longer and stronger reflections, halos, a streak on the walk', () => {
-  for (const k of ['rain', 'drizzle', 'storm']) assert.equal(rainy({ kind: k }), true);
-  for (const k of ['clear', 'cloud', 'fog', 'snow']) assert.equal(rainy({ kind: k }), false);
-  assert.equal(rainy(null), false);
+  for (const k of ['rain', 'drizzle', 'storm']) assert.equal(isRainy({ kind: k }), true);
+  for (const k of ['clear', 'cloud', 'fog', 'snow']) assert.equal(isRainy({ kind: k }), false);
+  assert.equal(isRainy(null), false);
   const lamp = rgbaOf(WARSAW.quayLamp);
   const dry = fullScene(PHASE.night, CLEAR);
   const wet = fullScene(PHASE.night, RAIN);
@@ -998,6 +999,71 @@ test('W7: rain, drizzle and storm wet the ground: longer and stronger reflection
   assert.ok(streaks(wet.ctx).length >= 10);
   assert.equal(streaks(dry.ctx).length, 0);
   for (const [, [, y, , h]] of streaks(wet.ctx)) assert.ok(y + h <= L0.river.top);
+});
+
+test('W7: a rainy night spreads the reflections wider and puts a wet sheen on the walk; clear, fog, snow and day have none', () => {
+  const sheen = (ctx) => ctx.calls.filter(([m, a, st]) => m === 'fillRect' && typeof st === 'string' && st.startsWith(rgbaOf(WARSAW.wetSheen)) && a[2] === L0.w && a[1] >= L0.boulevard && a[1] + a[3] <= L0.river.top).length; // full-width: the low city's windows share the colour
+  const spreadOf = (ctx) => {
+    const ds = dashes(ctx, rgbaOf(WARSAW.reflectPalace));
+    return ds.reduce((m, d) => m + d[2], 0) / ds.length;
+  };
+  const wet = noRandom(() => fullScene(PHASE.night, RAIN));
+  const dry = noRandom(() => fullScene(PHASE.night, CLEAR));
+  assert.ok(sheen(wet.ctx) >= 1, 'a sheen on a rainy night');
+  assert.equal(sheen(dry.ctx), 0);
+  for (const kind of ['fog', 'snow']) assert.equal(sheen(fullScene(PHASE.night, { ...CLEAR, kind }).ctx), 0, kind);
+  for (const kind of ['rain', 'drizzle', 'storm']) assert.ok(sheen(fullScene(PHASE.night, { ...RAIN, kind }).ctx) >= 1, kind);
+  assert.equal(sheen(fullScene(PHASE.noon, RAIN).ctx), 0, 'none by day');
+  assert.ok(spreadOf(wet.ctx) > spreadOf(dry.ctx), 'the reflections are wider in rain');
+  // wider and softer: the light is spread, not added (alpha falls by the width factor)
+  const palaceMaxA = (ctx) => Math.max(...dashes(ctx, rgbaOf(WARSAW.reflectPalace)).map((d) => alphaOf(d[4])));
+  assert.ok(palaceMaxA(wet.ctx) / palaceMaxA(dry.ctx) < 1.1, 'rain does not add strength to the Palace reflection beyond a sliver');
+  assert.ok(spreadOf(wet.ctx) >= 1.25 * spreadOf(dry.ctx), 'while its dashes are at least 1.25 times as wide');
+  });
+
+// The rain streak is the one `sheen` whose ellipse is 5 * sx * 0.62 wide, hung from the river's top edge: a translate to (x, river.top) then a fillRect 2*rx wide.
+const rainStreakXs = (ctx) => {
+  const out = [];
+  ctx.calls.forEach((c, i) => {
+    if (c[0] !== 'translate' || Math.abs(c[1][1] - L0.river.top) > 1e-9) return;
+    const f = ctx.calls.slice(i + 1, i + 4).find((q) => q[0] === 'fillRect');
+    if (f && Math.abs(f[1][2] - 2 * 5 * L0.sx * 0.62) < 1e-9) out.push(c[1][0]);
+  });
+  return out;
+};
+
+test('W7: isRainy is true for rain, drizzle and storm only', () => {
+  for (const k of ['rain', 'drizzle', 'storm']) assert.equal(isRainy({ kind: k }), true, k);
+  for (const k of ['fog', 'snow', 'clear', 'cloud']) assert.equal(isRainy({ kind: k }), false, k);
+  assert.equal(isRainy(EMPTY), false);
+  assert.equal(isRainy(null), false);
+});
+
+test('W7: a rainy night lays one rain streak under every lamp, centred on it; none on a clear night, in fog, in snow or by day', () => {
+  const xs = lampXs(L0);
+  assert.ok(xs.length >= 10);
+  const got = rainStreakXs(noRandom(() => fullScene(PHASE.night, RAIN)).ctx);
+  assert.equal(got.length, xs.length);
+  got.forEach((x, i) => assert.ok(Math.abs(x - xs[i]) < 1e-9, `streak ${i} on its lamp`));
+  for (const k of ['rain', 'drizzle', 'storm']) assert.equal(rainStreakXs(noRandom(() => fullScene(PHASE.night, { ...RAIN, kind: k })).ctx).length, xs.length, k);
+  assert.equal(rainStreakXs(noRandom(() => fullScene(PHASE.night, CLEAR)).ctx).length, 0, 'clear night');
+  assert.equal(rainStreakXs(noRandom(() => fullScene(PHASE.night, { ...CLEAR, kind: 'fog' })).ctx).length, 0, 'fog');
+  assert.equal(rainStreakXs(noRandom(() => fullScene(PHASE.night, { ...CLEAR, kind: 'snow' })).ctx).length, 0, 'snow');
+  assert.equal(rainStreakXs(noRandom(() => fullScene(PHASE.noon, RAIN)).ctx).length, 0, 'noon in rain');
+  assert.equal(drawLampStreaks.length, 3);
+});
+
+test('W7: the clear-night river is exactly what it was before the rain change', () => {
+  // digest of every river dash (ellipse + fill style) at night with no weather, captured from the pre-change scene.js at HEAD 63b6b3e
+  const ctx = recordingCtx();
+  noRandom(() => drawRiver(ctx, rect, PHASE.night, tint(sample(PHASE.night)), EMPTY, 0, false));
+  const out = [];
+  ctx.calls.forEach((c, i) => {
+    const f = ctx.calls[i + 1];
+    if (c[0] === 'ellipse' && f && f[0] === 'fill' && typeof f[2] === 'string') out.push([c[1].slice(0, 4), f[2]]);
+  });
+  assert.equal(out.length, 120);
+  assert.equal(createHash('sha256').update(JSON.stringify(out)).digest('hex').slice(0, 16), '1cdc33eb167eeb44');
 });
 
 test('W7: lightning is aimed at the tip of the Palace needle', () => {
