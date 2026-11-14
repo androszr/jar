@@ -97,8 +97,8 @@ test('modules and the stylesheet get a one-minute window; the front page re-chec
   assert.ok(Number.isInteger(age) && age <= 300, `module max-age ${age} is over 300 s`);
 });
 
-test('robots.txt lets everyone in, and neither the page nor vercel.json asks to stay out', () => {
-  assert.match(read('src/robots.txt'), /^User-agent: \*\nAllow: \/\n?$/);
+test('robots.txt lets everyone in except the weather function, and neither the page nor vercel.json asks to stay out', () => {
+  assert.match(read('src/robots.txt'), /^User-agent: \*\nAllow: \/\nDisallow: \/api\/\n?$/);
   const html = read('src/index.html');
   assert.ok(!html.includes('name="robots"'), 'a robots meta');
   assert.ok(!/noindex/i.test(html), 'noindex in the page');

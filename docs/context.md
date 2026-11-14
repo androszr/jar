@@ -139,7 +139,7 @@ test surface. The canvas's `aria-label` is the lifted jar's spoken description; 
 deploys off, deploys by `.github/workflows/deploy.yml` with a pinned CLI in
 `.github/vercel-cli/`); `api/weather.js` runs beside it as a Node function.
 The CSP is self-only with `connect-src 'self'`. There is no robots header and
-`src/robots.txt` allows all. The page carries a description, a canonical link
+`src/robots.txt` allows all but `/api/`. The page carries a description, a canonical link
 and Open Graph tags, and serves `share.jpg`, `icon.svg`, `icon-192.png`,
 `icon-512.png`, `apple-touch-icon.png` and `manifest.webmanifest`, all static
 under `src/`; the bitmaps are rendered once by `node tools/icons.mjs` and
