@@ -599,10 +599,15 @@ test('the snow line: a low freezing level whitens the moraine and the shore at a
   const m = mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5, freezingLevel: 1100 }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
   const trodden = css(snowTone(m, 1), 0.8);
   assert.ok(low.fills.has(trodden) && !high.fills.has(trodden), 'trodden snow on the gravel');
-  // the wall: slivers only above the line
+  // the wall: snow shapes only above the line (the wall's snow is buildSnow's shapes, filtered by shownSnow)
   const mm = mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5, freezingLevel: 2500 }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
-  const tops = plates.fitzroy.streaks.map((s) => s[0][1]);
-  assert.ok(tops.some((y) => snowAt(mm, y)) && tops.some((y) => !snowAt(mm, y)), 'a line across the ledges');
+  const top = (s) => Math.min(...s.poly.map((p) => p[1]));
+  const tops = plates.fitzroy.snow.map(top);
+  assert.ok(tops.some((y) => snowAt(mm, y)) && tops.some((y) => !snowAt(mm, y)), 'a line across the wall');
+  const shown = shownSnow(plates.fitzroy.snow, mm);
+  assert.ok(shown.length > 0 && shown.length < plates.fitzroy.snow.length && shown.every((s) => top(s) <= mm.snowLineY), 'only the shapes above the line lie');
+  const none = mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5 }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
+  assert.deepEqual(shownSnow(plates.fitzroy.snow, none), visibleSnow(plates.fitzroy.snow, none.snow), 'no figure: the season holds as before');
   assert.ok(high.calls.length < mid.calls.length && mid.calls.length < low.calls.length);
 });
 
