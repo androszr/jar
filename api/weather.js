@@ -33,6 +33,15 @@ export function openMeteoUrl(places) {
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
+// A sea level more than TIDE_LIMIT_M metres from mean sea level is not a tide
+// anywhere on Earth (the largest ranges are about 16 m peak to trough): such a
+// sample is a vendor sentinel or a glitch and is read as missing, like a null.
+export const TIDE_LIMIT_M = 10;
+const seaLevel = (v) => {
+  const n = num(v);
+  return n !== null && Math.abs(n) <= TIDE_LIMIT_M ? n : null;
+};
+
 // The places that carry a finite offshore point.
 export function seaPlaces(places) {
   return places.filter((p) => p && p.sea && Number.isFinite(p.sea.lat) && Number.isFinite(p.sea.lon));
@@ -48,7 +57,7 @@ export function marineUrl(places) {
 }
 
 // Hourly sea level (the city's local wall clock) -> { [date]: [{ time, kind, height }] },
-// the high and low tides found as local extremes of three finite neighbours, the
+// the high and low tides found as local extremes of three finite, plausible neighbours (|h| <= TIDE_LIMIT_M), the
 // moment refined by the parabola through them. Minute arithmetic on the vendor's
 // own string, never through Date (the server's zone is not the city's). An extreme
 // at the very first or last hour of the series has no neighbour and is not found.
@@ -59,9 +68,9 @@ export function tideExtremes(hourly) {
   const n = Math.min(t.length, h.length);
   const out = {};
   for (let i = 1; i < n - 1; i++) {
-    const a = num(h[i - 1]);
-    const b = num(h[i]);
-    const c = num(h[i + 1]);
+    const a = seaLevel(h[i - 1]);
+    const b = seaLevel(h[i]);
+    const c = seaLevel(h[i + 1]);
     if (a === null || b === null || c === null) continue;
     const kind = b > a && b >= c ? 'high' : b < a && b <= c ? 'low' : null;
     if (!kind) continue;

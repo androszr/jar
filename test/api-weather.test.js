@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { openMeteoUrl, hourlyRows, marineHourlyRows, marineUrl, tideExtremes, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
+import handler, { openMeteoUrl, hourlyRows, marineHourlyRows, marineUrl, tideExtremes, TIDE_LIMIT_M, seaPlaces, normaliseMarine, normalise, fetchWeather, resetMemo } from '../api/weather.js';
 import { PLACES } from '../src/cities/places.js';
 import { readFileSync } from 'node:fs';
 
@@ -468,6 +468,45 @@ test('tideExtremes: a refined time across midnight lands on the neighbouring dat
   const time = ['2026-10-18T21:00', '2026-10-18T22:00', '2026-10-18T23:00', '2026-10-19T00:00', '2026-10-19T01:00'];
   const t = tideExtremes({ time, sea_level_height_msl: [0, 1, 1.8, 1.9, 1.7] });
   assert.deepEqual(t, { '2026-10-18': [{ time: '23:50', kind: 'high', height: 1.9 }] });
+});
+
+test('tideExtremes: an implausible sample breaks the triple like a null', () => {
+  const time = ['2026-10-18T00:00', '2026-10-18T01:00', '2026-10-18T02:00', '2026-10-18T03:00', '2026-10-18T04:00'];
+  assert.equal(tideExtremes({ time, sea_level_height_msl: [0, 1, 0, -1, 0] })['2026-10-18'].length, 2);
+  for (const bad of [50, -999, TIDE_LIMIT_M + 0.01]) {
+    assert.deepEqual(tideExtremes({ time, sea_level_height_msl: [0, 1, bad, -1, 0] }), {}, String(bad));
+  }
+});
+
+test('tideExtremes: a spike is never a tide and never a tide\'s neighbour', () => {
+  const time = [0, 1, 2, 3, 4, 5, 6].map((h) => `2026-10-18T0${h}:00`);
+  const day = tideExtremes({ time, sea_level_height_msl: [0, 1, 0, -1, 0, 999, 0] })['2026-10-18'];
+  assert.deepEqual(day.map((e) => e.kind), ['high', 'low']);
+  assert.ok(Math.abs(toMin(day[0].time) - toMin('01:00')) <= 2);
+  assert.ok(Math.abs(toMin(day[1].time) - toMin('03:00')) <= 2);
+  assert.ok(day.every((e) => toMin(e.time) < toMin('05:00')));
+  assert.ok(day.every((e) => Math.abs(e.height) <= TIDE_LIMIT_M));
+});
+
+test('tideExtremes: exactly the limit is kept, just over is not', () => {
+  const time = ['2026-10-18T00:00', '2026-10-18T01:00', '2026-10-18T02:00', '2026-10-18T03:00', '2026-10-18T04:00'];
+  const day = tideExtremes({ time, sea_level_height_msl: [0, TIDE_LIMIT_M, 0, -TIDE_LIMIT_M, 0] })['2026-10-18'];
+  assert.deepEqual(day.map((e) => e.height), [TIDE_LIMIT_M, -TIDE_LIMIT_M]);
+  const over = TIDE_LIMIT_M + 0.01;
+  assert.deepEqual(tideExtremes({ time, sea_level_height_msl: [0, over, 0, -over, 0] }), {});
+});
+
+test('normaliseMarine: one spiked sample loses one tide and nothing else', () => {
+  const m = fixture('marine.json');
+  m.hourly.sea_level_height_msl[3] = -999;
+  const d = normaliseMarine(m, [nazare]).nazare.daily;
+  assert.equal(d.length, 5);
+  assert.equal(d[0].date, '2026-10-18');
+  assert.deepEqual(d[0].tides.map((e) => e.kind), ['low', 'high', 'low']);
+  ['09:25', '15:37', '21:50'].forEach((w, i) => assert.ok(Math.abs(toMin(d[0].tides[i].time) - toMin(w)) <= 2, d[0].tides[i].time));
+  assert.ok(d[0].tides.every((e) => Number.isFinite(e.height) && Math.abs(e.height) <= TIDE_LIMIT_M));
+  const r = normalise(fixture('weather-two-cities.json'), bothPlaces, NOW, m);
+  assert.equal(r.cities.nazare.sea.daily[0].tides.length, 3);
 });
 
 test('normaliseMarine folds tides onto each daily row, [] without hourly', () => {
