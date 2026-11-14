@@ -822,6 +822,34 @@ try {
   const flagRed = (r, g, b) => r >= 160 && r >= g + 80 && r >= b + 80;
   check(all(await patch(noct, 'warsaw', 0.4, 0.32, 2), white) && all(await patch(noct, 'warsaw', 0.4, 0.47, 2), flagRed), 'the Palace is floodlit white over red on 11 November');
   await noct.screenshot({ path: join(OUT, 'warsaw-flag.png') });
+  // New Year: fireworks from 00:00 to 01:00 on 1 January, Warsaw time
+  const T_NYE = Date.UTC(2025, 11, 31, 23, 20); // 00:20 in Warsaw on 1 January 2026
+  const skyBand = async () => {
+    const out = [];
+    for (let y = 0.1; y <= 0.32; y += 0.055) for (let x = 0.2; x <= 0.8; x += 0.05) out.push(luma(await patch(noct, 'warsaw', x, y, 3)));
+    return out;
+  };
+  // control: 00:20 on 2 January, same lit windows, moon and season, no fireworks
+  const T_NYE_CONTROL = Date.UTC(2026, 0, 1, 23, 20);
+  await noct.evaluate((t) => window.__jar.pin(t), T_NYE_CONTROL);
+  await twoFrames(noct);
+  const skyNight = await skyBand();
+  await noct.evaluate((t) => window.__jar.pin(t), T_NYE);
+  await twoFrames(noct);
+  const skyNye = await skyBand();
+  const lift = Math.max(...skyNye.map((v, i) => v - skyNight[i]));
+  check(lift >= 6, `fireworks light the sky over the Palace after Warsaw's midnight (a patch ${Math.round(lift)} brighter)`);
+  const nyeA = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NYE);
+  const nyeB = await noct.evaluate((t) => { window.__jar.pin(t); return window.__jar.hash(); }, T_NYE);
+  check(nyeA === nyeB, 'the fireworks draw the same pixels at the same moment');
+  check(await noct.evaluate(() => window.__jar.cadence.cities.warsaw === 100), 'Warsaw asks for a fast tick during the fireworks');
+  await noct.screenshot({ path: join(OUT, 'warsaw-new-year.png') });
+  await noct.evaluate((t) => window.__jar.pin(t), Date.UTC(2026, 0, 1, 0, 30)); // 01:30 in Warsaw
+  await twoFrames(noct);
+  check(await noct.evaluate(() => window.__jar.cadence.cities.warsaw === 200 && window.__jar.scene('warsaw').fireworks === false), 'the fast tick stops after the hour');
+  await noct.evaluate((t) => window.__jar.pin(t), Date.UTC(2025, 11, 31, 22, 58)); // 23:58 in Warsaw
+  await twoFrames(noct);
+  check(await noct.evaluate(() => window.__jar.scene('warsaw').fireworks === false), "no fireworks before Warsaw's midnight");
   check(noctSeen.errors.length === 0, `no console errors on the nocturne page${noctSeen.errors.length ? `: ${noctSeen.errors.join(' | ')}` : ''}`);
 
   check(deepSeen.errors.length === 0 && seen.errors.length === 0, `no console errors on the desktop pages${[...seen.errors, ...deepSeen.errors].length ? `: ${[...seen.errors, ...deepSeen.errors].join(' | ')}` : ''}`);
