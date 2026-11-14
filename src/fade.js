@@ -6,7 +6,8 @@ export const FADE_MS = 2500;
 export function skyChanged(a, b) {
   if (!a || !b) return false;
   const cover = (w) => (typeof w.cloudCover === 'number' ? Math.round(w.cloudCover / 10) : -1);
-  return !!a.known !== !!b.known || a.kind !== b.kind || cover(a) !== cover(b);
+  const low = (w) => (typeof w.cloudLow === 'number' ? Math.round(w.cloudLow / 10) : -1);
+  return !!a.known !== !!b.known || a.kind !== b.kind || cover(a) !== cover(b) || low(a) !== low(b);
 }
 
 // 0 (all the old sky) .. 1 (all the new) `ageMs` after the answer; eased.

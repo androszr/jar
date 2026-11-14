@@ -240,3 +240,10 @@ test('every city with water hands back a band inside the jar; a frozen lake hand
   }
   assert.equal(findCity('el-chalten').water(rect, { frozen: true }), null);
 });
+
+test('a change in the low layer alone is a new sky and fades; no split on both sides is not', () => {
+  const a = { known: true, kind: 'cloud', cloudCover: 100, cloudLow: 100 };
+  assert.equal(skyChanged(a, { ...a, cloudLow: 0 }), true);
+  assert.equal(skyChanged(a, { ...a, cloudLow: null }), true);
+  assert.equal(skyChanged({ ...a, cloudLow: null }, { ...a, cloudLow: null }), false);
+});

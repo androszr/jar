@@ -5,7 +5,7 @@ import {
   SKYLINE, MERMAID, BACK_ROW, FRONT_ROW, INFILL_ROW, PALACE, RIM_DX, DAY_RIM, FAR_BANK, RIVER_TOP, QUAY_TOP, BOULEVARD, STREAK_CLEAR,
   buildPlates, layout, nightAmount, ICE, iceAmount, iceFloes, sunSide, drawMermaid, drawSkyline, flagDay,
   SEASONS, seasonWeights, canopyColour, tone,
-  CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, fogDepth,
+  CLOCK_R, GLASS, GOLDEN_FROM, goldenAmount, sunLight, moonLight, windowsOut, WINDOWS_OUT_MAX, rainy, drawRiver, CEILING, ceilingAmount, ceilingTop, fogDepth,
 } from '../src/cities/warsaw/scene.js';
 import { BRIDGE, TRAFFIC, DECK, deckY, deckThick, drawBridge, trafficLights, vehicles } from '../src/cities/warsaw/bridge.js';
 import { BEACH, ROWS, TREES, PATH_LAMPS, branches } from '../src/cities/warsaw/forest.js';
@@ -1207,4 +1207,48 @@ test('in fog the Christmas tree at the Palace foot is veiled with the Palace', (
   const veil = ctx.calls.findIndex((c) => c[0] === 'fillRect' && c[1][1] === 0 && c[1][2] === 340 && Math.abs(c[1][3] - FAR_BANK * 396) < 0.5 && typeof c[2] === 'object');
   assert.ok(tree.length > 0, 'the tree is drawn in December');
   assert.ok(veil > Math.max(...tree), 'the far veil comes after the tree');
+});
+
+// ---- the cloud base follows the low layer ----
+
+const LOW = (cloudLow, cloudCover = 100, kind = 'cloud') => ({ ...EMPTY, known: true, kind, cloudCover, cloudLow });
+
+test('ceilingAmount without the split keeps the total-cover rule', () => {
+  assert.equal(ceilingAmount(LOW(null)), 1);
+  assert.ok(Math.abs(ceilingAmount(LOW(null, 90)) - 0.5) < 1e-9);
+  assert.equal(ceilingAmount(EMPTY), 0);
+});
+
+test('ceilingAmount with the split follows cloudLow, never mid or high', () => {
+  assert.equal(ceilingAmount(LOW(100)), 1);
+  assert.ok(Math.abs(ceilingAmount(LOW(90)) - 0.5) < 1e-9);
+  assert.equal(ceilingAmount(LOW(80)), 0);
+  assert.equal(ceilingAmount({ ...LOW(0), cloudMid: 100 }), 0);
+  assert.equal(ceilingAmount({ ...LOW(0), cloudHigh: 100 }), 0);
+  assert.equal(ceilingAmount(LOW(100, null, 'rain')), 1);
+  assert.equal(ceilingAmount(LOW(100, 100, 'fog')), 0);
+});
+
+test('ceilingTop: the old fifth with no split or a solid low deck, higher for a thin one', () => {
+  assert.equal(ceilingTop(EMPTY), 0);
+  assert.equal(ceilingTop(LOW(null)), CEILING.top);
+  assert.equal(ceilingTop(LOW(100)), CEILING.top);
+  assert.ok(Math.abs(ceilingTop(LOW(90)) - 0.16) < 1e-9);
+  assert.equal(ceilingTop(LOW(80)), 0);
+});
+
+test('a low hour of the split draws a base and a high-only hour none (what a preview carries)', () => {
+  assert.ok(ceilingAmount({ ...LOW(95), cloudMid: 0, cloudHigh: 0 }) > 0);
+  assert.equal(ceilingAmount({ ...LOW(5), cloudMid: 0, cloudHigh: 100 }), 0);
+});
+
+test('the band reaches to ceilingTop, and a high-only overcast draws none; both deterministic', () => {
+  const band = (ctx) => ctx.calls.filter((c) => c[0] === 'fillRect' && c[1][1] === 0 && c[1][2] === 340 && c[1][3] > 0.1 * 396 && c[1][3] < 0.25 * 396);
+  const thin = band(paint(PHASE.noon, LOW(90)));
+  assert.equal(thin.length, 1);
+  assert.ok(Math.abs(thin[0][1][3] - 0.16 * 396) < 0.5);
+  assert.equal(band(paint(PHASE.noon, { ...LOW(0), cloudHigh: 100 })).length, 0);
+  for (const w of [LOW(90), { ...LOW(0), cloudHigh: 100 }]) {
+    assert.equal(JSON.stringify(paint(PHASE.noon, w).calls), JSON.stringify(paint(PHASE.noon, w).calls));
+  }
 });

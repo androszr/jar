@@ -497,13 +497,28 @@ function windowDots(ctx, trace, L, night, out = 0) {
 // Low cloud and fog with depth. Under a heavy overcast a ragged cloud base
 // hangs across the top of the body and swallows the needles and the tallest
 // tops; in fog the far things go pale first and the near bank stays dark.
-export const CEILING = { from: 0.8, full: 1, top: 0.2 };
+export const CEILING = { from: 0.8, full: 1, top: 0.2, topThin: 0.12 };
+
+// The low layer's cover 0..1, or null when the vendor gave no split (the old rule from total cover then applies).
+function lowLayer(weather) {
+  return typeof weather.cloudLow === 'number' && Number.isFinite(weather.cloudLow) ? clamp(weather.cloudLow / 100) : null;
+}
 
 // 0 for no reading, a clear sky or fog (fog has its own veils); 1 at complete cover.
 export function ceilingAmount(weather) {
   if (!weather || !weather.known) return 0;
   if (weather.kind === 'clear' || weather.kind === 'fog') return 0;
-  return clamp((cloudAmount(weather.cloudCover, weather.kind) - CEILING.from) / (CEILING.full - CEILING.from));
+  const low = lowLayer(weather);
+  const amount = low === null ? cloudAmount(weather.cloudCover, weather.kind) : low;
+  return clamp((amount - CEILING.from) / (CEILING.full - CEILING.from));
+}
+
+// The share of the body the base reaches down to: the parent's 0.2 with no split or a solid low deck,
+// higher (clearing the tower crowns, still taking the needles) for a thinner one.
+export function ceilingTop(weather) {
+  const c = ceilingAmount(weather);
+  if (c <= 0) return 0;
+  return lowLayer(weather) === null ? CEILING.top : CEILING.topThin + (CEILING.top - CEILING.topThin) * c;
 }
 
 export function fogDepth(weather) {
@@ -512,15 +527,15 @@ export function fogDepth(weather) {
 
 // How opaque the cloud base is at height y (px), by the gradient drawCloudBase lays: 0.98 at the top, 0.92 at
 // three quarters of the band, none at its lower edge, all scaled by the ceiling `c`.
-export function cloudBaseAlpha(L, y, c) {
-  const t = (y - L.oy) / (CEILING.top * L.h);
+export function cloudBaseAlpha(L, y, c, top = CEILING.top) {
+  const t = (y - L.oy) / (top * L.h);
   if (c <= 0 || t >= 1) return 0;
   return c * (t < 0.75 ? 0.98 - (0.06 * Math.max(0, t)) / 0.75 : 0.92 * (1 - t) / 0.25);
 }
 
-function drawCloudBase(ctx, L, tint, night, c) {
+function drawCloudBase(ctx, L, tint, night, c, top) {
   if (c <= 0) return;
-  const y1 = L.oy + CEILING.top * L.h;
+  const y1 = L.oy + top * L.h;
   const base = mix(tone(WARSAW.cloudBaseDay, WARSAW.cloudBaseNight, WARSAW.cloudBaseNight, night), tint.skyLow, 0.25);
   const g = ctx.createLinearGradient(0, L.oy, 0, y1);
   g.addColorStop(0, css(base, 0.98 * c));
@@ -530,7 +545,7 @@ function drawCloudBase(ctx, L, tint, night, c) {
   ctx.fillRect(L.ox, L.oy, L.w, y1 - L.oy);
   for (let i = 0; i < 16; i++) {
     const x = L.ox + (i / 15) * L.w + (hash2(i, 101) - 0.5) * 8 * L.sx;
-    const y = L.oy + (0.13 + 0.03 * hash2(i, 102)) * L.h;
+    const y = L.oy + (0.13 + 0.03 * hash2(i, 102)) * (top / CEILING.top) * L.h;
     const r = (22 + 18 * hash2(i, 103)) * L.sx;
     const p = ctx.createRadialGradient(x, y, 0, x, y, r);
     p.addColorStop(0, css(base, 0.95 * c));
@@ -576,7 +591,7 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   const cap = (x0, x1, yTop) => {
     if (!snow) return;
     // a cap under the cloud base is veiled as the tower beneath it is
-    ctx.fillStyle = css(WARSAW.snowCap, 1 - cloudBaseAlpha(L, yTop, ceilingAmount(weather)));
+    ctx.fillStyle = css(WARSAW.snowCap, 1 - cloudBaseAlpha(L, yTop, ceilingAmount(weather), ceilingTop(weather)));
     ctx.fillRect(x0, yTop, x1 - x0, 3); // sits on the roof line, never above it
   };
   const cx = (id) => L.X(TOWER[id].x);
@@ -736,7 +751,7 @@ export function drawSkyline(ctx, rect, phase, tint, plates, weather, nowMs, laye
   // fog and low cloud, over everything painted so far, before the low town
   const fog = fogDepth(weather);
   if (fog > 0) fogVeil(ctx, L, tint, night, L.oy, L.gy, 0.82 * fog, 0.45 * fog);
-  drawCloudBase(ctx, L, tint, night, ceilingAmount(weather));
+  drawCloudBase(ctx, L, tint, night, ceilingAmount(weather), ceilingTop(weather));
 
   // the low city in front: first the unbroken roofs behind, muted toward the
   // background grey, then each block its own façade (plaster, brick, concrete),

@@ -151,3 +151,13 @@ test('previewWeather with both rows swaps both; with neither it is identical', (
   assert.equal(previewWeather(EMPTY, at('15:00'), ZONE), EMPTY);
   assert.deepEqual(previewWeather(seaWeather, at('14:00'), ZONE), previewWeather(seaWeather, at('14:00'), ZONE));
 });
+
+test('previewWeather carries the hour\'s own cloud split, null when the row has none', () => {
+  const rows = hourly.map((r) => ({ ...r }));
+  const i = 15;
+  const w = fromEntry({ ...weather, cloudLow: 100, hourly: rows.map((r, k) => (k === i ? { ...r, cloudLow: 10, cloudMid: 80, cloudHigh: 0 } : r)) });
+  const p = previewWeather(w, at('15:00'), ZONE);
+  assert.deepEqual([p.cloudLow, p.cloudMid, p.cloudHigh], [10, 80, 0]);
+  const bare = fromEntry({ ...weather, cloudLow: 100, hourly: rows.map((r) => ({ ...r, cloudLow: undefined })) });
+  assert.equal(previewWeather(bare, at('15:00'), ZONE).cloudLow, null);
+});
