@@ -4,7 +4,7 @@ import elChalten from '../src/cities/el-chalten/index.js';
 import { deckHeight, HIDDEN_EDGE, GHOST_EVERY_MS, GHOST_MS, snowAmount, summitWindOf } from '../src/cities/el-chalten/massif.js';
 import { DECK_SOFT, lensSpot, sunSpot } from '../src/cities/el-chalten/air.js';
 import { condorAt, lapAt, CONDOR_LOOP_MS } from '../src/cities/el-chalten/shore.js';
-import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, snowAt, shownSnow, rimeStyle, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
+import { buildPlates, facetColour, emberTone, wallSnow, snowTone, glowShare, mood, snowAt, shownSnow, SNOW_FLOOR, rimeStyle, BARE, SHORE, GRAVEL, ROCK, BIVOUAC, LAMPS, STREAK_CLEAR, SUMMIT, SUN_X, HAZE } from '../src/cities/el-chalten/scene.js';
 import { visibleSnow, polyArea, bbox, chainY, occlusion, boxHitsPoly } from '../src/cities/el-chalten/snow.js';
 import { MIRROR_SQUASH } from '../src/cities/el-chalten/water.js';
 import { EL_CHALTEN as EC } from '../src/cities/el-chalten/palette.js';
@@ -630,10 +630,23 @@ test('the snow line: a low freezing level whitens the moraine and the shore at a
   const tops = plates.fitzroy.snow.map(top);
   assert.ok(tops.some((y) => snowAt(mm, y)) && tops.some((y) => !snowAt(mm, y)), 'a line across the wall');
   const shown = shownSnow(plates.fitzroy.snow, mm);
-  assert.ok(shown.length > 0 && shown.length < plates.fitzroy.snow.length && shown.every((s) => top(s) <= mm.snowLineY), 'only the shapes above the line lie');
+  assert.ok(shown.length > 0 && shown.length < plates.fitzroy.snow.length && shown.every((s) => top(s) <= mm.snowLineY || s.hold <= SNOW_FLOOR), 'only the shapes above the line, and the least-season floor, lie');
   const none = mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5 }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
   assert.deepEqual(shownSnow(plates.fitzroy.snow, none), visibleSnow(plates.fitzroy.snow, none.snow), 'no figure: the season holds as before');
   assert.ok(high.calls.length < mid.calls.length && mid.calls.length < low.calls.length);
+});
+
+test('a freezing level above the summit keeps the least-season snow on the wall; a low one shows more', () => {
+  const at = (freezingLevel) => mood(tint(sample(PHASE.noon)), reading({ windSpeed: 5, freezingLevel }), T_NOON, { zone: 'America/Argentina/Rio_Gallegos' }, PHASE.noon);
+  for (const body of ['poincenot', 'fitzroy']) {
+    const shapes = plates[body].snow;
+    const floor = visibleSnow(shapes, SNOW_FLOOR);
+    const high = shownSnow(shapes, at(4000));
+    const low = shownSnow(shapes, at(1100));
+    assert.ok(floor.length > 0, `${body}: the floor holds some snow`);
+    assert.ok(floor.every((s) => high.includes(s)), `${body}: 4,000 m keeps the February snow`);
+    assert.ok(low.length > high.length, `${body}: a low freezing level shows more than a high one`);
+  }
 });
 
 test("no figure draws exactly today's picture", () => {

@@ -357,12 +357,17 @@ export function snowAt(m, y) {
   return m.snowLine === null ? (m.frozen || m.fresh ? 1 : 0) : y <= m.snowLineY ? 1 : 0;
 }
 
+// The least snow the wall ever carries: the season rule's February amount. The
+// permanent fields (the saddle, the high gullies' ribbons) hold at least this much
+// whatever the freezing level says.
+export const SNOW_FLOOR = snowAmount('summer', 2, 0);
+
 // The wall's snow shapes (buildSnow) that lie: with no freezing level the season's
-// amount holds some back (visibleSnow, exactly as before); with one, a shape lies
-// when its top is at or above the line, whatever the season.
+// amount holds some back (visibleSnow, exactly as before); with one, the floor's
+// shapes always lie and every other shape lies when its top is at or above the line.
 export function shownSnow(shapes, m) {
   if (m.snowLine === null) return visibleSnow(shapes, m.snow);
-  return shapes.filter((s) => snowAt(m, Math.min(...s.poly.map((p) => p[1]))));
+  return shapes.filter((s) => s.hold <= SNOW_FLOOR || snowAt(m, Math.min(...s.poly.map((p) => p[1]))));
 }
 
 // ---- drawing helpers ---------------------------------------------------------
