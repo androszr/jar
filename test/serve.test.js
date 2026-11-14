@@ -68,7 +68,7 @@ test('the dev server serves the icons, the preview picture and the manifest with
       '/icon-192.png': 'image/png',
       '/apple-touch-icon.png': 'image/png',
       '/share.jpg': 'image/jpeg',
-      '/manifest.webmanifest': 'application/manifest+json',
+      '/manifest.webmanifest': 'application/manifest+json; charset=utf-8',
     };
     for (const [p, type] of Object.entries(want)) {
       const r = await ask(port, p);

@@ -23,9 +23,7 @@ const TYPES = {
   '.png': 'image/png',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
-  '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.webmanifest': 'application/manifest+json',
 };
 
 const HOSTING = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
